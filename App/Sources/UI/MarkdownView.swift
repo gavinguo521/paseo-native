@@ -1,6 +1,7 @@
 // Block-level Markdown for assistant messages. Inline styling uses AttributedString's Markdown parser;
 // blocks (headings, lists, quotes, fenced code, tables, rules) are split here.
 
+import PaseoKit
 import SwiftUI
 import WebKit
 
@@ -57,8 +58,7 @@ struct MarkdownView: View {
 
     private func inline(_ s: String) -> Text {
         Text(RenderCache.inline(s, query: findQuery) {
-            var attributed = (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                ?? AttributedString(s)
+            var attributed = InlineMarkdown.parse(s)
             FileLink.annotate(&attributed)
             highlight(&attributed, findQuery)
             return attributed
@@ -704,8 +704,7 @@ extension MarkdownBlock {
     /// For「选择文本」, where one selectable text spans the whole message.
     static func plainText(_ markdown: String) -> String {
         func inline(_ s: String) -> String {
-            let a = (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                ?? AttributedString(s)
+            let a = InlineMarkdown.parse(s)
             return String(a.characters)
         }
         return cached(markdown).compactMap { block -> String? in

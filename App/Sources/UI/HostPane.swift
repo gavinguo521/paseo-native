@@ -1353,7 +1353,8 @@ final class TerminalBridge: NSObject, TerminalViewDelegate {
     nonisolated func scrolled(source: TerminalView, position: Double) {}
     nonisolated func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
     nonisolated func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
-        if let url = URL(string: link) {
+        // 终端输出来自远程机器，只打开网页和邮件链接，不打开 file:// 或其他 App 的自定义协议
+        if let url = URL(string: link), ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") {
             #if os(macOS)
             NSWorkspace.shared.open(url)
             #endif

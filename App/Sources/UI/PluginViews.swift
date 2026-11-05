@@ -607,7 +607,8 @@ struct BoardView: View {
     var body: some View {
         Group {
             if let url {
-                WebView(url: url, localStorage: boardToken.map { ["board-token": $0] } ?? [:])
+                // 本机的看板令牌只交给本机 daemon 的插件报出的、回环地址上的看板（别的机器报的地址不能信任）
+                WebView(url: url, localStorage: tokenAllowed(url) ? boardToken.map { ["board-token": $0] } ?? [:] : [:])
             } else if let problem {
                 ContentUnavailableView {
                     Label("看板打不开", systemImage: "rectangle.split.3x1")
@@ -628,6 +629,10 @@ struct BoardView: View {
         guard let host else { problem = "没有机器启用了看板插件"; return }
         problem = nil
         url = nil
+        #if os(macOS)
+        // 判断看板插件是不是在本机 daemon 上（决定能不能注入本机令牌）要用到本机 daemon 的 serverId
+        if LocalDaemon.shared.status == nil { await LocalDaemon.shared.refresh() }
+        #endif
         var paths: [JSONValue] = []
         if let ref = workspace, let w = model.workspace(ref) {
             paths = [.string(w.directory), .string(w.projectRootPath)]
@@ -661,6 +666,20 @@ struct BoardView: View {
         #endif
     }
 
+    private func tokenAllowed(_ u: URL) -> Bool {
+        #if os(macOS)
+        guard let local = LocalDaemon.shared.status?.serverId, local == host?.id else { return false }
+        return Self.isLoopback(u)
+        #else
+        return false
+        #endif
+    }
+
+    static func isLoopback(_ u: URL) -> Bool {
+        guard u.scheme == "http" || u.scheme == "https", let h = u.host?.lowercased() else { return false }
+        return h == "127.0.0.1" || h == "localhost" || h == "::1" || h == "[::1]"
+    }
+
     private func reachable(_ u: URL) async -> Bool {
         var req = URLRequest(url: u)
         req.timeoutInterval = 3
@@ -668,12 +687,18 @@ struct BoardView: View {
     }
 }
 
-/// WKWebView, optionally seeding localStorage for the page's origin before its scripts run.
+/// WKWebView, optionally seeding localStorage for the page's origin before its scripts run
+/// (only on that origin: the script is skipped if the page navigates elsewhere).
 func makeWebView(url: URL, localStorage: [String: String]) -> WKWebView {
     let config = WKWebViewConfiguration()
     if !localStorage.isEmpty, let json = try? JSONSerialization.data(withJSONObject: localStorage),
-       let obj = String(data: json, encoding: .utf8) {
-        let js = "(function(){var v=\(obj);for(var k in v){try{localStorage.setItem(k,v[k])}catch(e){}}})();"
+       let obj = String(data: json, encoding: .utf8),
+       let scheme = url.scheme, let host = url.host(percentEncoded: false),
+       let originJSON = try? JSONSerialization.data(
+           withJSONObject: "\(scheme)://\(host.contains(":") ? "[\(host)]" : host)\(url.port.map { ":\($0)" } ?? "")",
+           options: .fragmentsAllowed),
+       let origin = String(data: originJSON, encoding: .utf8) {
+        let js = "(function(){if(location.origin!==\(origin))return;var v=\(obj);for(var k in v){try{localStorage.setItem(k,v[k])}catch(e){}}})();"
         config.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
     let v = WKWebView(frame: .zero, configuration: config)

@@ -460,7 +460,7 @@ if env["PASEO_PLUGINS"] == "1" {
     if let s = try? await store.readPluginSettings("title-style", "title-style") { print("title-style settings: \(s.values.keys.sorted()) rev=\(s.revision.prefix(8))") }
     if let s = try? await store.readPluginSettings("next-input", "preferences") { print("next-input settings: \(s.values)") }
     if let s = try? await store.readPluginSettings("usage-reset", "sidebar") { print("usage-reset settings: \(s.values)") }
-    do { print("board.locate: \(try await store.invokePlugin("agent-taskboard", "board.locate", ["paths": [FileManager.default.currentDirectoryPath]]))") }
+    do { print("board.locate: \(try await store.invokePlugin("agent-taskboard", "board.locate", ["paths": [.string(FileManager.default.currentDirectoryPath)]]))") }
     catch { print("board error \(error)") }
     if let a = store.agents.values.first(where: { $0.id.hasPrefix("61d44d45") }) {
         await store.loadFullTimeline(a.id)
