@@ -56,11 +56,13 @@ optional**; everything else works without them. The app offers them once when yo
 
 Settings → Machines → This Mac shows who runs the daemon. When it is the official app, "改由本 App 运行…"
 (run it with this app) quits the official app, stops its daemon and starts one managed by Paseo Native on the same
-`~/.paseo`, launched at login. It still uses the official `@getpaseo/cli`. **Machine ID, pairings, sessions and
+`~/.paseo`, launched at login; the official app can then be uninstalled. It still uses the official `@getpaseo/cli`. Already
+uninstalled the official app? The page then says no daemon is running: use "在这台 Mac 上安装并运行 Paseo…" (install
+and run Paseo here), which reuses the same `~/.paseo`. **Machine ID, pairings, sessions and
 plugins all live in `~/.paseo` and stay the same**, so phones and other computers don't need to pair again.
 
 To switch back, "切回官方 App…" (switch back to the official app) on the same page stops Paseo Native's daemon,
-removes its login item, points `~/.local/bin/paseo` back and opens the official app, which takes over. Don't run
+removes its login item, points `~/.local/bin/paseo` back and opens the official app, which takes over (reinstall it from [paseo.sh](https://paseo.sh) first if you removed it). Don't run
 both apps' daemons at the same time.
 
 ## iPhone / iPad
