@@ -18,9 +18,30 @@
 // 活动只在 running + waiting > 0 时存在；全部结束后以 running = waiting = 0 的状态结束。
 // 所有字段解码时都容忍缺省，便于插件和 App 版本不一致时仍能显示。
 
+import Foundation
+
+/// 点灵动岛 / 锁屏上的会话打开它（Mac 上也认，比如从终端 open 这个链接）：paseonative://agent/<serverId>/<agentId>
+enum PaseoActivityLink {
+    static let scheme = "paseonative"
+
+    static func url(serverId: String, agentId: String) -> URL? {
+        var c = URLComponents()
+        c.scheme = scheme
+        c.host = "agent"
+        c.path = "/" + serverId + "/" + agentId
+        return c.url
+    }
+
+    static func parse(_ url: URL) -> (serverId: String, agentId: String)? {
+        guard url.scheme == scheme, url.host == "agent" else { return nil }
+        let parts = url.path.split(separator: "/").map(String.init)
+        guard parts.count == 2 else { return nil }
+        return (parts[0], parts[1])
+    }
+}
+
 #if os(iOS)
 import ActivityKit
-import Foundation
 
 struct PaseoActivityAttributes: ActivityAttributes {
     struct Row: Codable, Hashable, Identifiable {
@@ -90,23 +111,4 @@ struct PaseoActivityAttributes: ActivityAttributes {
     }
 }
 
-/// 点灵动岛 / 锁屏上的会话打开它：paseonative://agent/<serverId>/<agentId>
-enum PaseoActivityLink {
-    static let scheme = "paseonative"
-
-    static func url(serverId: String, agentId: String) -> URL? {
-        var c = URLComponents()
-        c.scheme = scheme
-        c.host = "agent"
-        c.path = "/" + serverId + "/" + agentId
-        return c.url
-    }
-
-    static func parse(_ url: URL) -> (serverId: String, agentId: String)? {
-        guard url.scheme == scheme, url.host == "agent" else { return nil }
-        let parts = url.path.split(separator: "/").map(String.init)
-        guard parts.count == 2 else { return nil }
-        return (parts[0], parts[1])
-    }
-}
 #endif

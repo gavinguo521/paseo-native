@@ -12,8 +12,8 @@ struct AgentView: View {
     @AppStorage("autoExpandReasoning") private var autoExpandReasoning = true
     private var collapseTurns: Bool { timelineDetail == TimelineDetail.collapseTurns.rawValue }
     @State private var atBottom = true
-    /// 内容不满一屏（新会话、短会话）：关掉顶部软边缘，见 compatibleScrollEdgeEffects
-    @State private var contentFits = false
+    /// 聊天区可视高度（去掉工具栏等安全区）：内容至少撑满它，见下面 frame(minHeight:)
+    @State private var viewportHeight: CGFloat = 0
     @State private var finding = false
     @State private var findQuery = ""
     @State private var matchIndex = 0
@@ -358,12 +358,15 @@ struct AgentView: View {
                     .modifier(ReadingColumn())
                     Color.clear.frame(height: 2)
                 }
+                // 内容不满一屏时撑满可视区、贴底：上方空白归内容所有。否则那块是滚动区里没有内容的空白，
+                // macOS 26 上鼠标悬停在那里（或工具栏）时整块变亮（用户报告「新会话上面一截悬停变色」）
+                .frame(minHeight: viewportHeight, alignment: .bottom)
                 .scrollTargetLayout()
                 .modifier(LayoutProbe(label: "column"))
             }
             .scrollPosition($scrollPosition)
             // Newer systems soften the top edge and hide the bottom effect; iOS 18 uses standard edges.
-            .compatibleScrollEdgeEffects(topHidden: contentFits)
+            .compatibleScrollEdgeEffects()
             .environment(\.openURL, OpenURLAction { url in openLink(url) })
             .overlay(alignment: .top) { if finding { findBar } }
             .popover(isPresented: $showOutline, arrowEdge: .top) { outline.compactPopover() }
@@ -381,9 +384,10 @@ struct AgentView: View {
             .onScrollGeometryChange(for: Bool.self) { g in
                 g.contentSize.height - g.contentOffset.y - g.containerSize.height < 32
             } action: { _, bottom in atBottom = bottom }
-            .onScrollGeometryChange(for: Bool.self) { g in
-                g.contentSize.height <= g.containerSize.height + 1
-            } action: { _, fits in contentFits = fits }
+            // 可视高度：布局给滚动区的尺寸本身已不含工具栏和底部输入框，直接用，不再扣边距。
+            // 不能用 onScrollGeometryChange 的 containerSize − contentInsets：内容不满一屏时 SwiftUI 为贴底把上方空白算进
+            // 顶部内边距，和这里的 minHeight 互相影响会来回跳。
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
             // Older history: one page when the reader scrolls within 400pt of the top of a timeline taller than the screen.
             .onScrollGeometryChange(for: Bool.self) { g in
                 g.contentSize.height > g.containerSize.height && g.contentOffset.y + g.contentInsets.top < 400

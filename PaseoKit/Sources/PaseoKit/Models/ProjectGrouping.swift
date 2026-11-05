@@ -4,7 +4,7 @@ import Foundation
 /// daemon 给每个项目算的 projectKey（有远端时是 `remote:主机/路径`，子目录再带 `#subdir:`）在某台机器上唯一时，
 /// 不同机器的同仓库项目合成一组；同一台机器上撞 key（同仓库两份 clone）的各自单独一组。
 /// 和官方不同的一处：手动 `git worktree add` 出来的目录 daemon 会单独建项目（工作区 kind 是 worktree），
-/// 官方在同一台机器上把它当撞 key 拆开，这里不算撞 key，让它跟主仓库并在一起（万象那种一批一个 worktree 的用法）。
+/// 官方在同一台机器上把它当撞 key 拆开，这里不算撞 key，让它跟主仓库并在一起（比如每批任务各开一个 worktree 的用法）。
 public enum ProjectGrouping {
     public struct Member: Sendable, Hashable {
         public let serverId: String

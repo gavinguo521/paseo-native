@@ -37,7 +37,8 @@ ditto "$BUILT" "$APP"
 codesign --verify --deep --strict "$APP"
 touch "$APP"
 "$LS" -f "$APP"
-# xcodebuild 会登记编译产物，同一个 Bundle ID 有多份时，通知中心可能用了别的那份的图标（删掉后通知就没图标）。
-"$LS" -u "$PWD/$BUILT" 2>/dev/null || true
+# xcodebuild 会登记编译产物，同一个 Bundle ID 有多份时，通知中心可能用了别的那份的图标（删掉后通知就没图标），
+# paseonative:// 链接也可能被交给某份调试版（会把它启动起来、开出空窗口）。仓库里所有编译副本都撤销登记，只留装好的这份。
+for f in "$PWD"/build.noindex/*/Build/Products/*/Paseo.app(N) "$PWD"/build/*/Build/Products/*/Paseo.app(N); do "$LS" -u "$f" 2>/dev/null || true; done
 open "$APP"
 echo "已安装并打开：$APP"

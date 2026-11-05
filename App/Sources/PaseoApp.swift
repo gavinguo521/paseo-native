@@ -39,11 +39,16 @@ struct PaseoApp: App {
                     if phase == .active { LiveActivityController.shared.sync() }
                     #endif
                 }
-                #if os(iOS)
-                // 点灵动岛 / 锁屏实时活动里的会话。
+                // 点灵动岛 / 锁屏实时活动里的会话；Mac 上从终端或别的 App 打开 paseonative:// 链接也走这里。
                 .onOpenURL { url in
-                    if let (s, a) = PaseoActivityLink.parse(url) { model.open(AgentRef(serverId: s, agentId: a)) }
+                    if let (s, a) = PaseoActivityLink.parse(url) {
+                        model.revealDetail += 1
+                        model.open(AgentRef(serverId: s, agentId: a))
+                    }
                 }
+                #if os(macOS)
+                // 链接交给已打开的窗口处理。不写这句的话，SwiftUI 每收到一个链接就新开一个窗口，而且新窗口什么都没选中。
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
                 #endif
         }
         #if os(macOS)

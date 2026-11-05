@@ -33,12 +33,9 @@ extension View {
 
     /// iOS 18 uses its standard scroll edges; scrolling, anchors and keyboard behavior stay intact.
     @ViewBuilder
-    /// `topHidden`：内容不满一屏时传 true。贴底显示的短会话上方是一大片空白，软边缘会从工具栏一直铺到内容顶上，
-    /// 鼠标经过工具栏时整块变亮（用户报告「新会话上面一截悬停变色」）；那时也没有内容会滚到工具栏下面，关掉即可。
-    func compatibleScrollEdgeEffects(topHidden: Bool = false) -> some View {
+    func compatibleScrollEdgeEffects() -> some View {
         if #available(iOS 26.0, macOS 26.0, *) {
             scrollEdgeEffectStyle(.soft, for: .top)
-                .scrollEdgeEffectHidden(topHidden, for: .top)
                 .scrollEdgeEffectHidden(true, for: .bottom)
         } else {
             self
