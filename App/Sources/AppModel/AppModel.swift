@@ -183,7 +183,13 @@ final class AppModel {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(draftWorkspace), forKey: "draftWorkspace") }
     }
 
-    private static let hostsKey = "hosts.v1"
+    private static let hostsKey: String = {
+        #if DEBUG
+        // 截图 / 演示：PASEO_HOSTS_KEY=<名字> 用单独的钥匙串条目存机器列表，不读也不覆盖日常用的那份
+        if let k = ProcessInfo.processInfo.environment["PASEO_HOSTS_KEY"], !k.isEmpty { return "hosts.v1." + k }
+        #endif
+        return "hosts.v1"
+    }()
     private let clientId: String
     private let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
 
@@ -664,7 +670,7 @@ final class AppModel {
     /// Placeholder until a machine added without a name reports its own.
     private static let unnamedHost = "新机器"
 
-    /// Names a machine added without a name after its host name ("Gavins-Mac-mini.local" → "Gavins-Mac-mini")
+    /// Names a machine added without a name after its host name ("Johns-Mac-mini.local" → "Johns-Mac-mini")
     /// once it connects, unless the user renamed it meanwhile.
     private func adoptHostname(_ store: HostStore) {
         Task { [weak self] in

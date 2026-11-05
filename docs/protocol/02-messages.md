@@ -254,7 +254,7 @@ Daemon 对每个物理 socket 判断它是否 "modern"：`hello.capabilities.own
            "persistence":null,"labels":{},"createdAt":"2026-11-03T02:58:00.000Z","updatedAt":"2026-11-03T03:12:09.200Z",
            "lastUserMessageAt":"2026-11-03T03:12:09.000Z","requiresAttention":false,"attentionReason":null,"archivedAt":null},
   "project":{"projectKey":"github.com/me/app","projectName":"app","workspaceName":"main",
-             "checkout":{"cwd":"/Users/me/projects/app","isGit":true,"currentBranch":"main","remoteUrl":"git@github.com:gavin/app.git","isPaseoOwnedWorktree":false}}}}
+             "checkout":{"cwd":"/Users/me/projects/app","isGit":true,"currentBranch":"main","remoteUrl":"git@github.com:me/app.git","isPaseoOwnedWorktree":false}}}}
 ```
 或 `{"kind":"remove","agentId":"…"}`。
 

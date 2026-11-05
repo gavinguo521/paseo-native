@@ -437,7 +437,7 @@ Schema：`packages/protocol/src/messages.ts:7659-7697`
   "status":"server_info",
   "protocolVersion":1,
   "serverId":"srv_…",
-  "hostname":"gavins-mac",
+  "hostname":"my-mac",
   "version":"0.14.0",
   "sourceId":"owner",
   "permissions":[…],

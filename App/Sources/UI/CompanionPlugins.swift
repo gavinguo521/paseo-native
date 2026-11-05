@@ -115,7 +115,9 @@ struct CompanionPluginsSheet: View {
             Toggle("", isOn: Binding(get: { selected.contains(p.id) }, set: { on in
                 if on { selected.insert(p.id) } else { selected.remove(p.id) }
             }))
-            .labelsHidden().checkboxOnMac().disabled(installing).frame(width: 18)
+            .labelsHidden().checkboxOnMac().disabled(installing)
+            // 18pt 只够 Mac 的复选框；iOS 的开关更宽，固定 18 会盖住右边的名称
+            .macOnly { $0.frame(width: 18) }
         }
     }
 

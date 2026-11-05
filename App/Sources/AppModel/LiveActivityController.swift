@@ -298,7 +298,7 @@ final class LiveActivityController {
             let hosts: [JSONValue] = model.hosts.map { ["serverId": .string($0.id), "label": .string($0.label)] }
             let input: JSONValue = [
                 "deviceId": .string(Self.deviceId),
-                "bundleId": .string(Bundle.main.bundleIdentifier ?? "com.gavin.paseo"),
+                "bundleId": .string(Bundle.main.bundleIdentifier ?? ""),
                 "environment": .string(Self.apsEnvironment),
                 "pushToStartToken": pushToStartToken.map { .string($0) } ?? .null,
                 "activityToken": activityToken.map { .string($0) } ?? .null,
