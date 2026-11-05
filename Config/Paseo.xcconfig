@@ -1,0 +1,5 @@
+// 签名团队和 bundle ID。不要在这里填自己的值：复制 Local.xcconfig.example 为 Local.xcconfig（不进仓库）再改。
+DEVELOPMENT_TEAM =
+PASEO_BUNDLE_ID = com.example.paseo-native
+
+#include? "Local.xcconfig"

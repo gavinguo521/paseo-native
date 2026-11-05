@@ -1,0 +1,18 @@
+Paseo Native
+Copyright 2026 Paseo Native contributors
+
+This is an unofficial client for Paseo (https://paseo.sh). It is not affiliated
+with or endorsed by the Paseo project.
+
+The protocol notes in docs/protocol/ and docs/ui/ were written by reading the
+source code of Paseo (https://github.com/getpaseo/paseo),
+Copyright (c) 2025-present Mohamed Boudra, licensed under the Apache License 2.0.
+No Paseo source code is included in this repository.
+
+The app icon is derived from the Paseo logo
+(packages/website/public/logo.svg in the Paseo repository).
+
+Third-party components:
+- SwiftTerm (https://github.com/migueldeicaza/SwiftTerm), MIT License
+- Mermaid (https://github.com/mermaid-js/mermaid), MIT License, loaded at
+  runtime from jsDelivr to render diagrams

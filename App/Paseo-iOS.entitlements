@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 实时活动的推送令牌要推送能力；导出 TestFlight / Ad Hoc 时 Xcode 会改成 production。 -->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>

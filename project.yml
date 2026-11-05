@@ -1,0 +1,103 @@
+name: Paseo
+options:
+  developmentLanguage: zh-Hans
+  deploymentTarget:
+    iOS: "26.0"
+    macOS: "26.0"
+  createIntermediateGroups: true
+configFiles:
+  # 签名团队和 bundle ID 在这里（以及不进仓库的 Config/Local.xcconfig），见 README。
+  Debug: Config/Paseo.xcconfig
+  Release: Config/Paseo.xcconfig
+settings:
+  base:
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "1.0.6"
+    CURRENT_PROJECT_VERSION: "1"
+packages:
+  PaseoKit:
+    path: PaseoKit
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    from: "1.99.2"
+targets:
+  Paseo:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - App/Sources
+      - App/Resources
+      - App/Shared
+    dependencies:
+      - package: PaseoKit
+      - package: SwiftTerm
+      - target: PaseoWidgets
+        destinationFilters: [iOS]
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Paseo
+        # 版本号只在上面的 MARKETING_VERSION 改（scripts/release-mac.sh 会改它）。
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        # scripts/install-mac.sh passes the commit count, so macOS refreshes its cached icon (Dock, Stage Manager).
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: zh-Hans
+        CFBundleLocalizations: [zh-Hans]
+        LSApplicationCategoryType: public.app-category.developer-tools
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~iphone: [UIInterfaceOrientationPortrait]
+        NSCameraUsageDescription: 扫描配对二维码
+        NSPhotoLibraryUsageDescription: 选择图片发给会话
+        ITSAppUsesNonExemptEncryption: false
+        # 灵动岛 / 锁屏实时活动（iOS），见 App/Shared/PaseoActivity.swift。
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
+        CFBundleURLTypes:
+          - CFBundleURLName: $(PRODUCT_BUNDLE_IDENTIFIER).activity
+            CFBundleURLSchemes: [paseonative]
+        # APNs 密钥必须属于签名团队，设置页用它做默认值。
+        PaseoTeamID: $(DEVELOPMENT_TEAM)
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    entitlements:
+      path: App/Paseo.entitlements
+      properties:
+        # Not sandboxed on macOS (distributed outside the App Store) on macOS so local files in replies (screenshots
+        # in /tmp, /var/folders) can be shown. iOS ignores this key.
+        com.apple.security.app-sandbox: false
+        com.apple.security.network.client: true
+        com.apple.security.files.user-selected.read-only: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PASEO_BUNDLE_ID)
+        PRODUCT_NAME: Paseo
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_HARDENED_RUNTIME: YES
+        # iOS 单独一份 entitlements（推送能力，给实时活动用）；macOS 仍用上面那份。
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]": App/Paseo-iOS.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": App/Paseo-iOS.entitlements
+  # 灵动岛 / 锁屏实时活动的 Widget 扩展，只有 iOS。
+  PaseoWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - Widgets
+      - App/Shared
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: Paseo
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: zh-Hans
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PASEO_BUNDLE_ID).widgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES

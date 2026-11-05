@@ -1,0 +1,4 @@
+// 复制为 Config/Local.xcconfig（已在 .gitignore 里），填自己的 Apple 开发者团队和 bundle ID，然后 xcodegen generate。
+// Team ID 在 developer.apple.com → Membership 里；bundle ID 用你自己域名倒写，Widget 扩展会自动加 .widgets。
+DEVELOPMENT_TEAM = ABCDE12345
+PASEO_BUNDLE_ID = com.yourname.paseo-native

@@ -1,0 +1,11 @@
+vendor/
+.DS_Store
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+*.xcodeproj/
+build/
+build.noindex/
+Config/Local.xcconfig
