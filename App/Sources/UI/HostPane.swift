@@ -748,9 +748,9 @@ struct ChangesView: View {
         HStack(spacing: 8) {
             TextField("提交说明（留空由 AI 生成）", text: $message).textFieldStyle(.plain)
                 .padding(.horizontal, 12).frame(height: 34)
-                .glassEffect(.regular, in: Capsule())
+                .compatibleGlassEffect(in: Capsule())
             Button("提交全部") { run("commit", message: message) }
-                .buttonStyle(.glassProminent).tint(Theme.accent).disabled(busy != nil)
+                .compatibleGlassButtonStyle(prominent: true).tint(Theme.accent).disabled(busy != nil)
         }
         .padding(10)
     }
@@ -1402,10 +1402,10 @@ struct ScriptsView: View {
                             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
                             .help("服务地址")
                     }
-                    if let t = s.terminalId { Button("日志") { openLog(t) }.buttonStyle(.glass) }
-                    if s.isRunning { Button("重启") { restart(s.name) }.buttonStyle(.glass) }
+                    if let t = s.terminalId { Button("日志") { openLog(t) }.compatibleGlassButtonStyle() }
+                    if s.isRunning { Button("重启") { restart(s.name) }.compatibleGlassButtonStyle() }
                     Button(s.isRunning ? "停止" : "启动") { act(s.isRunning ? "stop" : "start", s.name) }
-                        .buttonStyle(.glassProminent).tint(s.isRunning ? Theme.destructive : Theme.accent)
+                        .compatibleGlassButtonStyle(prominent: true).tint(s.isRunning ? Theme.destructive : Theme.accent)
                 }
                 .padding(.vertical, 4)
                 if s.isRunning, let u = s.urls.first {

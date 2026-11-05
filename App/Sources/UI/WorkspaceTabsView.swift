@@ -83,9 +83,11 @@ struct WorkspaceTabsView: View {
         .toolbar {
             // iPhone: the title slot (spans the room between the buttons); wider: the tab strip on the leading side.
             ToolbarItem(placement: narrow ? .principal : .navigation) { tabArea }
-            .sharedBackgroundVisibility(.hidden)
-            // Pushes the buttons to the trailing edge however wide the window gets.
-            ToolbarSpacer(.flexible)
+            .compatibleSharedBackgroundHidden()
+            // Older systems use the standard placement of principal and primary-action items.
+            if #available(iOS 26.0, macOS 26.0, *) {
+                ToolbarSpacer(.flexible)
+            }
             if narrow {
                 // iPhone: room for one button only. A session tab puts 右栏 / 脚本 into its own 「⋯」 menu;
                 // other tabs get this one. More buttons than fit end up in iOS's overflow 「⋯」, menu inside menu.
@@ -117,7 +119,9 @@ struct WorkspaceTabsView: View {
                              arrowEdge: .bottom) { scriptsPanel }
             }
             // Panels (explorer, scripts) | this view (outline, more).
-            ToolbarSpacer(.fixed, placement: .primaryAction)
+            if #available(iOS 26.0, macOS 26.0, *) {
+                ToolbarSpacer(.fixed, placement: .primaryAction)
+            }
             }
         }
         // Narrow: no toolbar button to anchor a popover on, so a sheet.
@@ -125,9 +129,9 @@ struct WorkspaceTabsView: View {
         // The principal slot (iPhone title) only exists while the title area does.
         .if(!narrow) { $0.toolbar(removing: .title) }
         #if os(iOS)
-        // Keeping the title area brings back a frosted bar with a hairline under it; the buttons should float
-        // over the content like before (soft edge fade only).
-        .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
+        // Cover the navigation and status-bar safe areas while tab content scrolls underneath.
+        .toolbarBackground(Theme.surface0, for: .navigationBar)
+        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
         #endif
         .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { viewWidth = $0 }
         .confirmationDialog(closeTitle, isPresented: Binding(get: { !pendingClose.isEmpty }, set: { if !$0 { pendingClose = [] } })) {
@@ -207,7 +211,7 @@ struct WorkspaceTabsView: View {
             ContentUnavailableView {
                 Label("没有打开的标签", systemImage: "rectangle.stack")
             } actions: {
-                Button("新会话") { perform(.newAgent) }.buttonStyle(.glassProminent).tint(Theme.accent)
+                Button("新会话") { perform(.newAgent) }.compatibleGlassButtonStyle(prominent: true).tint(Theme.accent)
             }
             .navigationTitle(workspace?.name ?? "工作区")
         }

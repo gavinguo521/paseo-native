@@ -41,7 +41,7 @@ struct QRScannerSheet: View {
                 Text(message ?? "对准电脑上 paseo daemon pair 显示的二维码")
                     .font(.callout)
                     .padding(.horizontal, 16).padding(.vertical, 10)
-                    .glassEffect(.regular, in: Capsule())
+                    .compatibleGlassEffect(in: Capsule())
                     .padding(.bottom, 24)
             }
             .navigationTitle("扫描配对二维码")

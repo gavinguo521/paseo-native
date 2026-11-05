@@ -133,7 +133,7 @@ struct ProviderSubagentTab: View {
         .font(.system(size: 12))
         .foregroundStyle(Theme.muted)
         .padding(.horizontal, 14).padding(.vertical, 8)
-        .glassEffect(.regular, in: Capsule())
+        .compatibleGlassEffect(in: Capsule())
         .padding(.vertical, 10)
     }
 

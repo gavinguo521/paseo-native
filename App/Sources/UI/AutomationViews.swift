@@ -44,7 +44,7 @@ struct SchedulesView: View {
                     } description: {
                         Text("按时间自动开会话做事，比如每个工作日早上 9 点整理 issue。")
                     } actions: {
-                        Button("新建计划任务") { editing = .new }.buttonStyle(.glassProminent).tint(Theme.accent)
+                        Button("新建计划任务") { editing = .new }.compatibleGlassButtonStyle(prominent: true).tint(Theme.accent)
                     }
                 } else {
                     ContentUnavailableView("没有已结束的计划任务", systemImage: "calendar")
@@ -57,7 +57,7 @@ struct SchedulesView: View {
                 Picker("", selection: $tab) { Text("进行中").tag(0); Text("已结束").tag(1) }.pickerStyle(.segmented).labelsHidden().frame(width: 180)
             }
             // 分段控件自带底色，再套工具栏的玻璃胶囊就成了「胶囊里套胶囊」
-            .sharedBackgroundVisibility(.hidden)
+            .compatibleSharedBackgroundHidden()
             if model.hosts.count > 1 {
                 ToolbarItem(placement: .primaryAction) {
                     Picker("主机", selection: $hostFilter) {
@@ -475,7 +475,7 @@ struct UsageView: View {
                 Picker("", selection: $displayRemaining) { Text("已用").tag(false); Text("剩余").tag(true) }.pickerStyle(.segmented).labelsHidden().frame(width: 140)
             }
             // 分段控件自带底色，再套工具栏的玻璃胶囊就成了「胶囊里套胶囊」
-            .sharedBackgroundVisibility(.hidden)
+            .compatibleSharedBackgroundHidden()
             ToolbarItem(placement: .primaryAction) { Button { Task { await load(force: true) } } label: { Label("刷新", systemImage: "arrow.clockwise") } }
         }
         .task(id: model.connectionKey) { await load(force: false) }
