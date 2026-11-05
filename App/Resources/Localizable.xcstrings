@@ -5747,6 +5747,16 @@
         }
       }
     },
+    "手动（拖动排序）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manual (Drag to Reorder)"
+          }
+        }
+      }
+    },
     "打开": {
       "localizations": {
         "en": {

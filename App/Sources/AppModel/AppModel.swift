@@ -52,10 +52,17 @@ struct WorkspaceTabState: Codable, Sendable {
 }
 
 enum SidebarSort: String, CaseIterable, Codable {
-    case updated, created
+    case updated, created, manual
 
     /// "最近活动" orders by the last prompt (falling back to updates), which keeps rows from jumping while agents work.
-    var label: String { self == .updated ? String(localized: "最近活动") : String(localized: "创建时间") }
+    /// "手动" keeps the order the user dragged projects and workspaces into (official sidebar-order-store).
+    var label: String {
+        switch self {
+        case .updated: String(localized: "最近活动")
+        case .created: String(localized: "创建时间")
+        case .manual: String(localized: "手动（拖动排序）")
+        }
+    }
 }
 
 struct ReviewComment: Identifiable, Hashable {
@@ -105,6 +112,16 @@ final class AppModel {
     var hostFilter: String? {
         didSet { UserDefaults.standard.set(hostFilter, forKey: "hostFilter") }
     }
+    /// 手动排序：项目分组的顺序（SessionGroup.id），以及每个项目里工作区行的顺序（rowKey），只存在本机（同官方）。
+    var projectOrder: [String] = UserDefaults.standard.stringArray(forKey: "sidebar.projectOrder") ?? [] {
+        didSet { UserDefaults.standard.set(projectOrder, forKey: "sidebar.projectOrder") }
+    }
+    var workspaceOrder: [String: [String]] = (UserDefaults.standard.dictionary(forKey: "sidebar.workspaceOrder") as? [String: [String]]) ?? [:] {
+        didSet { UserDefaults.standard.set(workspaceOrder, forKey: "sidebar.workspaceOrder") }
+    }
+    /// 侧栏一行（一个工作区，或没有工作区的会话）在手动排序里的标识。
+    static func rowKey(serverId: String, agent: Agent) -> String { serverId + ":" + (agent.workspaceId ?? "agent:" + agent.id) }
+
     var sort: SidebarSort = .updated {
         didSet { UserDefaults.standard.set(sort.rawValue, forKey: "sidebarSort") }
     }
@@ -306,11 +323,67 @@ final class AppModel {
                                         hostLabel: multiHost ? String(localized: "全部主机") : list[0].host.label, kind: .status(b), rows: rowsOf(list)))
             }
         }
+        if sort == .manual, case .project = grouping {
+            out = out.map { g in
+                var g = g
+                g.rows = Self.manualOrder(g.rows, order: workspaceOrder[g.id] ?? []) { Self.rowKey(serverId: $0.serverId, agent: $0.agent) }
+                return g
+            }
+            out = Self.manualOrder(out, order: projectOrder) { $0.id }
+        }
         if !pinned.isEmpty {
             out.insert(SessionGroup(id: "pinned", serverId: pinned[0].host.id, name: String(localized: "置顶"), hostLabel: "", kind: .pinned,
                                     rows: rowsOf(pinned)), at: 0)
         }
         return out
+    }
+
+    /// 手动排序：还没排过的（新项目 / 新工作区）保持原来的相对顺序放在最上面，方便看到；排过的按记下的顺序跟在后面。
+    static func manualOrder<T>(_ items: [T], order: [String], key: (T) -> String) -> [T] {
+        guard !order.isEmpty else { return items }
+        let rank = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+        let fresh = items.filter { rank[key($0)] == nil }
+        let placed = items.filter { rank[key($0)] != nil }.sorted { rank[key($0)]! < rank[key($1)]! }
+        return fresh + placed
+    }
+
+    /// 把 id 移到 target 的位置（往下拖放在 target 后面，往上拖放在前面），返回新顺序。
+    static func moved(_ list: [String], _ id: String, to target: String) -> [String]? {
+        guard id != target, let from = list.firstIndex(of: id), let to = list.firstIndex(of: target) else { return nil }
+        var l = list
+        l.remove(at: from)
+        let t = l.firstIndex(of: target)!
+        l.insert(id, at: from < to ? t + 1 : t)
+        return l
+    }
+
+    private var projectGroups: [SessionGroup] { groups.filter { if case .project = $0.kind { true } else { false } } }
+
+    /// 第一次切到手动排序前，把眼前的顺序（项目和每个项目里的工作区）原样记下来，切换后除了被拖的那个，其他都不动。
+    private func freezeOrderForManual() {
+        guard sort != .manual else { return }
+        let current = projectGroups
+        projectOrder = current.map(\.id) + projectOrder.filter { id in !current.contains { $0.id == id } }
+        for g in current { workspaceOrder[g.id] = g.rows.map { Self.rowKey(serverId: $0.serverId, agent: $0.agent) } }
+        sort = .manual
+    }
+
+    /// 拖动项目分组，并切到手动排序。
+    func moveProject(_ id: String, to target: String) {
+        freezeOrderForManual()
+        let visible = projectGroups.map(\.id)
+        guard let order = Self.moved(visible, id, to: target) else { return }
+        // 保留当前没显示（比如被筛选掉）的项目原来的位置信息
+        projectOrder = order + projectOrder.filter { !order.contains($0) }
+    }
+
+    /// 拖动同一项目里的工作区行，并切到手动排序。
+    func moveWorkspace(_ key: String, to target: String, inGroup groupId: String) {
+        freezeOrderForManual()
+        guard let g = groups.first(where: { $0.id == groupId }) else { return }
+        let visible = g.rows.map { Self.rowKey(serverId: $0.serverId, agent: $0.agent) }
+        guard let order = Self.moved(visible, key, to: target) else { return }
+        workspaceOrder[groupId] = order + (workspaceOrder[groupId] ?? []).filter { !order.contains($0) }
     }
 
     /// Status of a workspace row: the most urgent of its sessions, where a session that waits for input or is
@@ -407,7 +480,7 @@ final class AppModel {
 
     private func sortKey(_ a: Agent?) -> Date? {
         guard let a else { return nil }
-        return sort == .updated ? (a.lastUserMessageAt ?? a.updatedAt ?? a.createdAt) : a.createdAt
+        return sort == .updated ? (a.lastUserMessageAt ?? a.updatedAt ?? a.createdAt) : a.createdAt   // .created 与 .manual 的基准都用创建时间，不随活动跳动
     }
 
     private func sortKey(_ a: Agent) -> Date { sortKey(Optional(a)) ?? .distantPast }

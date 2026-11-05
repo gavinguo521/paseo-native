@@ -14,6 +14,8 @@ struct SidebarView: View {
     }
     @State private var expandedAll: Set<String> = []
     @State private var hoveredGroup: String?
+    /// 拖动排序时鼠标所在的目标（项目分组 id，或工作区行的 rowKey），用来画插入提示线。
+    @State private var dropTarget: String?
     @State private var renamingWorkspace: Workspace?
     @State private var archivingWorkspace: Workspace?
     @State private var labelingWorkspace: Workspace?
@@ -257,6 +259,23 @@ struct SidebarView: View {
 
     // MARK: Groups
 
+    /// 只有按项目分组、没在搜索时能拖动排序（置顶分组和按状态分组的顺序不由手动决定）。
+    private func canReorder(_ group: SessionGroup) -> Bool {
+        guard model.search.isEmpty, case .project = model.grouping, case .project = group.kind else { return false }
+        return true
+    }
+    // 拖动的内容是一段文字：项目「\u{1}p\u{1}分组 id」，工作区行「\u{1}w\u{1}分组 id\u{1}rowKey」
+    static func projectPayload(_ id: String) -> String { "\u{1}p\u{1}" + id }
+    static func rowPayload(_ group: String, _ key: String) -> String { "\u{1}w\u{1}" + group + "\u{1}" + key }
+    static func parseProjectPayload(_ s: String) -> String? {
+        let p = s.split(separator: "\u{1}", omittingEmptySubsequences: false)
+        return p.count == 3 && p[1] == "p" ? String(p[2]) : nil
+    }
+    static func parseRowPayload(_ s: String) -> (String, String)? {
+        let p = s.split(separator: "\u{1}", omittingEmptySubsequences: false)
+        return p.count == 4 && p[1] == "w" ? (String(p[2]), String(p[3])) : nil
+    }
+
     @ViewBuilder private func groupView(_ group: SessionGroup) -> some View {
         let isCollapsed = collapsed.contains(group.id) && model.search.isEmpty
         // Not a Button: the 「+」 and 「⋯」 inside must stay separately clickable.
@@ -330,6 +349,11 @@ struct SidebarView: View {
         }
         .onHover { hoveredGroup = $0 ? group.id : (hoveredGroup == group.id ? nil : hoveredGroup) }
         .contextMenu { groupMenu(group) }
+        .modifier(SidebarReorder(enabled: canReorder(group), payload: Self.projectPayload(group.id), target: group.id, dropTarget: $dropTarget) { items in
+            guard let id = items.compactMap(Self.parseProjectPayload).first else { return false }
+            withAnimation(.snappy(duration: 0.2)) { model.moveProject(id, to: group.id) }
+            return true
+        })
 
         // A collapsed group still shows the session being viewed, so the selection never disappears (official 0.15 #8395).
         let current = group.rows.filter { isSelected($0.serverId, $0.agent) }
@@ -345,6 +369,12 @@ struct SidebarView: View {
                     model.openRow(ref)
                 }
                 .contextMenu { rowMenu(row.agent, serverId: row.serverId, workspace: workspace) }
+                .modifier(SidebarReorder(enabled: canReorder(group), payload: Self.rowPayload(group.id, AppModel.rowKey(serverId: row.serverId, agent: row.agent)),
+                                         target: AppModel.rowKey(serverId: row.serverId, agent: row.agent), dropTarget: $dropTarget) { items in
+                    guard let (gid, key) = items.compactMap(Self.parseRowPayload).first, gid == group.id else { return false }
+                    withAnimation(.snappy(duration: 0.2)) { model.moveWorkspace(key, to: AppModel.rowKey(serverId: row.serverId, agent: row.agent), inGroup: group.id) }
+                    return true
+                })
                 #if os(iOS)
                 .modifier(SwipeActions(
                     leading: row.bucket == .attention
@@ -917,6 +947,35 @@ struct ProjectIcon: View {
         .frame(width: size, height: size)
         .task(id: (projectId ?? "") + (revision ?? "")) {
             if let projectId { await host.loadProjectIcon(projectId: projectId, revision: revision) }
+        }
+    }
+}
+
+/// 侧栏拖动排序：可以拖起来，也可以接住别的项；鼠标停在上面时在顶部画一条插入提示线。
+private struct SidebarReorder: ViewModifier {
+    let enabled: Bool
+    let payload: String
+    let target: String
+    @Binding var dropTarget: String?
+    let onDrop: ([String]) -> Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .draggable(payload)
+                .dropDestination(for: String.self) { items, _ in
+                    dropTarget = nil
+                    return onDrop(items)
+                } isTargeted: { on in
+                    if on { dropTarget = target } else if dropTarget == target { dropTarget = nil }
+                }
+                .overlay(alignment: .top) {
+                    if dropTarget == target {
+                        Capsule().fill(Theme.accent).frame(height: 2).padding(.horizontal, 10)
+                    }
+                }
+        } else {
+            content
         }
     }
 }
