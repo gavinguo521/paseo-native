@@ -532,7 +532,8 @@ struct WorkspaceDialogs: ViewModifier {
                 }
             }
             .onChange(of: renaming?.id) { title = renaming?.title ?? renaming?.name ?? "" }
-            .confirmationDialog("归档「\(archiving?.name ?? "")」？", isPresented: Binding(get: { archiving != nil }, set: { if !$0 { archiving = nil } })) {
+            // 用工作区标题（如「项目开源的风险评估」）：同一个项目里的本地工作区 name 都是分支名「main」，只显示 name 分不清归档的是哪个
+            .confirmationDialog("归档「\(archiving.map(Self.displayName) ?? "")」？", isPresented: Binding(get: { archiving != nil }, set: { if !$0 { archiving = nil } })) {
                 Button("归档", role: .destructive) {
                     guard let w = archiving, let h = host(of: w) else { return }
                     Task { try? await h.archiveWorkspace(w.id) }
@@ -542,11 +543,25 @@ struct WorkspaceDialogs: ViewModifier {
             }
     }
 
+    static func displayName(_ w: Workspace) -> String {
+        if let t = w.title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return t }
+        return w.name
+    }
+
     private var archiveWarning: String {
         guard let w = archiving else { return "" }
         let dirty = (w.additions ?? 0) + (w.deletions ?? 0) > 0
-        if w.kind == "worktree" && dirty { return String(localized: "这个 worktree 还有未提交的改动，归档会删除它。里面的会话也会一起归档。") }
-        return String(localized: "里面的会话会一起归档，正在运行的会被停止。")
+        let base = w.kind == "worktree" && dirty
+            ? String(localized: "这个 worktree 还有未提交的改动，归档会删除它。里面的会话也会一起归档。")
+            : String(localized: "里面的会话会一起归档，正在运行的会被停止。")
+        // 列出会被归档的会话，正在运行的标出来，防止点错行
+        guard let h = host(of: w) else { return base }
+        let agents = h.agents.values.filter { $0.workspaceId == w.id && $0.archivedAt == nil && $0.parentAgentId == nil }
+            .sorted { ($0.status == .running ? 0 : 1) < ($1.status == .running ? 0 : 1) }
+        guard !agents.isEmpty else { return base }
+        let names = agents.prefix(5).map { $0.status == .running ? String(localized: "「\($0.displayTitle)」（运行中）") : String(localized: "「\($0.displayTitle)」") }
+        let more = agents.count > 5 ? String(localized: "等 \(agents.count) 个会话") : ""
+        return base + "\n" + String(localized: "包括：\(names.joined(separator: String(localized: "、", comment: "列举时的分隔符（顿号）")))\(more)")
     }
 
     private func host(of w: Workspace) -> HostStore? { model.hosts.first { $0.workspaces[w.id] != nil } }

@@ -71,6 +71,7 @@ struct RootView: View {
         .modifier(UpdatePromptModifier())
         #endif
         .tint(Theme.accent)
+        .overlay(alignment: .bottom) { UndoArchiveToast() }
         .sheet(isPresented: $showAddHost) { AddHostView() }
         .sheet(isPresented: $showSettings) { SettingsView(showAddHost: $showAddHost) }
         .sheet(isPresented: $showPalette) { CommandPalette(showSettings: $showSettings) }
@@ -326,3 +327,30 @@ private struct CompactColumnFollower: ViewModifier {
     exit(0)
 }
 #endif
+
+/// 「已归档「…」 撤销」：关会话标签、在历史里归档后显示几秒。
+struct UndoArchiveToast: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Group {
+            if let u = model.undoArchive {
+                HStack(spacing: 10) {
+                    Image(systemName: "archivebox").foregroundStyle(Theme.muted)
+                    Text("已归档「\(u.title)」").lineLimit(1)
+                    Button("撤销") {
+                        model.undoArchive = nil
+                        Task { await model.unarchiveAndRestore(u.ref, open: true) }
+                    }
+                    .buttonStyle(.borderless).fontWeight(.semibold)
+                }
+                .font(.system(size: 13))
+                .padding(.horizontal, 16).padding(.vertical, 9)
+                .compatibleGlassEffect(in: Capsule())
+                .padding(.bottom, 28)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: model.undoArchive)
+    }
+}

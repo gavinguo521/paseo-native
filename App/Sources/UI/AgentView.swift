@@ -138,6 +138,9 @@ struct AgentView: View {
     /// Built once per session view so the environment values below keep their identity.
     @State private var env: TimelineEnvironment?
     @State private var showConnecting = false
+    /// 会话还活着、所在工作区却已被归档（官方客户端和其他设备上看不到它）时，记下可恢复的工作区 id。
+    @State private var recoverableWorkspace: String?
+    @State private var restoringWorkspace = false
     @State private var linkClicks = 0
 
     private func makeEnvironment() -> TimelineEnvironment {
@@ -245,6 +248,34 @@ struct AgentView: View {
     }
 
     private var isConnecting: Bool { if case .connecting = host.state { true } else { false } }
+
+    /// 工作区被归档但会话还在跑（比如归档时会话正在回复，又被 daemon 唤醒）：官方客户端按工作区列会话，会看不到它。
+    @ViewBuilder private var archivedWorkspaceBanner: some View {
+        Group {
+            if let ws = recoverableWorkspace {
+                notice {
+                    Image(systemName: "archivebox").foregroundStyle(Theme.dotWarning)
+                    Text("这个会话所在的工作区已被归档，官方客户端和其他设备上看不到它").lineLimit(2)
+                    Button("恢复工作区") {
+                        restoringWorkspace = true
+                        Task {
+                            if (try? await host.restoreWorkspace(ws)) != nil { recoverableWorkspace = nil }   // 失败就留着提示条，可以再点
+                            restoringWorkspace = false
+                        }
+                    }
+                    .buttonStyle(.borderless).controlSize(.small).disabled(restoringWorkspace)
+                }
+            }
+        }
+        // 本地只加载了最近的非后台工作区，找不到不代表已归档：找不到时再问 daemon 这个工作区能不能恢复
+        .task(id: "\(agent?.workspaceId ?? "")|\(host.workspaces.count)|\(agent?.archivedAt == nil)|\(host.state == .connected)") {
+            recoverableWorkspace = nil
+            guard host.state == .connected, let a = agent, a.archivedAt == nil, a.parentAgentId == nil,
+                  let ws = a.workspaceId, host.workspaces[ws] == nil, !host.workspaces.isEmpty else { return }
+            guard let state = try? await host.inspectWorkspaceRecovery(ws), state["kind"]?.stringValue == "recoverable" else { return }
+            if host.workspaces[ws] == nil { recoverableWorkspace = ws }
+        }
+    }
 
     private func notice<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         HStack(spacing: 8) { content() }
@@ -368,6 +399,7 @@ struct AgentView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
                     connectionBanner
+                    archivedWorkspaceBanner
                     if agent?.archivedAt != nil {
                         HStack(spacing: 12) {
                             Text("这个会话已归档").foregroundStyle(Theme.muted)

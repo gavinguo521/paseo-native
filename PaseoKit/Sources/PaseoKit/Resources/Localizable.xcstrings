@@ -281,6 +281,16 @@
         }
       }
     },
+    "恢复失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore failed"
+          }
+        }
+      }
+    },
     "拿不到配对链接": {
       "localizations": {
         "en": {

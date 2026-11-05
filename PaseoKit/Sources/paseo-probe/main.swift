@@ -116,6 +116,18 @@ if let bytesPath = env["PASEO_BYTES"], !bytesPath.isEmpty {
 
 // PASEO_PUSH=<seconds>: run the full HostStore idle (or watching PASEO_PUSH_WATCH=<agent prefix>, as an open session
 // does) and count server pushes by type.
+// PASEO_RESTORE_WS=<工作区 id>：检查并恢复已归档的工作区（会话还活着而工作区被归档时，官方客户端看不到它）
+if let ws = env["PASEO_RESTORE_WS"] {
+    let store = HostStore(offer: offer, label: "probe", clientId: hello.clientId, appVersion: "paseo-native-probe/0.1")
+    store.start()
+    while store.state != .connected {
+        if case .failed(let m, _) = store.state { fail(m) }
+        try? await Task.sleep(for: .milliseconds(100))
+    }
+    print("recovery.inspect:", (try? await store.inspectWorkspaceRecovery(ws)) ?? .null)
+    do { try await store.restoreWorkspace(ws); print("restore: ok") } catch { print("restore error: \(error)") }
+    exit(0)
+}
 if let secs = env["PASEO_PUSH"].flatMap(Double.init) {
     let store = HostStore(offer: offer, label: "probe", clientId: hello.clientId, appVersion: "paseo-native-probe/0.1")
     store.start()

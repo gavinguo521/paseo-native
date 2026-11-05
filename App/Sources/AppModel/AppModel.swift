@@ -540,6 +540,45 @@ final class AppModel {
     /// Agents being archived and terminals being killed, hidden until the host confirms.
     var closingTabs: Set<WorkspaceTab> = []
 
+    /// 刚归档的会话（关标签时空闲会话不确认就归档，同官方）：窗口底部显示几秒「已归档 [撤销]」。
+    struct UndoArchive: Equatable { let ref: AgentRef; let title: String; let id = UUID() }
+    var undoArchive: UndoArchive?
+
+    func offerUndoArchive(_ ref: AgentRef, title: String) {
+        let item = UndoArchive(ref: ref, title: title)
+        undoArchive = item
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            if self?.undoArchive == item { self?.undoArchive = nil }
+        }
+    }
+
+    /// 取消归档会话；它所在的工作区也被归档了就一起恢复（refresh_agent_request 对新客户端不恢复工作区，
+    /// 工作区留在归档状态的话官方客户端看不到这个会话）。open 为 true 时恢复后打开它。
+    func unarchiveAndRestore(_ ref: AgentRef, open: Bool) async {
+        guard let host = host(ref.serverId) else { return }
+        try? await host.unarchive(ref.agentId)
+        for _ in 0..<20 where host.agents[ref.agentId] == nil { try? await Task.sleep(for: .milliseconds(150)) }
+        let ws = host.agents[ref.agentId]?.workspaceId
+        #if DEBUG
+        boardDebug("unarchive agent present=\(host.agents[ref.agentId] != nil) ws=\(ws ?? "-") inList=\(ws.map { host.workspaces[$0] != nil } ?? false)")
+        #endif
+        if let ws, host.workspaces[ws] == nil {
+            let state = try? await host.inspectWorkspaceRecovery(ws)
+            #if DEBUG
+            boardDebug("inspect -> \(state.map { "\($0)" } ?? "nil")")
+            #endif
+            if state?["kind"]?.stringValue == "recoverable" {
+                do { try await host.restoreWorkspace(ws) } catch {
+                    #if DEBUG
+                    boardDebug("restore error \(error)")
+                    #endif
+                }
+            }
+        }
+        if open { self.open(ref) }
+    }
+
     /// Per workspace ("serverId:workspaceId"), remembered across launches.
     var tabState: [String: WorkspaceTabState] = [:] {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(tabState), forKey: "workspaceTabs") }
@@ -655,6 +694,19 @@ final class AppModel {
             let parts = spec.split(separator: ":").map(String.init)
             let pages: [String: Destination] = ["newChat": .newChat, "projects": .projects, "history": .history,
                                                 "schedules": .schedules, "usage": .usage, "board": .board]
+            // unarchive:<会话完整 id>：测试「取消归档并恢复工作区」（已归档会话不在会话列表里，要写完整 id）
+            if parts[0] == "unarchive", parts.count > 1 {
+                Task {
+                    for _ in 0..<600 {
+                        if let h = hosts.first(where: { $0.state == .connected }) {
+                            await unarchiveAndRestore(AgentRef(serverId: h.id, agentId: parts[1]), open: true)
+                            return
+                        }
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                }
+                return
+            }
             // board:<工作区 id 或会话 id 前缀>：先认出那个会话所在的工作区再打开看板，测试「从项目里打开看板」
             if parts[0] == "board", parts.count > 1 {
                 Task {

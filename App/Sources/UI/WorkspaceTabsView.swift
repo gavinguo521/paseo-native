@@ -564,8 +564,13 @@ struct WorkspaceTabsView: View {
             case .agent(let id) where host.agents[id]?.isSubagent == false && host.agents[id]?.archivedAt == nil:
                 model.closingTabs.insert(tab)
                 model.removeTab(tab, in: ref)
+                let title = host.agents[id]?.displayTitle ?? ""
                 Task {
-                    do { try await host.archive(id) } catch { self.error = String(localized: "归档失败：\(error)") }
+                    do {
+                        try await host.archive(id)
+                        // 空闲会话关标签不确认就归档（同官方），给几秒撤销的机会
+                        model.offerUndoArchive(AgentRef(serverId: ref.serverId, agentId: id), title: title)
+                    } catch { self.error = String(localized: "归档失败：\(error)") }
                     model.closingTabs.remove(tab)
                 }
             case .terminal(let id):

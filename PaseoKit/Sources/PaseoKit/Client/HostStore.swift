@@ -822,6 +822,20 @@ public final class HostStore: Identifiable {
         workspaces[id] = nil
     }
 
+    /// 已归档的工作区能不能恢复（官方 workspace.recovery.inspect）：返回 state.kind，如 "recoverable"。
+    public func inspectWorkspaceRecovery(_ id: String) async throws -> JSONValue {
+        let r = try await conn().request("workspace.recovery.inspect.request", ["workspaceId": .string(id)], timeout: .seconds(30))
+        return r["payload"]?["state"] ?? .null
+    }
+
+    /// 恢复已归档的工作区（官方 workspace.recovery.restore）。会话还活着而工作区被归档时，官方客户端看不到这个会话，恢复后才会出现。
+    public func restoreWorkspace(_ id: String) async throws {
+        let r = try await conn().request("workspace.recovery.restore.request", ["workspaceId": .string(id)], timeout: .seconds(120))
+        if r["payload"]?["accepted"]?.boolValue != true {
+            throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? String(localized: "恢复失败", bundle: .module))
+        }
+    }
+
     public func markWorkspaceRead(_ id: String) async throws {
         _ = try await conn().request("workspace.clear_attention.request", ["workspaceId": .string(id)])
     }

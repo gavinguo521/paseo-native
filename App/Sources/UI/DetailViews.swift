@@ -94,7 +94,8 @@ struct AgentDetailView: View {
             }
             .confirmationDialog("归档这个会话？", isPresented: $confirmArchive) {
                 Button("归档", role: .destructive) {
-                    Task { try? await host.archive(ref.agentId) }
+                    let title = agent?.displayTitle ?? ""
+                    Task { if (try? await host.archive(ref.agentId)) != nil { model.offerUndoArchive(ref, title: title) } }
                     if let w = model.workspace(of: ref) {
                         model.removeTab(.agent(ref.agentId), in: WorkspaceRef(serverId: ref.serverId, workspaceId: w.id))
                     } else {
@@ -438,14 +439,31 @@ struct HistoryView: View {
                 }
                 Spacer()
                 if item.agent.archivedAt != nil {
-                    Image(systemName: "archivebox").font(.caption).foregroundStyle(Theme.muted).help("已归档，打开时恢复")
-                        .accessibilityLabel("已归档")
+                    // 文字标签（同官方「已归档」徽标），比原来的小图标好找
+                    Label("已归档", systemImage: "archivebox")
+                        .font(.caption2).foregroundStyle(Theme.muted)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Theme.selection, in: Capsule())
+                        .help("已归档，打开时恢复")
                 }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .padding(.vertical, 2)
+        .contextMenu {
+            let ref = AgentRef(serverId: item.serverId, agentId: item.agent.id)
+            Button("打开", systemImage: "arrow.up.forward.app") { Task { await open(item.serverId, item.agent) } }
+            if item.agent.archivedAt != nil {
+                Button("取消归档", systemImage: "tray.and.arrow.up") {
+                    Task { await model.unarchiveAndRestore(ref, open: false); await load() }
+                }
+            } else if let host {
+                Button("归档", systemImage: "archivebox", role: .destructive) {
+                    Task { try? await host.archive(item.agent.id); model.offerUndoArchive(ref, title: item.agent.displayTitle); await load() }
+                }
+            }
+        }
     }
 
     private func load() async {
@@ -501,11 +519,8 @@ struct HistoryView: View {
     }
 
     private func open(_ serverId: String, _ agent: Agent) async {
-        if agent.archivedAt != nil, let host = model.host(serverId) {
-            try? await host.unarchive(agent.id)
-            for _ in 0..<20 where host.agents[agent.id] == nil { try? await Task.sleep(for: .milliseconds(150)) }
-        }
-        model.open(AgentRef(serverId: serverId, agentId: agent.id))
+        let ref = AgentRef(serverId: serverId, agentId: agent.id)
+        if agent.archivedAt != nil { await model.unarchiveAndRestore(ref, open: true) } else { model.open(ref) }
     }
 }
 
