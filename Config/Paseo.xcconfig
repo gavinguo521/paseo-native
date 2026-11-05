@@ -1,5 +1,9 @@
 // 签名团队和 bundle ID。不要在这里填自己的值：复制 Local.xcconfig.example 为 Local.xcconfig（不进仓库）再改。
 DEVELOPMENT_TEAM =
 PASEO_BUNDLE_ID = com.example.paseo-native
+// iOS 的 entitlements：默认带推送能力（付费开发者账号）；免费 Apple ID 改成 App/Paseo-iOS-Free.entitlements。
+PASEO_IOS_ENTITLEMENTS = App/Paseo-iOS.entitlements
+// Mac 版检查更新用的 GitHub 仓库（owner/repo），fork 改成自己的，留空则不检查。
+PASEO_RELEASES_REPO = 52216108/paseo-native
 
 #include? "Local.xcconfig"

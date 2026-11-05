@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 免费 Apple ID（个人团队）不支持推送能力：不带 aps-environment。灵动岛只在 App 前台时更新，收不到远程推送。
+	     在 Config/Local.xcconfig 里写 PASEO_IOS_ENTITLEMENTS = App/Paseo-iOS-Free.entitlements 启用。 -->
+</dict>
+</plist>

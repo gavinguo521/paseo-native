@@ -68,6 +68,7 @@ struct RootView: View {
         #if os(macOS)
         .onChange(of: attentionCount, initial: true) { _, n in NSApp.dockTile.badgeLabel = dockBadge && n > 0 ? "\(n)" : nil }
         .onChange(of: dockBadge) { _, on in NSApp.dockTile.badgeLabel = on && attentionCount > 0 ? "\(attentionCount)" : nil }
+        .modifier(UpdatePromptModifier())
         #endif
         .tint(Theme.accent)
         .sheet(isPresented: $showAddHost) { AddHostView() }

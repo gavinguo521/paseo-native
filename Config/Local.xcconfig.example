@@ -1,4 +1,10 @@
-// 复制为 Config/Local.xcconfig（已在 .gitignore 里），填自己的 Apple 开发者团队和 bundle ID，然后 xcodegen generate。
-// Team ID 在 developer.apple.com → Membership 里；bundle ID 用你自己域名倒写，Widget 扩展会自动加 .widgets。
+// 复制为 Config/Local.xcconfig（已在 .gitignore 里），填好后运行 xcodegen generate。
+
+// 你的 Apple 开发者 Team ID：Xcode → Settings → Accounts → 选中账号 → 右侧团队列表里能看到（10 位字母数字）。
 DEVELOPMENT_TEAM = ABCDE12345
+
+// 你自己的 bundle ID（域名倒写，全球唯一即可），Widget 扩展会自动加 .widgets。
 PASEO_BUNDLE_ID = com.yourname.paseo-native
+
+// 只有免费 Apple ID 才需要取消下一行的注释：免费账号不支持推送能力，不改的话 iOS 版签名会报错。
+// PASEO_IOS_ENTITLEMENTS = App/Paseo-iOS-Free.entitlements

@@ -29,6 +29,7 @@ struct PaseoApp: App {
                 .task {
                     #if os(macOS)
                     appDelegate.model = model
+                    UpdateChecker.shared.startAutomaticChecks()
                     #endif
                     model.start()
                 }
@@ -82,6 +83,11 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("新聊天") { model.destination = .newChat }.keyboardShortcut("n", modifiers: .command)
         }
+        #if os(macOS)
+        CommandGroup(after: .appInfo) {
+            Button("检查更新…") { Task { await UpdateChecker.shared.check(manual: true) } }
+        }
+        #endif
         CommandGroup(replacing: .appSettings) {
             Button("设置…") { post(.openSettings) }.keyboardShortcut(",", modifiers: .command)
         }

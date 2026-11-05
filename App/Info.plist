@@ -52,6 +52,8 @@
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
 	<true/>
+	<key>PaseoReleasesRepo</key>
+	<string>$(PASEO_RELEASES_REPO)</string>
 	<key>PaseoTeamID</key>
 	<string>$(DEVELOPMENT_TEAM)</string>
 	<key>UILaunchScreen</key>

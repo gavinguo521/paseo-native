@@ -689,6 +689,9 @@ struct PreferencesView: View {
                 Section {
                     LabeledContent("Paseo 原生客户端", value: (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?")
                                    + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?") + ")")
+                    #if os(macOS)
+                    UpdateSettingsRows()
+                    #endif
                     LabeledContent("对齐官方版本", value: "v0.15.0")
                     ForEach(model.hosts) { h in
                         LabeledContent(h.label, value: h.serverInfo?.version.map { "daemon v" + $0 } ?? "未连接")
@@ -707,7 +710,7 @@ struct PreferencesView: View {
                 } header: {
                     Text("关于")
                 } footer: {
-                    Text("遇到问题时导出，发给开发者分析。包含版本、各机器的连接、Provider 和插件状态、日志；不含对话内容，配对链接和密码会隐藏。")
+                    Text("自动检查更新会每天访问一次 GitHub 查询最新版本，只下载版本信息，不上传任何数据；有新版本时提示你下载，不会自动安装。\n遇到问题时导出，发给开发者分析。包含版本、各机器的连接、Provider 和插件状态、日志；不含对话内容，配对链接和密码会隐藏。")
                 }
             }
             .formStyle(.grouped)
