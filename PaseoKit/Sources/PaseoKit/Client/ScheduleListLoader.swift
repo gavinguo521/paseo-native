@@ -29,7 +29,8 @@ public final class ScheduleListLoader {
         let hostIDs = Set(selected.map(\.hostID))
         // Keep the last successful results during refresh, but discard data outside this query.
         schedulesByHost = schedulesByHost.filter { hostIDs.contains($0.key) }
-        errorsByHost = [:]
+        // 报错也保留到那台机器有新结果为止：每 20 秒刷新一次，超时的机器要等很久才回应，先清空的话报错条会反复消失又出现。
+        errorsByHost = errorsByHost.filter { hostIDs.contains($0.key) }
         loadingHostIDs = hostIDs
         defer {
             if current == generation { loadingHostIDs = [] }
@@ -55,6 +56,7 @@ public final class ScheduleListLoader {
                 switch response {
                 case .loaded(let hostID, let schedules):
                     schedulesByHost[hostID] = schedules
+                    errorsByHost[hostID] = nil
                     loadingHostIDs.remove(hostID)
                 case .failed(let hostID, let message):
                     errorsByHost[hostID] = message

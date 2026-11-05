@@ -138,6 +138,10 @@ final class AppModel {
     var projectAliases: [String: String] = (UserDefaults.standard.dictionary(forKey: "projectAliases") as? [String: String]) ?? [:] {
         didSet { UserDefaults.standard.set(projectAliases, forKey: "projectAliases") }
     }
+    /// 侧边栏里展开了子会话的行（顶层行用 rowKey，子会话行用 "serverId|agentId"），本机记住
+    var expandedSessionRows: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "expandedSessionRows") ?? []) {
+        didSet { UserDefaults.standard.set(Array(expandedSessionRows), forKey: "expandedSessionRows") }
+    }
     /// Messages waiting for the current turn to end, per agent (client-side, like the official queue track).
     var queue: [String: [QueuedMessage]] = [:]
 
@@ -284,10 +288,11 @@ final class AppModel {
         case .project:
             // Same-named projects on different machines are one group (official single list); rows keep their machine.
             // Insertion order follows `rest`, which is already newest first.
+            let auto = autoProjectAliases
             var order: [String] = []
             var byProject: [String: [Row]] = [:]
             for r in rest {
-                let key = groupName(r.host.id, projectName(of: r.agent, in: r.host))
+                let key = groupName(r.host.id, projectName(of: r.agent, in: r.host), auto: auto)
                 if byProject[key] == nil { order.append(key) }
                 byProject[key, default: []].append(r)
             }
@@ -306,8 +311,8 @@ final class AppModel {
                 let shown = Set(out.map(\.id))
                 var idle: [String: [(HostStore, Project)]] = [:]
                 for h in visibleHosts {
-                    for project in h.projects.values where !shown.contains("project:" + groupName(h.id, project.displayName)) {
-                        idle[groupName(h.id, project.displayName), default: []].append((h, project))
+                    for project in h.projects.values where !shown.contains("project:" + groupName(h.id, project.displayName, auto: auto)) {
+                        idle[groupName(h.id, project.displayName, auto: auto), default: []].append((h, project))
                     }
                 }
                 for name in idle.keys.sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending }) {
@@ -407,18 +412,62 @@ final class AppModel {
         return best
     }
 
-    /// The sidebar group a machine's project belongs to: its own name unless merged into another.
+    /// 按 projectKey 自动合并的表（"serverId|项目名" → 组名），规则见 ProjectGrouping（对齐官方，worktree 并入主仓库）。
+    var autoProjectAliases: [String: String] {
+        var members: [ProjectGrouping.Member] = []
+        for h in hosts {
+            // 项目根目录就是某个 worktree 工作区的目录 → 这是手动 git worktree add 出来的项目；
+            // Paseo 自己建的 worktree 和主仓库同一个 projectId、根目录是主仓库，不会被误判
+            let worktreeRoots = Set(h.workspaces.values.filter { $0.kind == "worktree" }.map { $0.projectId + "\u{1}" + $0.directory })
+            var seen = Set<String>()
+            for p in h.projects.values where seen.insert(p.id).inserted {
+                members.append(.init(serverId: h.id, projectId: p.id, name: p.displayName, rootPath: p.rootPath, projectKey: p.projectKey,
+                                     isWorktree: worktreeRoots.contains(p.id + "\u{1}" + p.rootPath)))
+            }
+            for w in h.workspaces.values where !w.projectId.isEmpty && !w.projectDisplayName.isEmpty && seen.insert(w.projectId).inserted {
+                members.append(.init(serverId: h.id, projectId: w.projectId, name: w.projectDisplayName, rootPath: w.projectRootPath,
+                                     projectKey: w.projectKey, isWorktree: worktreeRoots.contains(w.projectId + "\u{1}" + w.projectRootPath)))
+            }
+        }
+        return ProjectGrouping.autoAliases(members)
+    }
+
+    /// 侧边栏下钻用：每个工作区里的子会话（同一工作区的各个顶层会话，即工作区的标签页），按创建先后排。
+    /// 子任务（会话派出去的子代理，带 paseo.parent-agent-id）不算，它们只在输入框的子代理胶囊里。
+    /// 整个侧栏算一次往下传（"serverId|工作区 id" → 会话），每行查表。
+    func sidebarSessionIndex() -> [String: [Agent]] {
+        var out: [String: [Agent]] = [:]
+        for h in visibleHosts {
+            for a in h.agents.values where a.archivedAt == nil && !h.isNested(a) {
+                guard let ws = a.workspaceId else { continue }
+                out[h.id + "|" + ws, default: []].append(a)
+            }
+        }
+        for k in out.keys { out[k]!.sort { ($0.createdAt ?? .distantPast) < ($1.createdAt ?? .distantPast) } }
+        return out
+    }
+
+    /// The sidebar group a machine's project belongs to: a manual merge first, then the projectKey merge, else its own name.
     func groupName(_ serverId: String, _ projectName: String) -> String {
-        projectAliases[serverId + "|" + projectName] ?? projectName
+        groupName(serverId, projectName, auto: autoProjectAliases)
+    }
+
+    func groupName(_ serverId: String, _ projectName: String, auto: [String: String]) -> String {
+        if let manual = projectAliases[serverId + "|" + projectName] { return manual }
+        guard let a = auto[serverId + "|" + projectName] else { return projectName }
+        // 自动并入的组如果整体被手动合并到别的组，新出现的成员（比如新的一批 worktree）也跟过去
+        let followed = projectAliases.keys.sorted().first { $0.split(separator: "|", maxSplits: 1).last.map(String.init) == a }
+        return followed.flatMap { projectAliases[$0] } ?? a
     }
 
     /// The (machine, project name) pairs shown in a project group.
     func projectMembers(_ groupName: String) -> [(serverId: String, name: String)] {
+        let auto = autoProjectAliases
         var out: [(String, String)] = []
         for h in hosts {
             var names = Set(h.projects.values.map(\.displayName))
             names.formUnion(h.agents.values.map { projectName(of: $0, in: h) })
-            for n in names where self.groupName(h.id, n) == groupName { out.append((h.id, n)) }
+            for n in names where self.groupName(h.id, n, auto: auto) == groupName { out.append((h.id, n)) }
         }
         return out
     }

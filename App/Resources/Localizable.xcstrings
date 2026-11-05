@@ -11799,6 +11799,66 @@
           }
         }
       }
+    },
+    "worktree · 分支 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Worktree · branch %@"
+          }
+        }
+      }
+    },
+    "点击复制分支名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click to copy the branch name"
+          }
+        }
+      }
+    },
+    "点击复制目录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click to copy the directory"
+          }
+        }
+      }
+    },
+    "worktree %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Worktree %@"
+          }
+        }
+      }
+    },
+    "收起会话列表": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse sessions"
+          }
+        }
+      }
+    },
+    "展开 %lld 个会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand %lld sessions"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

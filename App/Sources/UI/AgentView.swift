@@ -12,6 +12,8 @@ struct AgentView: View {
     @AppStorage("autoExpandReasoning") private var autoExpandReasoning = true
     private var collapseTurns: Bool { timelineDetail == TimelineDetail.collapseTurns.rawValue }
     @State private var atBottom = true
+    /// 内容不满一屏（新会话、短会话）：关掉顶部软边缘，见 compatibleScrollEdgeEffects
+    @State private var contentFits = false
     @State private var finding = false
     @State private var findQuery = ""
     @State private var matchIndex = 0
@@ -361,7 +363,7 @@ struct AgentView: View {
             }
             .scrollPosition($scrollPosition)
             // Newer systems soften the top edge and hide the bottom effect; iOS 18 uses standard edges.
-            .compatibleScrollEdgeEffects()
+            .compatibleScrollEdgeEffects(topHidden: contentFits)
             .environment(\.openURL, OpenURLAction { url in openLink(url) })
             .overlay(alignment: .top) { if finding { findBar } }
             .popover(isPresented: $showOutline, arrowEdge: .top) { outline.compactPopover() }
@@ -379,6 +381,9 @@ struct AgentView: View {
             .onScrollGeometryChange(for: Bool.self) { g in
                 g.contentSize.height - g.contentOffset.y - g.containerSize.height < 32
             } action: { _, bottom in atBottom = bottom }
+            .onScrollGeometryChange(for: Bool.self) { g in
+                g.contentSize.height <= g.containerSize.height + 1
+            } action: { _, fits in contentFits = fits }
             // Older history: one page when the reader scrolls within 400pt of the top of a timeline taller than the screen.
             .onScrollGeometryChange(for: Bool.self) { g in
                 g.contentSize.height > g.containerSize.height && g.contentOffset.y + g.contentInsets.top < 400

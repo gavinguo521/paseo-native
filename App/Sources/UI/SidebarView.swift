@@ -13,7 +13,8 @@ struct SidebarView: View {
         didSet { UserDefaults.standard.set(Array(collapsed).sorted(), forKey: "sidebar.collapsed") }
     }
     @State private var expandedAll: Set<String> = []
-    @State private var hoveredGroup: String?
+    /// 仅 DEBUG 截图用（PASEO_HOVER_GROUP）：让这个分组标题显示成悬停状态。日常悬停状态在每个标题自己的 HoverReader 里。
+    @State private var forcedHoverGroup: String?
     /// 拖动排序时鼠标所在的目标（项目分组 id，或工作区行的 rowKey），用来画插入提示线。
     @State private var dropTarget: String?
     @State private var renamingWorkspace: Workspace?
@@ -52,6 +53,9 @@ struct SidebarView: View {
 
     var body: some View {
         @Bindable var model = model
+        #if DEBUG && os(macOS)
+        let _ = SidebarBench.bodyCount += 1
+        #endif
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if !titleInToolbar {
@@ -71,8 +75,12 @@ struct SidebarView: View {
                     emptyState
                 }
                 let groups = model.groups
+                // 自动合并表算一次给整个侧栏用：每个分组的菜单都要按它找项目，现算的话滚动时悬停一次就重算几十遍（掉帧）
+                let auto = model.autoProjectAliases
+                // 工作区子会话索引同理：整个侧栏算一次，每行查表
+                let kids = model.sidebarSessionIndex()
                 ForEach(groups) { group in
-                    groupView(group)
+                    groupView(group, all: groups, auto: auto, kids: kids)
                 }
                 if groups.isEmpty && !model.hosts.isEmpty && (!model.search.isEmpty || !model.labelFilter.isEmpty || model.hostFilter != nil) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -108,6 +116,7 @@ struct SidebarView: View {
         .onDisappear { if let m = flagsMonitor { NSEvent.removeMonitor(m) } }
         .task {
             #if DEBUG
+            SidebarBench.startIfRequested()
             // PASEO_HOVER_GROUP=1 shows the first group in its hover state, for screenshots.
             // PASEO_COLLAPSE_ALL=1 starts with every group collapsed.
             if ProcessInfo.processInfo.environment["PASEO_COLLAPSE_ALL"] == "1" {
@@ -121,7 +130,7 @@ struct SidebarView: View {
             }
             if ProcessInfo.processInfo.environment["PASEO_HOVER_GROUP"] == "1" {
                 try? await Task.sleep(for: .seconds(4))
-                hoveredGroup = model.groups.first?.id
+                forcedHoverGroup = model.groups.first?.id
             }
             #endif
         }
@@ -278,13 +287,13 @@ struct SidebarView: View {
         return p.count == 4 && p[1] == "w" ? (String(p[2]), String(p[3])) : nil
     }
 
-    @ViewBuilder private func groupView(_ group: SessionGroup) -> some View {
+    @ViewBuilder private func groupView(_ group: SessionGroup, all: [SessionGroup], auto: [String: String], kids: [String: [Agent]]) -> some View {
         let isCollapsed = collapsed.contains(group.id) && model.search.isEmpty
         // Not a Button: the 「+」 and 「⋯」 inside must stay separately clickable.
-        Group {
+        // 悬停状态放在标题自己的 HoverReader 里：滚动时标题从鼠标下经过会频繁切换悬停，挂在整个侧栏上会让侧栏每次都整体重算（掉帧）。
+        HoverReader(forced: forcedHoverGroup == group.id) { hovered in
             // Project icon and name; hovering swaps the icon for the collapse chevron and shows 「+」 and 「⋯」 (official sidebar).
             HStack(spacing: 8) {
-                let hovered = hoveredGroup == group.id
                 ZStack {
                     groupIcon(group).opacity(hovered ? 0 : 1)
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.muted)
@@ -305,7 +314,7 @@ struct SidebarView: View {
                 let showActions = true
                 #endif
                 if showActions {
-                    let targets = sessionTargets(group)
+                    let targets = sessionTargets(group, auto: auto)
                     if targets.count > 1 {
                         // The project is on several machines: pick where the session runs.
                         Menu {
@@ -326,7 +335,7 @@ struct SidebarView: View {
                         .help("在此项目新建工作区")
                         .accessibilityLabel("在此项目新建工作区")
                     }
-                    Menu { groupMenu(group) } label: {
+                    Menu { groupMenu(group, all: all, auto: auto) } label: {
                         Image(systemName: "ellipsis").font(.system(size: 12, weight: .medium)).frame(width: 22, height: 22).contentShape(Rectangle())
                     }
                     .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
@@ -339,7 +348,7 @@ struct SidebarView: View {
             .frame(height: 24)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
-            .background(hoveredGroup == group.id ? Theme.selection.opacity(0.6) : .clear, in: RoundedRectangle(cornerRadius: 10))
+            .background(hovered ? Theme.selection.opacity(0.6) : .clear, in: RoundedRectangle(cornerRadius: 10))
             .padding(.horizontal, 4)
             .padding(.top, 8)
             .contentShape(Rectangle())
@@ -349,8 +358,7 @@ struct SidebarView: View {
                 if collapsed.contains(group.id) { collapsed.remove(group.id) } else { collapsed.insert(group.id) }
             }
         }
-        .onHover { hoveredGroup = $0 ? group.id : (hoveredGroup == group.id ? nil : hoveredGroup) }
-        .contextMenu { groupMenu(group) }
+        .contextMenu { groupMenu(group, all: all, auto: auto) }
         .modifier(SidebarReorder(enabled: canReorder(group), payload: Self.projectPayload(group.id), target: group.id, dropTarget: $dropTarget) { items in
             guard let id = items.compactMap(Self.parseProjectPayload).first else { return false }
             withAnimation(.snappy(duration: 0.2)) { model.moveProject(id, to: group.id) }
@@ -365,9 +373,15 @@ struct SidebarView: View {
             ForEach(visible, id: \.agent.id) { row in
                 let ref = AgentRef(serverId: row.serverId, agentId: row.agent.id)
                 let workspace = model.workspace(of: ref)
+                // 工作区下钻：工作区里有 2 个及以上子会话（标签页）才给展开三角；子任务不在这里，看输入框的子代理胶囊
+                let children = row.agent.workspaceId.flatMap { kids[row.serverId + "|" + $0] } ?? []
+                let expandKey = AppModel.rowKey(serverId: row.serverId, agent: row.agent)
+                let childrenOpen = children.count >= 2 && model.expandedSessionRows.contains(expandKey)
                 SessionRow(agent: row.agent, bucket: row.bucket, selected: isSelected(row.serverId, row.agent), workspace: workspace,
                            context: rowContext(group, row.agent, serverId: row.serverId),
-                           shortcut: commandHeld ? shortcutNumber(ref) : nil) {
+                           shortcut: commandHeld ? shortcutNumber(ref) : nil,
+                           childCount: children.count >= 2 ? children.count : 0, expanded: childrenOpen,
+                           onToggle: { toggleChildren(expandKey) }) {
                     model.openRow(ref)
                 }
                 .contextMenu { rowMenu(row.agent, serverId: row.serverId, workspace: workspace) }
@@ -389,6 +403,9 @@ struct SidebarView: View {
                         if let workspace { archivingWorkspace = workspace } else { archivingAgent = ref }
                     }))
                 #endif
+                if childrenOpen {
+                    sessionRows(children, serverId: row.serverId)
+                }
             }
             if !isCollapsed && !showAll && group.agents.count > Self.rowsPerGroup {
                 Button("显示其余 \(group.agents.count - Self.rowsPerGroup) 个") {
@@ -403,10 +420,31 @@ struct SidebarView: View {
         }
     }
 
+    private func toggleChildren(_ key: String) {
+        withAnimation(.snappy(duration: 0.2)) {
+            if model.expandedSessionRows.contains(key) { model.expandedSessionRows.remove(key) } else { model.expandedSessionRows.insert(key) }
+        }
+    }
+
+    /// 展开后的工作区子会话行：缩进一级，点一下切到那个会话的标签页。只有这一层。
+    private func sessionRows(_ sessions: [Agent], serverId: String) -> some View {
+        ForEach(sessions, id: \.id) { session in
+            let ref = AgentRef(serverId: serverId, agentId: session.id)
+            // 不传工作区：改动数、分支、标题都是工作区的，和上面那行重复；子会话行只显示会话自己的标题和状态
+            SessionRow(agent: session, bucket: model.host(serverId).map { model.groupBucket([session], in: $0) } ?? session.bucket,
+                       selected: model.destination == .agent(ref), useAgentTitle: true, depth: 1) {
+                model.revealDetail += 1
+                model.open(ref)
+            }
+            .contextMenu { rowMenu(session, serverId: serverId, workspace: nil) }
+        }
+    }
+
     /// Project group header: new session (per machine when the project is on several), new worktree, copy path, collapse.
-    @ViewBuilder private func groupMenu(_ group: SessionGroup) -> some View {
+    /// `all`、`auto` 是本次 body 已算好的分组列表和自动合并表：菜单内容随 body 一起构建，每个分组都现算会让侧栏重建时重算 N 遍。
+    @ViewBuilder private func groupMenu(_ group: SessionGroup, all: [SessionGroup], auto: [String: String]) -> some View {
         if case .project = group.kind {
-            let targets = sessionTargets(group)
+            let targets = sessionTargets(group, auto: auto)
             if targets.count > 1 {
                 Menu("新建工作区", systemImage: "folder.badge.plus") {
                     ForEach(targets, id: \.host.id) { t in Button(t.host.label) { start(t) } }
@@ -424,7 +462,7 @@ struct SidebarView: View {
             if !targets.isEmpty { Divider() }
             // Name and icon live on each machine's own project.
             let editable: [ProjectEditTarget] = model.visibleHosts.compactMap { h in
-                h.projects.values.first { model.groupName(h.id, $0.displayName) == group.name }.map { ProjectEditTarget(host: h, project: $0) }
+                h.projects.values.first { model.groupName(h.id, $0.displayName, auto: auto) == group.name }.map { ProjectEditTarget(host: h, project: $0) }
             }
             if editable.count > 1 {
                 Menu("编辑项目", systemImage: "pencil") {
@@ -434,7 +472,7 @@ struct SidebarView: View {
                 Button("编辑项目…", systemImage: "pencil") { editingProject = t }
             }
             // Same project under different names on different machines: merge by hand (kept in this app only).
-            let others = model.groups.filter { g in
+            let others = all.filter { g in
                 if case .project = g.kind { return g.id != group.id } else { return false }
             }
             if !others.isEmpty {
@@ -460,7 +498,7 @@ struct SidebarView: View {
         Button(collapsed.contains(group.id) ? "展开" : "折叠") {
             if collapsed.contains(group.id) { collapsed.remove(group.id) } else { collapsed.insert(group.id) }
         }
-        Button("全部折叠") { collapsed = Set(model.groups.map(\.id)) }
+        Button("全部折叠") { collapsed = Set(all.map(\.id)) }
         Button("全部展开") { collapsed = [] }
     }
 
@@ -472,14 +510,14 @@ struct SidebarView: View {
         let project: Project?
     }
 
-    private func sessionTargets(_ group: SessionGroup) -> [SessionTarget] {
+    private func sessionTargets(_ group: SessionGroup, auto: [String: String]) -> [SessionTarget] {
         guard case .project = group.kind else { return [] }
         let hosts = model.visibleHosts.sorted { a, b in a.id == group.serverId && b.id != group.serverId }
         return hosts.compactMap { h in
             let workspace = group.rows.filter { $0.serverId == h.id }
                 .compactMap { r in r.agent.workspaceId.flatMap { h.workspaces[$0] } }
                 .max { ($0.activityAt ?? .distantPast) < ($1.activityAt ?? .distantPast) }
-            let project = h.projects.values.first { model.groupName(h.id, $0.displayName) == group.name }
+            let project = h.projects.values.first { model.groupName(h.id, $0.displayName, auto: auto) == group.name }
             guard workspace != nil || project != nil else { return nil }
             return SessionTarget(host: h, workspace: workspace, project: project)
         }
@@ -522,9 +560,12 @@ struct SidebarView: View {
     /// Project name under the title where the group does not already say it.
     private func rowContext(_ group: SessionGroup, _ agent: Agent, serverId: String) -> String? {
         if case .project = group.kind {
-            // A project merged across machines says which machine each workspace is on.
-            guard Set(group.rows.map(\.serverId)).count > 1 else { return nil }
-            return model.host(serverId)?.label
+            // 合并进来的项目（worktree / 别的名字）标出自己的项目名，跨机器合并的再标出在哪台机器
+            let multiHost = Set(group.rows.map(\.serverId)).count > 1
+            let own = model.host(serverId).map { model.projectName(of: agent, in: $0) }.flatMap { $0 == group.name ? nil : $0 }
+            let host = multiHost ? model.host(serverId)?.label : nil
+            let parts = [own, host].compactMap { $0 }
+            return parts.isEmpty ? nil : parts.joined(separator: " · ")
         }
         guard let h = model.host(serverId) else { return nil }
         return model.projectName(of: agent, in: h) + (model.hosts.count > 1 ? " · " + h.label : "")
@@ -668,6 +709,14 @@ private struct SessionRow: View {
     /// Secondary line (project) when the group is not a project.
     var context: String? = nil
     var shortcut: Int? = nil
+    /// 子会话行用会话自己的标题（不用工作区标题）
+    var useAgentTitle = false
+    /// 缩进层级：0 工作区行，1 工作区里的子会话
+    var depth = 0
+    /// 工作区里可展开的子会话数（≥2 才传，0 表示没有展开三角）
+    var childCount = 0
+    var expanded = false
+    var onToggle: (() -> Void)? = nil
     let action: () -> Void
 
     private var pullRequest: PullRequestInfo? { workspace?.pullRequest }
@@ -679,7 +728,7 @@ private struct SessionRow: View {
     private let badgesBelow = false
     #endif
     /// The workspace's title (official sidebar), else the session's.
-    private var title: String { workspace?.title.flatMap { $0.isEmpty ? nil : $0 } ?? agent.displayTitle }
+    private var title: String { useAgentTitle ? agent.displayTitle : workspace?.title.flatMap { $0.isEmpty ? nil : $0 } ?? agent.displayTitle }
 
     var body: some View {
         Button(action: action) {
@@ -704,11 +753,38 @@ private struct SessionRow: View {
                         .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 4))
                         .foregroundStyle(Theme.muted)
                 }
+                if let wt = workspace, wt.kind == "worktree" {
+                    // 在 worktree 里跑的会话：小树图标，悬停看分支
+                    Image(systemName: "tree").font(.system(size: Theme.base - 2)).foregroundStyle(Theme.muted)
+                        .help(String(localized: "worktree · 分支 \(wt.currentBranch ?? "—")") + "\n" + wt.directory)
+                }
+                if childCount >= 2 {
+                    Button { onToggle?() } label: {
+                        Text(verbatim: "\(childCount)").font(.system(size: Theme.base - 2.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(Theme.muted)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Theme.surface2, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help(expanded ? String(localized: "收起会话列表") : String(localized: "展开 \(childCount) 个会话"))
+                }
                 if !badgesBelow { badges }
                 trailing
             }
-            .padding(.leading, 12)
+            .padding(.leading, 12 + CGFloat(depth) * 16)
             .padding(.trailing, 12)
+            .overlay(alignment: .leading) {
+                // 展开三角放在状态点前面的留白里，没有子会话的行不占位、不错位
+                if childCount >= 2 {
+                    Button { onToggle?() } label: {
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.muted)
+                            .frame(width: 12, height: 24).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, CGFloat(depth) * 16)
+                }
+            }
             // Touch: the system's 44pt row (34 was the Mac size, cramped and fiddly to hit on a phone).
             #if os(iOS)
             .frame(minHeight: 44)
@@ -950,6 +1026,23 @@ struct ProjectIcon: View {
         .task(id: (projectId ?? "") + (revision ?? "")) {
             if let projectId { await host.loadProjectIcon(projectId: projectId, revision: revision) }
         }
+    }
+}
+
+/// 自己持有悬停状态的容器：悬停变化只重算这一块，不牵动外层视图。
+private struct HoverReader<Content: View>: View {
+    var forced = false
+    @ViewBuilder let content: (Bool) -> Content
+    @State private var hovered = false
+
+    var body: some View {
+        content(hovered || forced)
+            .onHover { on in
+                #if DEBUG && os(macOS)
+                SidebarBench.hoverCount += 1
+                #endif
+                hovered = on
+            }
     }
 }
 

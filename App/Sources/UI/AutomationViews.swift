@@ -14,25 +14,28 @@ struct SchedulesView: View {
     @State private var editing: ScheduleFormTarget?
     @State private var confirmDelete: (HostStore, Schedule)?
     @State private var detail: (HostStore, Schedule)?
+    /// 本页自己的主机筛选（nil = 全部机器），不和侧栏共用：在这里只看一台机器，不该让侧栏的会话也跟着少掉。
+    @State private var hostFilter: String?
 
-    private var connectedHosts: [HostStore] { model.visibleHosts.filter { $0.state == .connected } }
+    private var pageHosts: [HostStore] { model.hosts.filter { hostFilter == nil || $0.id == hostFilter } }
+    private var connectedHosts: [HostStore] { pageHosts.filter { $0.state == .connected } }
     private var loading: Bool { !loader.loadingHostIDs.isEmpty }
     private var loadKey: ScheduleLoadKey {
-        ScheduleLoadKey(hostID: model.hostFilter, connectedHostIDs: connectedHosts.map(\.id).sorted(), refresh: refresh)
+        ScheduleLoadKey(hostID: hostFilter, connectedHostIDs: connectedHosts.map(\.id).sorted(), refresh: refresh)
     }
     private var items: [ScheduleListItem] {
-        model.visibleHosts.flatMap { h in
+        pageHosts.flatMap { h in
             (loader.schedulesByHost[h.id] ?? []).map { ScheduleListItem(host: h, schedule: $0) }
         }.sorted { ($0.schedule.createdAt ?? .distantPast) > ($1.schedule.createdAt ?? .distantPast) }
     }
     private var errors: [(hostID: String, message: String)] {
-        model.visibleHosts.compactMap { h in
+        pageHosts.compactMap { h in
             guard let message = loader.errorsByHost[h.id] else { return nil }
             return (h.id, "\(h.label)：\(message)")
         }
     }
     private var visibleActionError: String? {
-        guard let actionError, model.visibleHosts.contains(where: { $0.id == actionError.hostID }) else { return nil }
+        guard let actionError, pageHosts.contains(where: { $0.id == actionError.hostID }) else { return nil }
         return actionError.message
     }
 
@@ -44,7 +47,6 @@ struct SchedulesView: View {
     }
 
     var body: some View {
-        @Bindable var model = model
         List {
             if let visibleActionError { Banner(level: "error", message: visibleActionError) }
             ForEach(errors, id: \.hostID) { Banner(level: "error", message: $0.message) }
@@ -83,7 +85,7 @@ struct SchedulesView: View {
             .compatibleSharedBackgroundHidden()
             if model.hosts.count > 1 {
                 ToolbarItem(placement: .primaryAction) {
-                    Picker("主机", selection: $model.hostFilter) {
+                    Picker("主机", selection: $hostFilter) {
                         Text("全部主机").tag(String?.none)
                         ForEach(model.hosts) { h in Text(h.label).tag(Optional(h.id)) }
                     }
@@ -150,7 +152,7 @@ struct SchedulesView: View {
         let sources = connectedHosts.map { h in
             ScheduleListLoader.Source(hostID: h.id) { try await h.listSchedules() }
         }
-        await loader.load(sources: sources, selectedHostID: model.hostFilter)
+        await loader.load(sources: sources, selectedHostID: hostFilter)
     }
 }
 

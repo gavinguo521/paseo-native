@@ -361,7 +361,8 @@ private struct MessageMenu: View {
                 Button("分叉到新工作区", systemImage: "folder.badge.plus") { actions.fork(messageId, true) }
             }
         } label: {
-            Image(systemName: "ellipsis").frame(width: 20, height: 16)
+            // 无边框样式下只认图标画出来的像素：「⋯」只有三个小点，必须给整块矩形作为点击区域，否则很难点中。
+            Image(systemName: "ellipsis").frame(width: 28, height: 24).contentShape(Rectangle())
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
         .accessibilityLabel("消息操作")
@@ -464,10 +465,15 @@ private struct RowView: View {
 
     /// Copy, message menu, time and duration under the last reply of a turn.
     @ViewBuilder private func footerActions(text: String, messageId: String?) -> some View {
-        Button { Pasteboard.copy(text) } label: { Image(systemName: "doc.on.doc") }
-            .buttonStyle(.plain).help("复制")
-            .accessibilityLabel("复制")
-        MessageMenu(text: text, messageId: messageId, isAssistant: true, turnText: turn?.text)
+        // 两个图标按钮各带 28×24 的点击区域，彼此不再加间距，看起来和原来一样近
+        HStack(spacing: 0) {
+            Button { Pasteboard.copy(text) } label: { Image(systemName: "doc.on.doc").frame(width: 28, height: 24).contentShape(Rectangle()) }
+                .buttonStyle(.plain).help("复制")
+                .accessibilityLabel("复制")
+            MessageMenu(text: text, messageId: messageId, isAssistant: true, turnText: turn?.text)
+        }
+        // 图标本身仍和正文左边对齐（点击区域往左多出的部分不占版面）
+        .padding(.leading, -7)
         if let t = row.timestamp { Text(formatTimestamp(t)).lineLimit(1) }
         if let d = turn?.duration, d >= 1 { Text(String(localized: "用时 \(formatDuration(d))")).lineLimit(1) }
     }

@@ -98,6 +98,22 @@ struct ScheduleListLoaderTests {
         #expect(loader.loadingHostIDs.isEmpty)
     }
 
+    @Test func refreshKeepsHostErrorUntilThatHostAnswers() async {
+        let loader = ScheduleListLoader()
+        await loader.load(sources: [source("mini", ScheduleRequest(.failure(FetchError.offline)))], selectedHostID: nil)
+        let request = ScheduleRequest()
+        let task = Task { await loader.load(sources: [source("mini", request)], selectedHostID: nil) }
+        defer { request.finish(.success([])); task.cancel() }
+        #expect(await eventually { request.calls == 1 })
+        // 等待期间报错不消失（否则超时的机器每次刷新都会让报错条闪一下）
+        #expect(loader.errorsByHost["mini"] != nil)
+
+        request.finish(.success([schedule("back-task")]))
+        await task.value
+        #expect(loader.errorsByHost.isEmpty)
+        #expect(loader.schedulesByHost["mini"]?.map(\.id) == ["back-task"])
+    }
+
     @Test func leavingPageDiscardsLateResults() async {
         let loader = ScheduleListLoader()
         let request = ScheduleRequest()

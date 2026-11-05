@@ -234,6 +234,8 @@ struct ComposerView: View {
             .help(todos.map { ($0.completed ? "✓ " : "○ ") + $0.text }.joined(separator: "\n"))
         }
         backgroundTaskPill
+        let branchMarker = BranchMarker(agent: agent, workspace: workspace, host: host)
+        if branchMarker.showsChip { BranchChip(marker: branchMarker) }
         if let workspace, let add = workspace.additions, let del = workspace.deletions, add + del > 0 {
             Chip {
                 Image(systemName: "pencil.line")
