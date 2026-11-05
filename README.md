@@ -30,7 +30,7 @@
 
 | 平台 | 怎么装 |
 |---|---|
-| **Mac** | 到 [Releases](https://github.com/52216108/paseo-native/releases/latest) 下载 `Paseo-Native-x.y.z.dmg`，打开后把「Paseo Native」拖进「应用程序」。已签名、已经过苹果公证，双击就能打开；装好叫「Paseo Native.app」，不会覆盖官方的 Paseo.app |
+| **Mac** | 到 [Releases](https://github.com/gavinguo521/paseo-native/releases/latest) 下载 `Paseo-Native-x.y.z.dmg`，打开后把「Paseo Native」拖进「应用程序」。已签名、已经过苹果公证，双击就能打开；装好叫「Paseo Native.app」，不会覆盖官方的 Paseo.app |
 | **iPhone / iPad** | 暂不提供安装包，需要用 Xcode 自己编译安装，见「[iPhone / iPad 版安装](#iphone--ipad-版安装)」 |
 | **安卓** | 没有，继续用官方 App；两边可以连同一台机器 |
 
@@ -67,11 +67,11 @@
 | 回合速度 | 每轮回复底部显示生成速度和 token 数 | 在本机解析 CLI 的日志，只取时间和 token 数 |
 | 下一句建议 | 空输入框里预测你接下来要说的话，Mac 按 Tab 采用 | 每轮结束后调用一次 Claude（默认 Haiku）或 Codex，**会消耗该账户少量用量**；需要那台机器装了 Claude Code 或 Codex CLI |
 | 标题风格 | 新会话自动起简短的中文任务标题 | 每个新会话调用一次模型起标题，消耗少量用量 |
-| 看板 | 在侧栏打开 [agent-taskboard](https://github.com/52216108/agent-taskboard) 看板 | 只对用 agent-taskboard 的人有用，要先装好并启动它 |
+| 看板 | 在侧栏打开 [agent-taskboard](https://github.com/gavinguo521/agent-taskboard) 看板 | 只对用 agent-taskboard 的人有用，要先装好并启动它 |
 | 灵动岛推送 | App 不在前台时，也能推送更新 iPhone 灵动岛和通知 | 需要付费开发者账号，见[下文](#灵动岛和推送可选需要付费开发者账号) |
 
 - **怎么装**：第一次连上一台机器时会弹窗问一次，勾选要的点「安装」；点「以后再说」就不装，也不会再问。之后想装、停用或移除，在「设置 → 机器 → 插件」里操作。
-- **安全**：Paseo 插件运行在 daemon 里、没有沙盒，装之前可以看源码：[paseo-plugins](https://github.com/52216108/paseo-plugins)（限额刷新时间、回合速度、下一句建议、看板、灵动岛推送）、[title-style](https://github.com/52216108/title-style)（标题风格），也可以在 [Paseo 插件市场](https://paseo.sh/plugins) 查看。
+- **安全**：Paseo 插件运行在 daemon 里、没有沙盒，装之前可以看源码：[paseo-plugins](https://github.com/gavinguo521/paseo-plugins)（限额刷新时间、回合速度、下一句建议、看板、灵动岛推送）、[title-style](https://github.com/gavinguo521/title-style)（标题风格），也可以在 [Paseo 插件市场](https://paseo.sh/plugins) 查看。
 
 ## 替代官方桌面 App（可选），以及怎么切回官方
 
@@ -98,7 +98,7 @@ daemon 用的仍是官方的 `@getpaseo/cli`，装在「~/Library/Application Su
 1. 准备一台装了 **Xcode 26** 的 Mac，安装 XcodeGen：`brew install xcodegen`。Xcode → Settings → Accounts 里登录你的 Apple ID。
 2. 获取代码并填写签名配置：
    ```sh
-   git clone https://github.com/52216108/paseo-native.git && cd paseo-native
+   git clone https://github.com/gavinguo521/paseo-native.git && cd paseo-native
    cp Config/Local.xcconfig.example Config/Local.xcconfig
    ```
    编辑 `Config/Local.xcconfig`（文件里有注释）：
@@ -196,7 +196,7 @@ Mac 版的通知由 App 自己发：关掉窗口 App 还在运行（菜单栏或
 
 ## 反馈与交流
 
-遇到问题或有建议，欢迎提 [Issue](https://github.com/52216108/paseo-native/issues)。报 bug 时附上「设置 → 关于 → 导出诊断信息」生成的文件会更好查。
+遇到问题或有建议，欢迎提 [Issue](https://github.com/gavinguo521/paseo-native/issues)。报 bug 时附上「设置 → 关于 → 导出诊断信息」生成的文件会更好查。
 
 也欢迎加微信群「Paseo Native 交流」一起聊：
 

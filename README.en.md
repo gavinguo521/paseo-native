@@ -33,7 +33,7 @@ with the Claude Code / Codex accounts logged in there.
 
 | Platform | How |
 |---|---|
-| **Mac** | Download `Paseo-Native-x.y.z.dmg` from [Releases](https://github.com/52216108/paseo-native/releases/latest) and drag "Paseo Native" into Applications. Signed and notarized by Apple. It installs as `Paseo Native.app` and does not replace the official `Paseo.app` |
+| **Mac** | Download `Paseo-Native-x.y.z.dmg` from [Releases](https://github.com/gavinguo521/paseo-native/releases/latest) and drag "Paseo Native" into Applications. Signed and notarized by Apple. It installs as `Paseo Native.app` and does not replace the official `Paseo.app` |
 | **iPhone / iPad** | No prebuilt package; build it with Xcode, see [iPhone / iPad](#iphone--ipad) |
 | **Android** | Use the official app; both can connect to the same machine |
 
@@ -66,11 +66,11 @@ Settings → Machines → Plugins.
 | Turn speed | Tokens per second under each reply | Parses the CLI's local logs |
 | Next input | Suggests your next message in the empty composer (Tab to accept) | Calls Claude (Haiku by default) or Codex once per turn, **uses a little of that account's quota** |
 | Title style | Short Chinese titles for new sessions | One model call per new session |
-| Board | Opens an [agent-taskboard](https://github.com/52216108/agent-taskboard) board | Only for agent-taskboard users |
+| Board | Opens an [agent-taskboard](https://github.com/gavinguo521/agent-taskboard) board | Only for agent-taskboard users |
 | Live Activity push | Updates the Dynamic Island and sends notifications while the app is in the background | Needs a paid developer account, see below |
 
-Paseo plugins run unsandboxed in the daemon; source: [paseo-plugins](https://github.com/52216108/paseo-plugins),
-[title-style](https://github.com/52216108/title-style), or the [Paseo plugin registry](https://paseo.sh/plugins).
+Paseo plugins run unsandboxed in the daemon; source: [paseo-plugins](https://github.com/gavinguo521/paseo-plugins),
+[title-style](https://github.com/gavinguo521/title-style), or the [Paseo plugin registry](https://paseo.sh/plugins).
 
 ## Replacing the official desktop app (optional), and switching back
 
@@ -92,7 +92,7 @@ Apple doesn't allow installing iOS apps from outside the App Store, so build it 
 
 1. Xcode 26 (signed in with your Apple ID) and `brew install xcodegen`
 2. ```sh
-   git clone https://github.com/52216108/paseo-native.git && cd paseo-native
+   git clone https://github.com/gavinguo521/paseo-native.git && cd paseo-native
    cp Config/Local.xcconfig.example Config/Local.xcconfig
    ```
    Set `DEVELOPMENT_TEAM` and `PASEO_BUNDLE_ID` in it. **With a free Apple ID**, also uncomment
@@ -149,7 +149,7 @@ To clean up fully, also remove `~/Library/Application Support/Paseo Native` and
 
 ## Feedback
 
-There is also a WeChat group (in Chinese), see the [Chinese README](README.md#反馈与交流). Please open an [issue](https://github.com/52216108/paseo-native/issues); attach the file from Settings → About →
+There is also a WeChat group (in Chinese), see the [Chinese README](README.md#反馈与交流). Please open an [issue](https://github.com/gavinguo521/paseo-native/issues); attach the file from Settings → About →
 导出诊断信息 (export diagnostics) — it contains no conversation content, and pairing links and passwords are redacted.
 
 ## Building the Mac app

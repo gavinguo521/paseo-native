@@ -25,12 +25,12 @@ enum CompanionPlugins {
         CompanionPlugin(id: "next-input", name: "下一句建议", summary: "空输入框里预测你接下来要说的话",
                         source: "plugins.paseo.sh/52216108/next-input"),
         CompanionPlugin(id: "title-style", name: "标题风格", summary: "新会话自动起中文任务标题",
-                        source: "github:52216108/title-style"),
+                        source: "github:gavinguo521/title-style"),
         CompanionPlugin(id: "agent-taskboard", name: "看板", summary: "在侧栏打开 agent-taskboard 看板；要先在那台机器上装好并启动看板服务",
-                        source: "git:52216108/paseo-plugins:agent-taskboard", recommended: false),
+                        source: "git:gavinguo521/paseo-plugins:agent-taskboard", recommended: false),
         // 只要装在一台机器上（它会合并已关联机器的会话），所以不默认勾选。
         CompanionPlugin(id: "live-activity", name: "灵动岛推送", summary: "App 不在前台时也更新 iPhone 灵动岛和锁屏；装一台就够，装完在设置 → 通知里配置 APNs 密钥",
-                        source: "git:52216108/paseo-plugins:live-activity", recommended: false),
+                        source: "git:gavinguo521/paseo-plugins:live-activity", recommended: false),
     ]
 
     /// Companions not installed on `host`, once its plugin list is known and it can install from sources.

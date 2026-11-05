@@ -14,9 +14,9 @@ private func bold(_ s: String) -> [String] {
 
 /// 用户报告：中文里加粗的裸链接把后面的「（公开，Apache-2.0）。看板」吞进链接，两边的 ** 原样显示。
 @Test func bareURLInChineseStopsAtURLEnd() {
-    let s = "项目已经开源了：**https://github.com/52216108/paseo-native**（公开，Apache-2.0）。看板 #1520 已置为待验收。"
-    #expect(links(s) == ["https://github.com/52216108/paseo-native"])
-    #expect(bold(s) == ["https://github.com/52216108/paseo-native"])
+    let s = "项目已经开源了：**https://github.com/gavinguo521/paseo-native**（公开，Apache-2.0）。看板 #1520 已置为待验收。"
+    #expect(links(s) == ["https://github.com/gavinguo521/paseo-native"])
+    #expect(bold(s) == ["https://github.com/gavinguo521/paseo-native"])
     #expect(!String(InlineMarkdown.parse(s).characters).contains("**"))
 }
 
