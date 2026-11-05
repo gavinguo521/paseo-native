@@ -7,37 +7,60 @@ import SwiftUI
 
 struct SchedulesView: View {
     @Environment(AppModel.self) private var model
-    @State private var items: [(host: HostStore, schedule: Schedule)] = []
-    @State private var errors: [String] = []
+    @State private var loader = ScheduleListLoader()
+    @State private var refresh = 0
+    @State private var actionError: (hostID: String, message: String)?
     @State private var tab = 0
-    @State private var loading = false
     @State private var editing: ScheduleFormTarget?
     @State private var confirmDelete: (HostStore, Schedule)?
     @State private var detail: (HostStore, Schedule)?
-    /// nil = every machine.
-    @State private var hostFilter: String?
 
-    private var visible: [(host: HostStore, schedule: Schedule)] {
+    private var connectedHosts: [HostStore] { model.visibleHosts.filter { $0.state == .connected } }
+    private var loading: Bool { !loader.loadingHostIDs.isEmpty }
+    private var loadKey: ScheduleLoadKey {
+        ScheduleLoadKey(hostID: model.hostFilter, connectedHostIDs: connectedHosts.map(\.id).sorted(), refresh: refresh)
+    }
+    private var items: [ScheduleListItem] {
+        model.visibleHosts.flatMap { h in
+            (loader.schedulesByHost[h.id] ?? []).map { ScheduleListItem(host: h, schedule: $0) }
+        }.sorted { ($0.schedule.createdAt ?? .distantPast) > ($1.schedule.createdAt ?? .distantPast) }
+    }
+    private var errors: [(hostID: String, message: String)] {
+        model.visibleHosts.compactMap { h in
+            guard let message = loader.errorsByHost[h.id] else { return nil }
+            return (h.id, "\(h.label)：\(message)")
+        }
+    }
+    private var visibleActionError: String? {
+        guard let actionError, model.visibleHosts.contains(where: { $0.id == actionError.hostID }) else { return nil }
+        return actionError.message
+    }
+
+    private var visible: [ScheduleListItem] {
         items.filter { item in
-            if let hostFilter, item.host.id != hostFilter { return false }
             let ended = item.schedule.status == "completed" || item.schedule.isExpired || targetGone(item)
             return tab == 0 ? !ended : ended
         }
     }
 
     var body: some View {
+        @Bindable var model = model
         List {
-            ForEach(errors, id: \.self) { Banner(level: "error", message: $0) }
-            ForEach(visible, id: \.schedule.id) { item in
+            if let visibleActionError { Banner(level: "error", message: visibleActionError) }
+            ForEach(errors, id: \.hostID) { Banner(level: "error", message: $0.message) }
+            ForEach(visible) { item in
                 ScheduleRow(item: item, gone: targetGone(item), showHost: model.hosts.count > 1)
                     .contentShape(Rectangle())
                     .onTapGesture { detail = (item.host, item.schedule) }
                     .contextMenu { menu(item) }
             }
+            if loading && (!visible.isEmpty || !errors.isEmpty || visibleActionError != nil) {
+                ProgressView("加载中…")
+            }
         }
         .overlay {
-            if visible.isEmpty {
-                if (loading && items.isEmpty) || model.connectionKey.isEmpty { ProgressView(model.connectionKey.isEmpty ? "正在连接…" : "") }
+            if visible.isEmpty && errors.isEmpty && visibleActionError == nil {
+                if loading || connectedHosts.isEmpty { ProgressView(connectedHosts.isEmpty ? "正在连接…" : "") }
                 else if tab == 0 {
                     ContentUnavailableView {
                         Label("没有进行中的计划任务", systemImage: "calendar.badge.clock")
@@ -60,24 +83,26 @@ struct SchedulesView: View {
             .compatibleSharedBackgroundHidden()
             if model.hosts.count > 1 {
                 ToolbarItem(placement: .primaryAction) {
-                    Picker("主机", selection: $hostFilter) {
+                    Picker("主机", selection: $model.hostFilter) {
                         Text("全部主机").tag(String?.none)
                         ForEach(model.hosts) { h in Text(h.label).tag(Optional(h.id)) }
                     }
                     .fixedSize()
                 }
             }
-            ToolbarItem(placement: .primaryAction) { Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("刷新") }
+            ToolbarItem(placement: .primaryAction) { Button { refresh += 1 } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("刷新") }
             ToolbarItem(placement: .primaryAction) { Button { editing = .new } label: { Label("新建", systemImage: "plus") } }
         }
-        .task(id: model.connectionKey) {
+        .task(id: loadKey) {
+            actionError = nil
             // No push for schedules: refresh while visible.
             while !Task.isCancelled {
                 await load()
                 try? await Task.sleep(for: .seconds(20))
             }
         }
-        .sheet(item: $editing) { target in ScheduleForm(target: target) { Task { await load() } } }
+        .onDisappear { loader.cancel() }
+        .sheet(item: $editing) { target in ScheduleForm(target: target) { refresh += 1 } }
         .sheet(isPresented: Binding(get: { detail != nil }, set: { if !$0 { detail = nil } })) {
             if let (h, s) = detail { ScheduleDetail(host: h, scheduleId: s.id) }
         }
@@ -88,12 +113,12 @@ struct SchedulesView: View {
         } message: { Text("删除后无法恢复。") }
     }
 
-    private func targetGone(_ item: (host: HostStore, schedule: Schedule)) -> Bool {
+    private func targetGone(_ item: ScheduleListItem) -> Bool {
         guard let id = item.schedule.targetAgentId else { return false }
         return item.host.state == .connected && item.host.agents[id] == nil
     }
 
-    @ViewBuilder private func menu(_ item: (host: HostStore, schedule: Schedule)) -> some View {
+    @ViewBuilder private func menu(_ item: ScheduleListItem) -> some View {
         let s = item.schedule
         Button("编辑…") { editing = .edit(item.host.id, s) }
         if !s.isHeartbeat && (s.status == "active" || s.status == "paused") {
@@ -108,32 +133,42 @@ struct SchedulesView: View {
         Task {
             do {
                 if action == "run-once" {
-                    Task { try? await host.scheduleAction(action, s.id); await load() }
+                    Task { try? await host.scheduleAction(action, s.id); refresh += 1 }
                     try? await Task.sleep(for: .seconds(1))
                 } else {
                     try await host.scheduleAction(action, s.id)
                 }
-            } catch { errors = ["\(s.title)：\(error)"] }
-            await load()
+            } catch {
+                actionError = (host.id, "\(s.title)：\(error)")
+                return
+            }
+            refresh += 1
         }
     }
 
     private func load() async {
-        loading = true
-        var all: [(HostStore, Schedule)] = []
-        var errs: [String] = []
-        for h in model.hosts where h.state == .connected {
-            do { all += try await h.listSchedules().map { (h, $0) } }
-            catch { errs.append("\(h.label)：\(error)") }
+        let sources = connectedHosts.map { h in
+            ScheduleListLoader.Source(hostID: h.id) { try await h.listSchedules() }
         }
-        items = all.sorted { ($0.1.createdAt ?? .distantPast) > ($1.1.createdAt ?? .distantPast) }.map { (host: $0.0, schedule: $0.1) }
-        errors = errs
-        loading = false
+        await loader.load(sources: sources, selectedHostID: model.hostFilter)
     }
 }
 
+private struct ScheduleLoadKey: Equatable {
+    let hostID: String?
+    let connectedHostIDs: [String]
+    let refresh: Int
+}
+
+private struct ScheduleListItem: Identifiable {
+    let host: HostStore
+    let schedule: Schedule
+    // Schedule IDs belong to a daemon, not to the combined list of machines.
+    var id: String { host.id + ":" + schedule.id }
+}
+
 private struct ScheduleRow: View {
-    let item: (host: HostStore, schedule: Schedule)
+    let item: ScheduleListItem
     let gone: Bool
     let showHost: Bool
 
