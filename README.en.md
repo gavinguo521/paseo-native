@@ -149,7 +149,7 @@ To clean up fully, also remove `~/Library/Application Support/Paseo Native` and
 
 ## Feedback
 
-Please open an [issue](https://github.com/52216108/paseo-native/issues); attach the file from Settings → About →
+There is also a WeChat group (in Chinese), see the [Chinese README](README.md#反馈与交流). Please open an [issue](https://github.com/52216108/paseo-native/issues); attach the file from Settings → About →
 导出诊断信息 (export diagnostics) — it contains no conversation content, and pairing links and passwords are redacted.
 
 ## Building the Mac app
