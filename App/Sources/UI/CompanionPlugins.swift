@@ -96,7 +96,7 @@ struct CompanionPluginsSheet: View {
                 } else {
                     Button(installing ? "正在安装…" : "安装") { install() }
                         .keyboardShortcut(.defaultAction)
-                        .buttonStyle(.glassProminent)
+                        .compatibleGlassButtonStyle(prominent: true)
                         .disabled(installing || selected.isEmpty)
                 }
             }

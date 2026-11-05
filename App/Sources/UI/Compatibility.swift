@@ -1,0 +1,74 @@
+import SwiftUI
+
+/// Keep the existing Liquid Glass appearance on newer systems, with standard surfaces on iOS 18.
+extension View {
+    @ViewBuilder
+    func compatibleGlassEffect<S: InsettableShape>(in shape: S, interactive: Bool = false) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+        } else {
+            background(Theme.surface1, in: shape)
+                .overlay {
+                    shape.strokeBorder(Theme.border, lineWidth: 0.5).allowsHitTesting(false)
+                }
+        }
+    }
+
+    @ViewBuilder
+    func compatibleGlassButtonStyle(prominent: Bool = false) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            if prominent {
+                buttonStyle(.glassProminent)
+            } else {
+                buttonStyle(.glass)
+            }
+        } else {
+            if prominent {
+                buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
+            } else {
+                buttonStyle(.bordered).buttonBorderShape(.capsule)
+            }
+        }
+    }
+
+    /// iOS 18 uses its standard scroll edges; scrolling, anchors and keyboard behavior stay intact.
+    @ViewBuilder
+    func compatibleScrollEdgeEffects() -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            scrollEdgeEffectStyle(.soft, for: .top)
+                .scrollEdgeEffectHidden(true, for: .bottom)
+        } else {
+            self
+        }
+    }
+}
+
+/// Glass containers only coordinate visual effects; older systems can use the same content directly.
+struct CompatibleGlassEffectContainer<Content: View>: View {
+    private let spacing: CGFloat?
+    private let content: Content
+
+    init(spacing: CGFloat? = nil, @ViewBuilder content: () -> Content) {
+        self.spacing = spacing
+        self.content = content()
+    }
+
+    var body: some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing) { content }
+        } else {
+            content
+        }
+    }
+}
+
+extension ToolbarContent {
+    @ToolbarContentBuilder
+    func compatibleSharedBackgroundHidden() -> some ToolbarContent {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
+    }
+}

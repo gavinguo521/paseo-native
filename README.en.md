@@ -17,7 +17,7 @@ An unofficial native client for [Paseo](https://paseo.sh) on Mac, iPhone and iPa
 
 ## Features
 
-- **Native UI**: SwiftUI with the Liquid Glass design of macOS / iOS 26; long sessions scroll smoothly
+- **Native UI**: SwiftUI with Liquid Glass on macOS / iOS 26 and later, and standard buttons and rounded backgrounds on iOS 18; long sessions scroll smoothly
 - **On par with the official client**: multiple machines, sessions, timeline, permissions, terminals, files, diffs,
   Git and pull requests, schedules, command palette
 - **Mac**: menu bar status, reply / approve / deny from notifications, Quick Look, drag files out, an optional
@@ -37,7 +37,7 @@ with the Claude Code / Codex accounts logged in there.
 | **iPhone / iPad** | No prebuilt package; build it with Xcode, see [iPhone / iPad](#iphone--ipad) |
 | **Android** | Use the official app; both can connect to the same machine |
 
-Requires macOS 26 / iOS 26 / iPadOS 26 and a computer running a Paseo daemon (bundled with the official desktop app;
+Requires macOS 26 / iOS 18 / iPadOS 18. iOS / iPadOS 18 uses compatible styling while 26 and later retains Liquid Glass, with the same feature logic. Also requires a computer running a Paseo daemon (bundled with the official desktop app;
 Paseo Native can also install one). Tested with Paseo v0.15.
 
 ## Getting started

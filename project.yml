@@ -2,7 +2,7 @@ name: Paseo
 options:
   developmentLanguage: zh-Hans
   deploymentTarget:
-    iOS: "26.0"
+    iOS: "18.0"
     macOS: "26.0"
   createIntermediateGroups: true
 configFiles:
@@ -89,7 +89,7 @@ targets:
   PaseoWidgets:
     type: app-extension
     platform: iOS
-    deploymentTarget: "26.0"
+    deploymentTarget: "18.0"
     sources:
       - Widgets
       - App/Shared

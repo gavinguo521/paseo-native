@@ -93,7 +93,7 @@ struct SidebarView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     appTitle(size: 22).fixedSize()
                 }
-                .sharedBackgroundVisibility(.hidden)
+                .compatibleSharedBackgroundHidden()
             }
         }
         #endif
@@ -553,7 +553,7 @@ struct SidebarView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("还没有机器").font(.system(size: 14, weight: .semibold))
             Text("在电脑上运行 paseo daemon pair，把配对链接粘贴进来。").font(.system(size: 12)).foregroundStyle(Theme.muted)
-            Button("添加机器") { showAddHost = true }.buttonStyle(.glassProminent).tint(Theme.accent)
+            Button("添加机器") { showAddHost = true }.compatibleGlassButtonStyle(prominent: true).tint(Theme.accent)
         }
         .padding(16)
     }
@@ -562,10 +562,10 @@ struct SidebarView: View {
 
     private var bottomBar: some View { buttons }
 
-    /// Footer actions as floating Liquid Glass capsules: add project / usage / machines on the left,
+    /// Footer actions as floating capsules (Liquid Glass on newer systems): add project / usage / machines on the left,
     /// help / settings on the right (same actions as the official footer, native look).
     private var buttons: some View {
-        GlassEffectContainer(spacing: 12) {
+        CompatibleGlassEffectContainer(spacing: 12) {
             HStack {
                 HStack(spacing: 2) {
                     footerButton("folder.badge.plus", help: String(localized: "添加项目")) { NotificationCenter.default.post(name: .addProject, object: nil) }
@@ -575,7 +575,7 @@ struct SidebarView: View {
                     machinesMenu
                 }
                 .padding(4)
-                .glassEffect(.regular.interactive(), in: Capsule())
+                .compatibleGlassEffect(in: Capsule(), interactive: true)
                 Spacer()
                 HStack(spacing: 2) {
                     helpMenu
@@ -583,7 +583,7 @@ struct SidebarView: View {
                         .keyboardShortcut(",", modifiers: .command)
                 }
                 .padding(4)
-                .glassEffect(.regular.interactive(), in: Capsule())
+                .compatibleGlassEffect(in: Capsule(), interactive: true)
             }
             .padding(.horizontal, 14)
             .bottomBarPlacement()
@@ -655,7 +655,7 @@ struct SearchCapsule: View {
         .font(.system(size: 14))
         .padding(.horizontal, 14)
         .frame(height: 36)
-        .glassEffect(.regular, in: Capsule())
+        .compatibleGlassEffect(in: Capsule())
     }
 }
 

@@ -465,7 +465,7 @@ struct ComposerView: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 12))
                 .padding(.horizontal, 14).padding(.vertical, 6)
-                .glassEffect(.regular, in: Capsule())
+                .compatibleGlassEffect(in: Capsule())
             }
         }
         .frame(maxWidth: Theme.chatMaxWidth)
@@ -758,7 +758,7 @@ struct DraftComposerView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.muted)
                 .padding(.horizontal, 14).frame(height: 28)
-                .glassEffect(.regular, in: Capsule())
+                .compatibleGlassEffect(in: Capsule())
             }
             shell
         }
@@ -1220,7 +1220,7 @@ struct Chip<Content: View>: View {
             .foregroundStyle(Theme.muted)
             .padding(.horizontal, 12)
             .frame(height: 28)
-            .glassEffect(.regular.interactive(), in: Capsule())
+            .compatibleGlassEffect(in: Capsule(), interactive: true)
     }
 }
 
@@ -1312,7 +1312,7 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
     @Environment(\.scrollToBottom) private var scrollToBottom
 
     var body: some View {
-        GlassEffectContainer {
+        CompatibleGlassEffectContainer {
             VStack(alignment: .leading, spacing: 8) {
                 if let error { Text(error).font(.caption).foregroundStyle(Theme.destructive).padding(.leading, 8) }
                 if let autocomplete, autocomplete.isActive {
@@ -1424,7 +1424,7 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                 #endif
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
+                .compatibleGlassEffect(in: RoundedRectangle(cornerRadius: 24))
                 .overlay(RoundedRectangle(cornerRadius: 24).stroke(Theme.accent, lineWidth: dropTargeted ? 2 : 0))
             }
         }

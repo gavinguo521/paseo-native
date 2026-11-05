@@ -70,7 +70,7 @@ struct AgentView: View {
         }
         .font(.system(size: 13))
         .padding(.horizontal, 14).frame(height: 36)
-        .glassEffect(.regular, in: Capsule())
+        .compatibleGlassEffect(in: Capsule())
         .padding(.top, 8)
         .onChange(of: findQuery) { matchIndex = max(matches.count - 1, 0); jump() }
         .onKeyPress(.escape) { finding = false; return .handled }
@@ -251,7 +251,7 @@ struct AgentView: View {
             .font(.system(size: 12))
             .foregroundStyle(Theme.muted)
             .padding(.horizontal, 14).padding(.vertical, 6)
-            .glassEffect(.regular, in: Capsule())
+            .compatibleGlassEffect(in: Capsule())
             .frame(maxWidth: Theme.chatMaxWidth)
             .padding(.horizontal, 16).padding(.bottom, 4)
             .frame(maxWidth: .infinity)
@@ -329,11 +329,8 @@ struct AgentView: View {
                 .modifier(LayoutProbe(label: "column"))
             }
             .scrollPosition($scrollPosition)
-            // Soft fade under the floating top buttons, not a frosted bar with a hairline (the hard style iOS
-            // picks once the bar has a title).
-            .scrollEdgeEffectStyle(.soft, for: .top)
-            // Nothing behind the chips row above the composer: text shows through it, on the Mac too.
-            .scrollEdgeEffectHidden(true, for: .bottom)
+            // Newer systems soften the top edge and hide the bottom effect; iOS 18 uses standard edges.
+            .compatibleScrollEdgeEffects()
             .environment(\.openURL, OpenURLAction { url in openLink(url) })
             .overlay(alignment: .top) { if finding { findBar } }
             .popover(isPresented: $showOutline, arrowEdge: .top) { outline.compactPopover() }
