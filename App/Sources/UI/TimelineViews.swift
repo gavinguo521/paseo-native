@@ -621,19 +621,19 @@ struct ToolGroupView: View {
                     if let command {
                         // A command line is data, not a heading: one quiet monospaced line.
                         Text(isBackground ? "后台运行" : "运行").font(.system(size: Theme.base, weight: .semibold))
-                            .foregroundStyle(failed ? Theme.destructive : Theme.foreground.opacity(0.75))
+                            .foregroundStyle(Theme.foreground.opacity(0.75))
                         Text(command).lineLimit(1).truncationMode(.tail)
                             .font(.system(size: Theme.code, design: .monospaced))
                             .foregroundStyle(Theme.muted)
                     } else {
                         Text(summary).lineLimit(1).truncationMode(.middle)
                             .font(.system(size: Theme.base, weight: .semibold))
-                            .foregroundStyle(failed ? Theme.destructive : Theme.foreground.opacity(0.75))
+                            .foregroundStyle(Theme.foreground.opacity(0.75))
                     }
                     Spacer(minLength: 0)
                 }
                 .font(.system(size: Theme.base))
-                .foregroundStyle(failed ? Theme.destructive : Theme.muted)
+                .foregroundStyle(Theme.muted)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -664,7 +664,9 @@ struct ToolGroupView: View {
         if running {
             ProgressView().controlSize(.small).scaleEffect(0.75).frame(width: 18, height: 18)
         } else {
-            Image(systemName: failed ? "xmark.circle" : "checkmark.circle").font(.system(size: 17, weight: .light)).frame(width: 18)
+            // 工具失败多是命令非零退出等常态（agent 会自己处理），不算会话出错：全灰，只靠图标形状区分。
+            Image(systemName: failed ? "exclamationmark.circle" : "checkmark.circle").font(.system(size: 17, weight: .light)).frame(width: 18)
+                .foregroundStyle(Theme.muted)
         }
     }
 
@@ -744,9 +746,10 @@ private struct ToolDetailView: View {
                 Text(text).font(.system(size: Theme.base)).foregroundStyle(Theme.muted).textSelection(.enabled)
             case .toolCall(_, _, _, let detail, let error, _):
                 detailView(detail)
-                if let error {
+                // daemon 有时把 error 发成 JSON null，别显示成字面量「null」。
+                if let error, error != .null {
                     Text(error["message"]?.stringValue ?? error.description)
-                        .font(.system(size: Theme.code, design: .monospaced)).foregroundStyle(Theme.destructive)
+                        .font(.system(size: Theme.code, design: .monospaced)).foregroundStyle(Theme.muted)
                 }
             default:
                 EmptyView()
