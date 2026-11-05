@@ -188,7 +188,7 @@ public final class HostStore: Identifiable {
                 state = .failed(message: error.description, needsPassword: true)
                 return
             } catch let error as SecureChannelError where error.closeCode == 4002 {
-                state = .failed(message: "daemon 太旧或握手被拒：\(error.description)", needsPassword: false)
+                state = .failed(message: String(localized: "daemon 太旧或握手被拒：\(error.description)", bundle: .module), needsPassword: false)
                 return
             } catch {
                 if Task.isCancelled { return }
@@ -199,7 +199,7 @@ public final class HostStore: Identifiable {
                 continue
             }
             // Clean close: retry quickly.
-            state = .waiting(message: "连接断开，正在重连", retryAt: Date().addingTimeInterval(1.5))
+            state = .waiting(message: String(localized: "连接断开，正在重连", bundle: .module), retryAt: Date().addingTimeInterval(1.5))
             try? await Task.sleep(for: .seconds(1.5))
         }
     }
@@ -410,7 +410,7 @@ public final class HostStore: Identifiable {
                 let r = try await c.request("fetch_agent_timeline_request", params)
                 guard let p = r["payload"] else { break }
                 if let e = p["error"], e != .null {
-                    timelineErrors[agentId] = e["message"]?.stringValue ?? e.stringValue ?? "加载历史失败"
+                    timelineErrors[agentId] = e["message"]?.stringValue ?? e.stringValue ?? String(localized: "加载历史失败", bundle: .module)
                     return
                 }
                 timeline.applyPage(p)
@@ -423,7 +423,7 @@ public final class HostStore: Identifiable {
                 params["wholeTurns"] = nil
             }
         } catch {
-            timelineErrors[agentId] = "加载历史失败：\(error)"
+            timelineErrors[agentId] = String(localized: "加载历史失败：\(error)", bundle: .module)
             return
         }
         timelineErrors[agentId] = nil
@@ -502,7 +502,7 @@ public final class HostStore: Identifiable {
         case rejected(String)
         public var description: String {
             switch self {
-            case .notConnected: "未连接"
+            case .notConnected: String(localized: "未连接", bundle: .module)
             case .rejected(let m): m
             }
         }
@@ -516,7 +516,7 @@ public final class HostStore: Identifiable {
     func check(_ r: JSONValue) throws {
         let p = r["payload"]
         if p?["accepted"]?.boolValue == false || (p?["error"] != nil && p?["error"] != .null) {
-            throw ActionError.rejected(p?["error"]?.stringValue ?? p?["error"]?["message"]?.stringValue ?? "请求被拒绝")
+            throw ActionError.rejected(p?["error"]?.stringValue ?? p?["error"]?["message"]?.stringValue ?? String(localized: "请求被拒绝", bundle: .module))
         }
     }
 
@@ -615,7 +615,7 @@ public final class HostStore: Identifiable {
     /// Rewinds to a user message. Non-"files" modes rebuild the timeline (the daemon pushes a replacement).
     public func rewind(_ agentId: String, messageId: String, mode: String) async throws {
         let r = try await conn().request("agent.rewind.request", ["agentId": .string(agentId), "messageId": .string(messageId), "mode": .string(mode)])
-        if r["payload"]?["ok"]?.boolValue == false { throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? "回退失败") }
+        if r["payload"]?["ok"]?.boolValue == false { throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? String(localized: "回退失败", bundle: .module)) }
         if mode != "files" { reloadTimeline(agentId) }
     }
 
@@ -624,7 +624,7 @@ public final class HostStore: Identifiable {
         var params: [String: JSONValue] = ["agentId": .string(agentId)]
         if let boundaryMessageId { params["boundaryMessageId"] = .string(boundaryMessageId) }
         let r = try await conn().request("agent.fork_context.request", params)
-        guard let a = r["payload"]?["attachment"], a != .null else { throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? "分叉失败") }
+        guard let a = r["payload"]?["attachment"], a != .null else { throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? String(localized: "分叉失败", bundle: .module)) }
         return a
     }
 
@@ -678,7 +678,7 @@ public final class HostStore: Identifiable {
                     let ahead = Int(d["localAhead"]?.doubleValue ?? 0), behind = Int(d["localBehind"]?.doubleValue ?? 0)
                     let diverged = d["hasRemote"]?.boolValue == true && (ahead > 0 || behind > 0)
                     if d["hasRemote"]?.boolValue != true || diverged {
-                        local.append(BranchOption(refName: "refs/heads/" + name, label: name, detail: diverged ? "本地 ↑\(ahead) ↓\(behind)" : "本地"))
+                        local.append(BranchOption(refName: "refs/heads/" + name, label: name, detail: diverged ? String(localized: "本地 ↑\(ahead) ↓\(behind)", bundle: .module) : String(localized: "本地", bundle: .module)))
                     }
                 }
                 if d["hasRemote"] == nil && d["hasLocal"] == nil { local.append(BranchOption(refName: name, label: name, detail: "")) }
@@ -719,7 +719,7 @@ public final class HostStore: Identifiable {
         }
         let r = try await conn().request("workspace.create.request", params, timeout: .seconds(900))
         let p = r["payload"]
-        if let e = p?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? e["message"]?.stringValue ?? "创建工作区失败") }
+        if let e = p?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? e["message"]?.stringValue ?? String(localized: "创建工作区失败", bundle: .module)) }
         if let w = p?["workspace"].flatMap(Workspace.init) { workspaces[w.id] = w }
         if let a = p?["agent"].flatMap(Agent.init) { agents[a.id] = a }
         return (p?["workspace"]?["id"]?.stringValue, p?["agent"]?["id"]?.stringValue)
@@ -728,8 +728,8 @@ public final class HostStore: Identifiable {
     /// Registers a directory as a project (idempotent).
     public func addProject(cwd: String) async throws -> Project? {
         let r = try await conn().request("project.add.request", ["cwd": .string(cwd)])
-        if r["payload"]?["errorCode"]?.stringValue == "directory_not_found" { throw ActionError.rejected("目录不存在") }
-        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? "添加项目失败") }
+        if r["payload"]?["errorCode"]?.stringValue == "directory_not_found" { throw ActionError.rejected(String(localized: "目录不存在", bundle: .module)) }
+        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? String(localized: "添加项目失败", bundle: .module)) }
         let p = r["payload"]?["project"].flatMap(Project.init)
         if let p { projects[p.id] = p }
         return p
@@ -740,9 +740,9 @@ public final class HostStore: Identifiable {
         let r = try await conn().request("project.create_directory.request", ["parentPath": .string(parent), "name": .string(name)], timeout: .seconds(60))
         let p = r["payload"]
         if let e = p?["error"], e != .null {
-            let messages = ["invalid_name": "名字不合法", "parent_directory_not_found": "父目录不存在", "directory_exists": "这个目录已经存在",
-                            "permission_denied": "没有权限", "registration_failed": "目录建好了，但注册项目失败"]
-            throw ActionError.rejected(p?["errorCode"]?.stringValue.flatMap { messages[$0] } ?? e.stringValue ?? "新建目录失败")
+            let messages = ["invalid_name": String(localized: "名字不合法", bundle: .module), "parent_directory_not_found": String(localized: "父目录不存在", bundle: .module), "directory_exists": String(localized: "这个目录已经存在", bundle: .module),
+                            "permission_denied": String(localized: "没有权限", bundle: .module), "registration_failed": String(localized: "目录建好了，但注册项目失败", bundle: .module)]
+            throw ActionError.rejected(p?["errorCode"]?.stringValue.flatMap { messages[$0] } ?? e.stringValue ?? String(localized: "新建目录失败", bundle: .module))
         }
         let project = p?["project"].flatMap(Project.init)
         if let project { projects[project.id] = project }
@@ -769,9 +769,9 @@ public final class HostStore: Identifiable {
         }
         let status = p?["status"]?.stringValue
         let unavailable: String? = switch status {
-        case "unavailable": "主机上没有安装 gh，不能搜索，可以直接填仓库地址"
-        case "unauthenticated": "主机上的 gh 未登录，不能搜索，可以直接填仓库地址"
-        case "error": p?["error"]?.stringValue ?? "搜索 GitHub 仓库失败"
+        case "unavailable": String(localized: "主机上没有安装 gh，不能搜索，可以直接填仓库地址", bundle: .module)
+        case "unauthenticated": String(localized: "主机上的 gh 未登录，不能搜索，可以直接填仓库地址", bundle: .module)
+        case "error": p?["error"]?.stringValue ?? String(localized: "搜索 GitHub 仓库失败", bundle: .module)
         default: nil
         }
         return (repos, unavailable)
@@ -782,7 +782,7 @@ public final class HostStore: Identifiable {
         var params: [String: JSONValue] = ["repo": .string(repo), "targetDirectory": .string(parent)]
         if let proto { params["cloneProtocol"] = .string(proto) }
         let r = try await conn().request("project.github.clone.request", params, timeout: .seconds(300))
-        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? "克隆失败") }
+        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? String(localized: "克隆失败", bundle: .module)) }
         let project = r["payload"]?["project"].flatMap(Project.init)
         if let project { projects[project.id] = project }
         return project
@@ -791,7 +791,7 @@ public final class HostStore: Identifiable {
     /// `name` nil or empty reverts to the name derived from the directory.
     public func renameProject(_ id: String, name: String?) async throws {
         let r = try await conn().request("project.rename.request", ["projectId": .string(id), "customName": name.flatMap { $0.isEmpty ? nil : .string($0) } ?? .null])
-        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? e["message"]?.stringValue ?? "重命名失败") }
+        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? e["message"]?.stringValue ?? String(localized: "重命名失败", bundle: .module)) }
     }
 
     /// Sets the project's icon from image bytes (base64; the daemon accepts a square PNG/JPEG/GIF/WebP up to
@@ -804,7 +804,7 @@ public final class HostStore: Identifiable {
     /// Removes the project from Paseo (files on disk stay).
     public func removeProject(_ id: String) async throws {
         let r = try await conn().request("project.remove.request", ["projectId": .string(id)], timeout: .seconds(120))
-        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? e["message"]?.stringValue ?? "移除失败") }
+        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? e["message"]?.stringValue ?? String(localized: "移除失败", bundle: .module)) }
         projects[id] = nil
     }
 
@@ -818,7 +818,7 @@ public final class HostStore: Identifiable {
 
     public func archiveWorkspace(_ id: String) async throws {
         let r = try await conn().request("archive_workspace_request", ["workspaceId": .string(id)], timeout: .seconds(120))
-        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? "归档失败") }
+        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? String(localized: "归档失败", bundle: .module)) }
         workspaces[id] = nil
     }
 
@@ -828,7 +828,7 @@ public final class HostStore: Identifiable {
 
     public func markWorkspaceUnread(_ id: String) async throws {
         let r = try await conn().request("workspace.mark_unread.request", ["workspaceId": .string(id)])
-        if r["payload"]?["success"]?.boolValue == false { throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? "没有可标为未读的会话") }
+        if r["payload"]?["success"]?.boolValue == false { throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? String(localized: "没有可标为未读的会话", bundle: .module)) }
     }
 
     // MARK: Schedules (no push: callers refetch)
@@ -912,8 +912,8 @@ public final class HostStore: Identifiable {
         if !images.isEmpty { params["images"] = .array(images.map(\.json)) }
         if !attachments.isEmpty { params["attachments"] = .array(attachments) }
         let r = try await conn().request("agent.create.request", params)
-        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? e["message"]?.stringValue ?? "创建失败") }
-        guard let a = r["payload"]?["agent"].flatMap(Agent.init) else { throw ActionError.rejected("创建失败") }
+        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? e["message"]?.stringValue ?? String(localized: "创建失败", bundle: .module)) }
+        guard let a = r["payload"]?["agent"].flatMap(Agent.init) else { throw ActionError.rejected(String(localized: "创建失败", bundle: .module)) }
         agents[a.id] = a
         return a.id
     }

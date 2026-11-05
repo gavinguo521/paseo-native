@@ -273,7 +273,7 @@ struct FileViewer: View {
                 Text(name).font(.system(size: 13, weight: .semibold))
                 if let line { Text("第 \(line) 行").font(.system(size: 12)).foregroundStyle(Theme.muted) }
                 if let c = content, c.kind == .text, let t = c.text {
-                    Text("\(t.split(separator: "\n", omittingEmptySubsequences: false).count) 行 · " + ByteCountFormatter.string(fromByteCount: Int64(c.size), countStyle: .file))
+                    Text(String(localized: "\(t.split(separator: "\n", omittingEmptySubsequences: false).count) 行 · \(ByteCountFormatter.string(fromByteCount: Int64(c.size), countStyle: .file))"))
                         .font(.system(size: 11)).foregroundStyle(Theme.extraMuted)
                 }
                 Spacer()
@@ -533,12 +533,12 @@ struct ChangesView: View {
         .confirmationDialog("丢弃「\(confirmDiscard?.path ?? "")」的改动？", isPresented: Binding(get: { confirmDiscard != nil }, set: { if !$0 { confirmDiscard = nil } })) {
             Button("丢弃", role: .destructive) { if let f = confirmDiscard { run("discard", paths: [f.path]) } }
         } message: { Text("未跟踪的新文件会被删除，无法恢复。") }
-        .confirmationDialog("把「\(status?.currentBranch ?? "当前分支")」合并到 \(baseName)？", isPresented: $confirmMergeToBase) {
+        .confirmationDialog("把「\(status?.currentBranch ?? String(localized: "当前分支"))」合并到 \(baseName)？", isPresented: $confirmMergeToBase) {
             Button("合并") { run("mergeToBase") }
         } message: { Text("在本地把这个分支合并进 \(baseName)，不会推送。") }
         .sheet(isPresented: $creatingPR) {
             CreatePullRequestSheet(forge: pr?.forgeName ?? "GitHub", branch: status?.currentBranch ?? "", base: baseName) { title, body in
-                perform("创建 PR 中", done: "PR 已创建") { try await host.createPullRequest(cwd: cwd, title: title, body: body) }
+                perform(String(localized: "创建 PR 中"), done: String(localized: "PR 已创建")) { try await host.createPullRequest(cwd: cwd, title: title, body: body) }
             }
         }
     }
@@ -584,7 +584,7 @@ struct ChangesView: View {
                 else if d.files.isEmpty { Text(mode == "uncommitted" ? "没有未提交的改动" : "本分支还没有提交").foregroundStyle(Theme.muted).padding() }
                 List(selection: $selected) {
                   ForEach(groupedFiles(d.files), id: \.0) { dir, files in
-                   Section(dir.isEmpty ? "根目录" : dir) {
+                   Section(dir.isEmpty ? String(localized: "根目录") : dir) {
                     ForEach(files) { f in fileRow(f) }
                    }
                   }
@@ -643,15 +643,15 @@ struct ChangesView: View {
                     if let u = URL(string: p.url) { Link(destination: u) { Label("在浏览器打开 PR", systemImage: "safari") } }
                     if p.isOpen {
                         Menu("合并 PR") {
-                            ForEach([("squash", "Squash 合并"), ("merge", "创建合并提交"), ("rebase", "Rebase 合并")], id: \.0) { m, label in
+                            ForEach([("squash", String(localized: "Squash 合并")), ("merge", String(localized: "创建合并提交")), ("rebase", String(localized: "Rebase 合并"))], id: \.0) { m, label in
                                 Button(label) { mergeMethod = m; mergePR(m) }
                             }
                         }
                         Button("开启自动合并（\(methodLabel(mergeMethod))）") {
-                            perform("设置中", done: "已开启自动合并") { try await host.setAutoMerge(cwd: cwd, enabled: true, method: mergeMethod) }
+                            perform(String(localized: "设置中"), done: String(localized: "已开启自动合并")) { try await host.setAutoMerge(cwd: cwd, enabled: true, method: mergeMethod) }
                         }
                         Button("关闭自动合并") {
-                            perform("设置中", done: "已关闭自动合并") { try await host.setAutoMerge(cwd: cwd, enabled: false) }
+                            perform(String(localized: "设置中"), done: String(localized: "已关闭自动合并")) { try await host.setAutoMerge(cwd: cwd, enabled: false) }
                         }
                     }
                 } else {
@@ -731,17 +731,17 @@ struct ChangesView: View {
     private func checksSummary(_ p: PullRequestInfo) -> String {
         let failed = p.checks.filter { $0.status == "failure" }.count
         let pending = p.checks.filter { $0.status == "pending" }.count
-        if failed > 0 { return "\(failed) 项失败" }
-        if pending > 0 { return "\(pending) 项进行中" }
-        return "检查通过"
+        if failed > 0 { return String(localized: "\(failed) 项失败") }
+        if pending > 0 { return String(localized: "\(pending) 项进行中") }
+        return String(localized: "检查通过")
     }
 
     private func methodLabel(_ m: String) -> String {
-        switch m { case "merge": "合并提交"; case "rebase": "Rebase"; default: "Squash" }
+        switch m { case "merge": String(localized: "合并提交"); case "rebase": "Rebase"; default: "Squash" }
     }
 
     private func mergePR(_ method: String) {
-        perform("合并中", done: "PR 已合并") { try await host.mergePullRequest(cwd: cwd, method: method) }
+        perform(String(localized: "合并中"), done: String(localized: "PR 已合并")) { try await host.mergePullRequest(cwd: cwd, method: method) }
     }
 
     private var commitBar: some View {
@@ -756,11 +756,11 @@ struct ChangesView: View {
     }
 
     private func run(_ action: String, message: String? = nil, paths: [String] = []) {
-        let labels = ["pull": "拉取中", "push": "推送中", "refresh": "刷新中", "commit": "提交中", "discard": "丢弃中",
-                      "pullPush": "拉取并推送中", "mergeFromBase": "从 \(baseName) 合并中", "mergeToBase": "合并到 \(baseName) 中"]
-        let done = ["pull": "已拉取", "push": "已推送", "commit": "已提交", "discard": "已丢弃",
-                    "pullPush": "已拉取并推送", "mergeFromBase": "已从 \(baseName) 合并", "mergeToBase": "已合并到 \(baseName)"]
-        perform(labels[action] ?? "处理中", done: done[action]) {
+        let labels = ["pull": String(localized: "拉取中"), "push": String(localized: "推送中"), "refresh": String(localized: "刷新中"), "commit": String(localized: "提交中"), "discard": String(localized: "丢弃中"),
+                      "pullPush": String(localized: "拉取并推送中"), "mergeFromBase": String(localized: "从 \(baseName) 合并中"), "mergeToBase": String(localized: "合并到 \(baseName) 中")]
+        let done = ["pull": String(localized: "已拉取"), "push": String(localized: "已推送"), "commit": String(localized: "已提交"), "discard": String(localized: "已丢弃"),
+                    "pullPush": String(localized: "已拉取并推送"), "mergeFromBase": String(localized: "已从 \(baseName) 合并"), "mergeToBase": String(localized: "已合并到 \(baseName)")]
+        perform(labels[action] ?? String(localized: "处理中"), done: done[action]) {
             try await host.gitAction(action, cwd: cwd, message: message, paths: paths)
             if action == "commit" { self.message = "" }
         }
@@ -787,10 +787,10 @@ private struct PRStateBadge: View {
     let pr: PullRequestInfo
 
     var body: some View {
-        let (label, color): (String, SwiftUI.Color) = pr.isMerged ? ("已合并", .purple)
-            : pr.isDraft ? ("草稿", Theme.muted)
-            : pr.isOpen ? (pr.mergeable == "CONFLICTING" ? "有冲突" : pr.reviewDecision == "approved" ? "已批准" : pr.reviewDecision == "changes_requested" ? "需修改" : "打开", pr.mergeable == "CONFLICTING" ? Theme.destructive : Theme.dotSuccess)
-            : ("已关闭", Theme.destructive)
+        let (label, color): (String, SwiftUI.Color) = pr.isMerged ? (String(localized: "已合并"), .purple)
+            : pr.isDraft ? (String(localized: "草稿"), Theme.muted)
+            : pr.isOpen ? (pr.mergeable == "CONFLICTING" ? String(localized: "有冲突") : pr.reviewDecision == "approved" ? String(localized: "已批准") : pr.reviewDecision == "changes_requested" ? String(localized: "需修改") : String(localized: "打开"), pr.mergeable == "CONFLICTING" ? Theme.destructive : Theme.dotSuccess)
+            : (String(localized: "已关闭"), Theme.destructive)
         Text(label).font(.system(size: 10, weight: .semibold))
             .padding(.horizontal, 6).padding(.vertical, 2)
             .foregroundStyle(color)
@@ -1236,7 +1236,7 @@ struct ReviewFeedbackBar: View {
                 try await host.send(text, to: agent.id, steer: agent.status == .running)
                 model.reviewComments[workspace.directory] = nil
                 model.open(AgentRef(serverId: host.id, agentId: agent.id))
-            } catch { self.error = "发送失败：\(error)" }
+            } catch { self.error = String(localized: "发送失败：\(String(describing: error))") }
         }
     }
 }
@@ -1310,7 +1310,7 @@ final class TerminalBridge: NSObject, TerminalViewDelegate {
                 try await host.attachTerminal(terminalId, cols: max(size.cols, 20), rows: max(size.rows, 5)) { [weak self] e in self?.handle(e) }
                 attached = true
             } catch {
-                view.feed(text: "\r\n[无法附着终端：\(error)]\r\n")
+                view.feed(text: "\r\n[" + String(localized: "无法附着终端：\(String(describing: error))") + "]\r\n")
             }
         }
     }
@@ -1328,7 +1328,7 @@ final class TerminalBridge: NSObject, TerminalViewDelegate {
             view.feed(byteArray: ArraySlice([UInt8](d)))
             suppressInput = false
         case .exited(let error):
-            view.feed(text: "\r\n\u{1b}[2m[" + (error.map { "终端流中断：" + $0 } ?? "进程已退出") + "]\u{1b}[0m\r\n")
+            view.feed(text: "\r\n\u{1b}[2m[" + (error.map { String(localized: "终端流中断：\($0)") } ?? String(localized: "进程已退出")) + "]\u{1b}[0m\r\n")
         }
     }
 
@@ -1384,8 +1384,8 @@ struct ScriptsView: View {
                     Circle().fill(s.isRunning ? (s.health == "unhealthy" ? Theme.dotWarning : Theme.dotSuccess) : Theme.extraMuted).frame(width: 8, height: 8)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(s.name).font(.system(size: 14, weight: .medium))
-                        Text([s.type == "service" ? "服务" : "脚本", s.isRunning ? "运行中" : "已停止",
-                              s.port.map { "端口 \($0)" }, s.exitCode.map { "退出码 \($0)" }].compactMap { $0 }.joined(separator: " · "))
+                        Text([s.type == "service" ? String(localized: "服务") : String(localized: "脚本"), s.isRunning ? String(localized: "运行中") : String(localized: "已停止"),
+                              s.port.map { String(localized: "端口 \($0)") }, s.exitCode.map { String(localized: "退出码 \($0)") }].compactMap { $0 }.joined(separator: " · "))
                             .font(.system(size: 12)).foregroundStyle(Theme.muted)
                     }
                     Spacer()
@@ -1393,7 +1393,7 @@ struct ScriptsView: View {
                         Menu {
                             ForEach(s.urls, id: \.url) { u in
                                 Section(u.label) {
-                                    if let openInTab { Button("在标签中打开 " + u.url) { openInTab(u.url) } }
+                                    if let openInTab { Button(String(localized: "在标签中打开 \(u.url)")) { openInTab(u.url) } }
                                     if let url = URL(string: u.url) { Link("在系统浏览器打开", destination: url) }
                                     Button("复制地址") { Pasteboard.copy(u.url) }
                                 }

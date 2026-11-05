@@ -92,13 +92,13 @@ struct AddHostView: View {
         error = nil
         if method == "link" {
             do { try model.addHost(link: link, label: label, password: password); dismiss() }
-            catch { self.error = "链接无效：\(error)" }
+            catch { self.error = String(localized: "链接无效：\(error)") }
             return
         }
         connecting = true
         Task {
             do { _ = try await model.addDirectHost(address: address, useTls: useTls, label: label, password: password); dismiss() }
-            catch { self.error = "连不上：\(error)" }
+            catch { self.error = String(localized: "连不上：\(error)") }
             connecting = false
         }
     }
@@ -178,8 +178,8 @@ struct TextReportSheet: View {
 /// Machine identity colours (official host badges).
 enum HostColor {
     static let all: [(name: String, label: String, color: SwiftUI.Color)] = [
-        ("blue", "蓝", .blue), ("green", "绿", .green), ("orange", "橙", .orange), ("purple", "紫", .purple),
-        ("pink", "粉", .pink), ("teal", "青", .teal), ("red", "红", .red), ("yellow", "黄", .yellow),
+        ("blue", String(localized: "蓝"), .blue), ("green", String(localized: "绿"), .green), ("orange", String(localized: "橙"), .orange), ("purple", String(localized: "紫"), .purple),
+        ("pink", String(localized: "粉"), .pink), ("teal", String(localized: "青"), .teal), ("red", String(localized: "红"), .red), ("yellow", String(localized: "黄"), .yellow),
     ]
     static func color(for serverId: String) -> SwiftUI.Color? {
         let name = UserDefaults.standard.string(forKey: "hostColor." + serverId) ?? ""
@@ -235,11 +235,11 @@ struct HostDetailView: View {
                 NavigationLink("daemon 设置") { DaemonSettingsView(host: host) }
                 if let s = status {
                     LabeledContent("daemon", value: [s.version.map { "v" + $0 }, s.pid.map { "pid \($0)" },
-                                                     s.startedAt.map { "启动于 " + formatTimestamp($0) }].compactMap { $0 }.joined(separator: " · "))
+                                                     s.startedAt.map { String(localized: "启动于 \(formatTimestamp($0))") }].compactMap { $0 }.joined(separator: " · "))
                 }
                 HStack {
                     Button("更新 daemon…") { confirmUpdate = true }
-                    Button("诊断报告") { run("生成诊断中") { report = try await host.diagnostics() } }
+                    Button("诊断报告") { run(String(localized: "生成诊断中")) { report = try await host.diagnostics() } }
                     Spacer()
                     if let busy { ProgressView().controlSize(.small); Text(busy).foregroundStyle(Theme.muted) }
                 }
@@ -260,7 +260,7 @@ struct HostDetailView: View {
                         }
                     }
                 } else {
-                    Button("显示配对二维码和链接") { run("获取中") { pairing = try await host.pairingLink() } }
+                    Button("显示配对二维码和链接") { run(String(localized: "获取中")) { pairing = try await host.pairingLink() } }
                         .disabled(host.state != .connected)
                 }
             } header: { Text("添加到其他设备") }
@@ -301,7 +301,7 @@ struct HostDetailView: View {
             if label != host.label, !label.isEmpty { model.rename(host: host.id, to: label) }
         }
         .confirmationDialog("更新「\(host.label)」上的 daemon？", isPresented: $confirmUpdate) {
-            Button("更新") { run("更新中，可能要几分钟") { result = "已更新：" + (try await host.updateDaemon()) + "，daemon 会自动重启" } }
+            Button("更新") { run(String(localized: "更新中，可能要几分钟")) { let v = try await host.updateDaemon(); result = String(localized: "已更新：\(v)，daemon 会自动重启") } }
         } message: { Text("更新期间这台机器上运行中的会话可能会中断。") }
         .sheet(isPresented: Binding(get: { report != nil }, set: { if !$0 { report = nil } })) {
             TextReportSheet(title: "诊断报告", text: report ?? "")
@@ -317,7 +317,7 @@ struct HostDetailView: View {
         busy = label
         result = nil
         Task {
-            do { try await work() } catch { result = "失败：\(error)" }
+            do { try await work() } catch { result = String(localized: "失败：\(error)") }
             busy = nil
         }
     }
@@ -341,7 +341,7 @@ private struct SkillsSection: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(stateLabel)
                     if let s = status, s.state == "drift", !s.pendingOps.isEmpty {
-                        Text(s.pendingOps.joined(separator: "、")).font(.caption).foregroundStyle(Theme.muted).lineLimit(2)
+                        Text(s.pendingOps.joined(separator: String(localized: "、", comment: "列举时的分隔符（顿号）"))).font(.caption).foregroundStyle(Theme.muted).lineLimit(2)
                     }
                 }
                 Spacer()
@@ -376,7 +376,7 @@ private struct SkillsSection: View {
         .task(id: host.state == .connected) { if host.state == .connected { run { try await host.skills("get_status") } } }
         .confirmationDialog("移除取消勾选的 skills？", isPresented: Binding(get: { !confirm.isEmpty }, set: { if !$0 { confirm = [] } })) {
             Button("移除", role: .destructive) { let c = confirm; confirm = []; save(confirmed: c) }
-        } message: { Text("将从 ~/.agents、~/.claude、~/.codex 中删除 \(confirm.joined(separator: "、"))，你在这些 skill 文件夹里加的内容也会一并删除。") }
+        } message: { Text("将从 ~/.agents、~/.claude、~/.codex 中删除 \(confirm.joined(separator: String(localized: "、", comment: "列举时的分隔符（顿号）")))，你在这些 skill 文件夹里加的内容也会一并删除。") }
         .confirmationDialog("卸载 Paseo skills？", isPresented: $confirmUninstall) {
             Button("卸载", role: .destructive) { run { try await host.skills("uninstall") } }
         } message: { Text("会从 ~/.agents、~/.claude、~/.codex 移除所有 Paseo 编排 skills。") }
@@ -384,10 +384,10 @@ private struct SkillsSection: View {
 
     private var stateLabel: String {
         switch status?.state {
-        case "up-to-date": "已安装，是最新的" + (status?.selected.map { "（选了 \($0.count) 个）" } ?? "")
-        case "drift": "有更新可用"
-        case "not-installed": "未安装"
-        default: "检查中…"
+        case "up-to-date": String(localized: "已安装，是最新的") + (status?.selected.map { String(localized: "（选了 \($0.count) 个）") } ?? "")
+        case "drift": String(localized: "有更新可用")
+        case "not-installed": String(localized: "未安装")
+        default: String(localized: "检查中…")
         }
     }
 

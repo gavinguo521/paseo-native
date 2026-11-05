@@ -9,7 +9,7 @@ struct UpdatePromptModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .alert(updates.prompt.map { "Paseo Native \($0.version) 可以更新了" } ?? "",
+            .alert(updates.prompt.map { String(localized: "Paseo Native \($0.version) 可以更新了") } ?? "",
                    isPresented: Binding(get: { updates.prompt != nil }, set: { if !$0 { updates.prompt = nil } }),
                    presenting: updates.prompt) { release in
                 Button("下载新版本") { updates.download(release) }
@@ -29,7 +29,7 @@ struct UpdatePromptModifier: ViewModifier {
         if let cut = notes.range(of: "\n---") { notes = String(notes[..<cut.lowerBound]) }
         notes = notes.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
         if notes.count > 500 { notes = String(notes.prefix(500)) + "…" }
-        let tail = "你现在用的是 \(current)。下载 dmg 后打开，把 Paseo Native 拖进「应用程序」替换旧版即可，设置和机器列表都会保留。"
+        let tail = String(localized: "你现在用的是 \(current)。下载 dmg 后打开，把 Paseo Native 拖进「应用程序」替换旧版即可，设置和机器列表都会保留。")
         return notes.isEmpty ? tail : notes + "\n\n" + tail
     }
 }

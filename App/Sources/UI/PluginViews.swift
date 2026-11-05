@@ -79,13 +79,13 @@ struct TurnSpeed {
     }
 
     var full: String {
-        "上一轮：" + [String(format: "%.1f", tokensPerSecond) + " tok/s", "输出 \(outputTokens.formatted()) tokens", "生成 " + duration, "\(requests) 次请求"]
-            .joined(separator: " · ")
+        let speed = String(format: "%.1f", tokensPerSecond), tokens = outputTokens.formatted(), time = duration
+        return String(localized: "上一轮：\(speed) tok/s · 输出 \(tokens) tokens · 生成 \(time) · \(requests) 次请求")
     }
 
     private var duration: String {
         let s = generationMs / 1000
-        return s < 60 ? String(format: "%.1f 秒", s) : "\(Int(s) / 60) 分 \(Int(s) % 60) 秒"
+        return s < 60 ? String(localized: "\(String(format: "%.1f", s)) 秒") : String(localized: "\(Int(s) / 60) 分 \(Int(s) % 60) 秒")
     }
 }
 
@@ -198,8 +198,8 @@ struct UsageFooterButton<Fallback: View>: View {
     }
 
     private var summary: String {
-        guard !windows.isEmpty else { return "用量" }
-        return "用量（剩余）\n" + windows.map { "\($0.report.sourceLabel) \(popoverLabel($0.window))：\(Int(remaining($0.window).rounded()))%" }
+        guard !windows.isEmpty else { return String(localized: "用量") }
+        return String(localized: "用量（剩余）") + "\n" + windows.map { "\($0.report.sourceLabel) \(popoverLabel($0.window))：\(Int(remaining($0.window).rounded()))%" }
             .joined(separator: "\n")
     }
 
@@ -302,7 +302,7 @@ private func remaining(_ w: UsageWindow) -> Double { w.remainingPct ?? (100 - (w
 
 /// Popover labels: Session → 5 小时, Weekly → 周限额, Monthly → 月限额 (keeps suffixes like " · Fable").
 private func popoverLabel(_ w: UsageWindow) -> String {
-    for (prefix, english, zh) in [("five_hour", "Session", "5 小时"), ("weekly", "Weekly", "周限额"), ("monthly", "Monthly", "月限额")]
+    for (prefix, english, zh) in [("five_hour", "Session", String(localized: "5 小时")), ("weekly", "Weekly", String(localized: "周限额")), ("monthly", "Monthly", String(localized: "月限额"))]
     where w.id.hasPrefix(prefix) && w.label.hasPrefix(english) {
         return zh + w.label.dropFirst(english.count)
     }
@@ -347,19 +347,19 @@ private func hhmm(_ d: Date) -> String {
 func formatWhen(_ date: Date) -> String {
     let cal = Calendar.current
     let days = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: date)).day ?? 0
-    if days == 0 { return "今天 " + hhmm(date) }
-    if days == 1 { return "明天 " + hhmm(date) }
-    let weekday = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][cal.component(.weekday, from: date) - 1]
+    if days == 0 { return String(localized: "今天 \(hhmm(date))") }
+    if days == 1 { return String(localized: "明天 \(hhmm(date))") }
+    let weekday = [String(localized: "周日"), String(localized: "周一"), String(localized: "周二"), String(localized: "周三"), String(localized: "周四"), String(localized: "周五"), String(localized: "周六")][cal.component(.weekday, from: date) - 1]
     return "\(weekday) \(cal.component(.month, from: date))/\(cal.component(.day, from: date)) " + hhmm(date)
 }
 
 private func formatRemaining(_ date: Date) -> String {
     let minutes = Int((date.timeIntervalSinceNow / 60).rounded())
-    if minutes <= 0 { return "已过刷新时间，点刷新更新" }
+    if minutes <= 0 { return String(localized: "已过刷新时间，点刷新更新") }
     let d = minutes / 1440, h = minutes % 1440 / 60, m = minutes % 60
-    if d > 0 { return "还有 \(d) 天 \(h) 小时" }
-    if h > 0 { return "还有 \(h) 小时 \(m) 分" }
-    return "还有 \(m) 分钟"
+    if d > 0 { return String(localized: "还有 \(d) 天 \(h) 小时") }
+    if h > 0 { return String(localized: "还有 \(h) 小时 \(m) 分") }
+    return String(localized: "还有 \(m) 分钟")
 }
 
 /// Thin rounded segments, 3pt wide with 2pt gaps; unfilled segments are the same color at 15%.
@@ -401,7 +401,7 @@ private struct UsageResetPopover: View {
                         Text(host.label).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    if let fetchedAt { Text("更新于 " + hhmm(fetchedAt)).font(.system(size: 11)).foregroundStyle(Theme.muted) }
+                    if let fetchedAt { Text(String(localized: "更新于 \(hhmm(fetchedAt))")).font(.system(size: 11)).foregroundStyle(Theme.muted) }
                     Button {
                         refreshing = true
                         Task { await refresh(); refreshing = false }
@@ -465,7 +465,7 @@ private struct UsageResetPopover: View {
                 HStack(spacing: 4) {
                     Image(systemName: "clock.arrow.circlepath").font(.system(size: 10))
                     if let reset = w.resetsAt.map(minuteRounded) {
-                        Text(formatWhen(reset) + " 刷新 · " + formatRemaining(reset)).lineLimit(1)
+                        Text(String(localized: "\(formatWhen(reset)) 刷新 · \(formatRemaining(reset))")).lineLimit(1)
                     } else {
                         Text("没有刷新时间")
                     }
@@ -473,7 +473,7 @@ private struct UsageResetPopover: View {
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.muted)
                 if let b = budget(w) {
-                    Text((b.hourly ? "每小时可用 " : "日均可用 ") + "\(Int(b.pct.rounded()))%")
+                    Text(b.hourly ? String(localized: "每小时可用 \(Int(b.pct.rounded()))%") : String(localized: "日均可用 \(Int(b.pct.rounded()))%"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(levelColor(b.level))
                         .padding(.leading, 15)
@@ -539,7 +539,7 @@ struct AgentQuotaSection: View {
                 }
             }
             if let failed {
-                Text("读取失败：" + failed).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                Text(String(localized: "读取失败：\(failed)")).font(.system(size: 11)).foregroundStyle(Theme.muted)
             } else if !loaded && rows.isEmpty {
                 Text("正在读取限额…").font(.system(size: 11)).foregroundStyle(Theme.muted)
             } else if rows.isEmpty {
@@ -563,10 +563,10 @@ struct AgentQuotaSection: View {
             SegmentBar(pct: left, color: barColor(left))
             HStack(spacing: 4) {
                 if let reset = w.resetsAt.map(minuteRounded) {
-                    Text(formatWhen(reset) + " 刷新 · " + formatRemaining(reset)).lineLimit(1)
+                    Text(String(localized: "\(formatWhen(reset)) 刷新 · \(formatRemaining(reset))")).lineLimit(1)
                 }
                 if let b = budget(w) {
-                    Text("· " + (b.hourly ? "每小时可用 " : "日均可用 ") + "\(Int(b.pct.rounded()))%")
+                    Text("· " + (b.hourly ? String(localized: "每小时可用 \(Int(b.pct.rounded()))%") : String(localized: "日均可用 \(Int(b.pct.rounded()))%")))
                         .fontWeight(.semibold).foregroundStyle(levelColor(b.level))
                 }
             }
@@ -626,7 +626,7 @@ struct BoardView: View {
     }
 
     private func locate() async {
-        guard let host else { problem = "没有机器启用了看板插件"; return }
+        guard let host else { problem = String(localized: "没有机器启用了看板插件"); return }
         problem = nil
         url = nil
         #if os(macOS)
@@ -640,7 +640,7 @@ struct BoardView: View {
         do {
             let out = try await host.invokePlugin("agent-taskboard", "board.locate", ["paths": .array(paths)])
             guard out["reachable"]?.boolValue == true, let base = out["url"]?.stringValue else {
-                problem = "看板服务没有响应：\(out["error"]?.stringValue ?? "未知原因")"
+                problem = String(localized: "看板服务没有响应：\(out["error"]?.stringValue ?? String(localized: "未知原因"))")
                 return
             }
             var s = base
@@ -648,9 +648,9 @@ struct BoardView: View {
                 s += "/p/" + project.split(separator: "/").map { String($0).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? String($0) }.joined(separator: "/")
             }
             s += "?sidebar=collapsed"
-            guard let u = URL(string: s) else { problem = "看板地址无效：\(s)"; return }
+            guard let u = URL(string: s) else { problem = String(localized: "看板地址无效：\(s)"); return }
             // 127.0.0.1 is the daemon's machine: only reachable when this app runs there.
-            if await reachable(u) { url = u } else { problem = "看板在 \(host.label) 上（\(base)），只能在那台电脑上打开。" }
+            if await reachable(u) { url = u } else { problem = String(localized: "看板在 \(host.label) 上（\(base)），只能在那台电脑上打开。") }
         } catch {
             problem = "\(error)"
         }
@@ -818,8 +818,8 @@ struct PluginsDisabledNotice: View {
 
 /// The wire carries no translations, so known plugins get their Chinese names here.
 func pluginDisplayName(_ p: PluginInfo) -> String {
-    ["title-style": "标题风格", "usage-reset": "限额刷新时间",
-     "turn-speed": "回合速度", "next-input": "下一句建议", "agent-taskboard": "看板"][p.id] ?? p.name
+    ["title-style": String(localized: "标题风格"), "usage-reset": String(localized: "限额刷新时间"),
+     "turn-speed": String(localized: "回合速度"), "next-input": String(localized: "下一句建议"), "agent-taskboard": String(localized: "看板")][p.id] ?? p.name
 }
 
 private struct PluginDetailView: View {
@@ -877,8 +877,8 @@ private struct PluginDetailView: View {
                 Section("下一句建议") {
                     Toggle("每轮结束后提供下一句建议", isOn: bool("enabled"))
                     NextInputModelRows(host: host, values: values, string: string, bool: bool)
-                    LabeledContent("Claude CLI", value: claudePath ?? "未找到")
-                    if values["engine"] != nil { LabeledContent("Codex CLI", value: codexPath ?? "未找到") }
+                    LabeledContent("Claude CLI", value: claudePath ?? String(localized: "未找到"))
+                    if values["engine"] != nil { LabeledContent("Codex CLI", value: codexPath ?? String(localized: "未找到")) }
                 }
             }
             if let error { Text(error).foregroundStyle(Theme.destructive) }
@@ -923,7 +923,7 @@ private struct PluginDetailView: View {
             do {
                 let s = try await host.writePluginSettings(plugin.id, settingsId, revision: revision, values: values)
                 self.revision = s.revision
-            } catch { self.error = "保存失败：\(error)" }
+            } catch { self.error = String(localized: "保存失败：\(error)") }
         }
     }
 
@@ -938,11 +938,11 @@ private struct PluginDetailView: View {
 
 private func pluginBlurb(_ id: String) -> String {
     switch id {
-    case "title-style": "新会话创建后，用大模型给工作区起一个中文任务标题。逻辑在 daemon 里，对所有客户端都生效。"
-    case "usage-reset": "在侧栏底部显示各限额窗口的剩余比例，点开看具体刷新时间和每日可用量。"
-    case "turn-speed": "每轮结束后统计生成速度，显示在那一轮回复底部「用时」后面。"
-    case "next-input": "每轮结束后用那台机器上的 Claude 预测你下一句可能要说的话，显示在空输入框里：Tab 或点一下填入，纸飞机直接发送。改动自动保存，从下一轮开始生效。"
-    case "agent-taskboard": "在侧栏打开本机的项目看板（只能在运行 daemon 的那台电脑上打开）。"
+    case "title-style": String(localized: "新会话创建后，用大模型给工作区起一个中文任务标题。逻辑在 daemon 里，对所有客户端都生效。")
+    case "usage-reset": String(localized: "在侧栏底部显示各限额窗口的剩余比例，点开看具体刷新时间和每日可用量。")
+    case "turn-speed": String(localized: "每轮结束后统计生成速度，显示在那一轮回复底部「用时」后面。")
+    case "next-input": String(localized: "每轮结束后用那台机器上的 Claude 预测你下一句可能要说的话，显示在空输入框里：Tab 或点一下填入，纸飞机直接发送。改动自动保存，从下一轮开始生效。")
+    case "agent-taskboard": String(localized: "在侧栏打开本机的项目看板（只能在运行 daemon 的那台电脑上打开）。")
     default: ""
     }
 }
@@ -977,8 +977,8 @@ struct NextInputPreferencesSection: View {
         } footer: {
             // Codex wording only once the plugin has the engine setting (not yet published).
             Text(values["engine"] == nil
-                 ? "在 \(host?.label ?? "机器") 上用那里登录的 Claude 账户预测，消耗该账户用量。改动自动保存，从下一轮开始生效。"
-                 : "在 \(host?.label ?? "机器") 上用那里登录的 Claude 或 Codex 账户预测，消耗该账户用量。「跟随会话」时 Codex 会话用 Codex、其他用 Claude，没装的那个会自动换成另一个。改动自动保存，从下一轮开始生效。")
+                 ? "在 \(host?.label ?? String(localized: "机器")) 上用那里登录的 Claude 账户预测，消耗该账户用量。改动自动保存，从下一轮开始生效。"
+                 : "在 \(host?.label ?? String(localized: "机器")) 上用那里登录的 Claude 或 Codex 账户预测，消耗该账户用量。「跟随会话」时 Codex 会话用 Codex、其他用 Claude，没装的那个会自动换成另一个。改动自动保存，从下一轮开始生效。")
         }
         .task(id: (host?.id ?? "") + String(host?.pluginSettingsRevision["next-input/preferences"] ?? 0)) {
             if let host { await load(host) }
@@ -991,7 +991,7 @@ struct NextInputPreferencesSection: View {
             values = s.values
             revision = s.revision
             error = nil
-        } catch { self.error = "读取失败：\(error)" }
+        } catch { self.error = String(localized: "读取失败：\(error)") }
     }
 
     private func scheduleSave() {
@@ -1003,7 +1003,7 @@ struct NextInputPreferencesSection: View {
                 let s = try await host.writePluginSettings("next-input", "preferences", revision: revision, values: values)
                 self.revision = s.revision
                 error = nil
-            } catch { self.error = "保存失败：\(error)" }
+            } catch { self.error = String(localized: "保存失败：\(error)") }
         }
     }
 

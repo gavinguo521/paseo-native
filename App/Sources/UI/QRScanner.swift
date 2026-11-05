@@ -38,7 +38,7 @@ struct QRScannerSheet: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                Text(message ?? "对准电脑上 paseo daemon pair 显示的二维码")
+                Text(message ?? String(localized: "对准电脑上 paseo daemon pair 显示的二维码"))
                     .font(.callout)
                     .padding(.horizontal, 16).padding(.vertical, 10)
                     .glassEffect(.regular, in: Capsule())
@@ -61,10 +61,10 @@ struct QRScannerSheet: View {
             .onChange(of: photo) { _, item in
                 guard let item else { return }
                 Task {
-                    guard let data = try? await item.loadTransferable(type: Data.self) else { message = "读不了这张图片"; return }
+                    guard let data = try? await item.loadTransferable(type: Data.self) else { message = String(localized: "读不了这张图片"); return }
                     let codes = await Self.qrCodes(in: data)
-                    if codes.isEmpty { message = "这张图片里没有找到二维码" }
-                    else if !codes.contains(where: handle) { message = "这不是 Paseo 的配对二维码" }
+                    if codes.isEmpty { message = String(localized: "这张图片里没有找到二维码") }
+                    else if !codes.contains(where: handle) { message = String(localized: "这不是 Paseo 的配对二维码") }
                 }
             }
         }
@@ -74,7 +74,7 @@ struct QRScannerSheet: View {
     @discardableResult private func handle(_ payload: String) -> Bool {
         let link = payload.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (try? PairingOffer.parse(link)) != nil else {
-            message = "这不是 Paseo 的配对二维码"
+            message = String(localized: "这不是 Paseo 的配对二维码")
             return false
         }
         UINotificationFeedbackGenerator().notificationOccurred(.success)

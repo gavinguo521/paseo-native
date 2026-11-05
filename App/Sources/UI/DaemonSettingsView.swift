@@ -23,12 +23,12 @@ struct DaemonSettingsView: View {
             if let error { Text(error).foregroundStyle(Theme.destructive) }
 
             Section("会话") {
-                toggle("给会话注入 Paseo 工具（MCP）", on: config?["mcp"]?["injectIntoAgents"]?.boolValue != false) { ["mcp": ["injectIntoAgents": .bool($0)]] }
-                toggle("浏览器工具", on: config?["browserTools"]?["enabled"]?.boolValue == true) { ["browserTools": ["enabled": .bool($0)]] }
-                toggle("清理空闲的会话进程", on: config?["idleRuntimeCleanup"]?.boolValue != false) { ["idleRuntimeCleanup": .bool($0)] }
+                toggle(String(localized: "给会话注入 Paseo 工具（MCP）"), on: config?["mcp"]?["injectIntoAgents"]?.boolValue != false) { ["mcp": ["injectIntoAgents": .bool($0)]] }
+                toggle(String(localized: "浏览器工具"), on: config?["browserTools"]?["enabled"]?.boolValue == true) { ["browserTools": ["enabled": .bool($0)]] }
+                toggle(String(localized: "清理空闲的会话进程"), on: config?["idleRuntimeCleanup"]?.boolValue != false) { ["idleRuntimeCleanup": .bool($0)] }
                 // 0.15: sessions interrupted by a daemon restart (update, crash, reboot) pick up where they stopped.
                 if host.serverInfo?.hasFeature("resumeOnStartupSetting") == true {
-                    toggle("daemon 重启后恢复被中断的会话", on: config?["resumeOnStartup"]?.boolValue == true) { ["resumeOnStartup": .bool($0)] }
+                    toggle(String(localized: "daemon 重启后恢复被中断的会话"), on: config?["resumeOnStartup"]?.boolValue == true) { ["resumeOnStartup": .bool($0)] }
                     if config?["resumeOnStartup"]?.boolValue == true {
                         HStack {
                             TextField("恢复时发送", text: $resumePrompt, prompt: Text("Resume working."))
@@ -39,7 +39,7 @@ struct DaemonSettingsView: View {
                 }
                 // 0.15: host-wide switch for provider usage queries (the usage ring and page stop asking).
                 if host.serverInfo?.hasFeature("usageSetting") == true {
-                    toggle("查询 Provider 用量", on: config?["usage"]?["enabled"]?.boolValue != false) { ["usage": ["enabled": .bool($0)]] }
+                    toggle(String(localized: "查询 Provider 用量"), on: config?["usage"]?["enabled"]?.boolValue != false) { ["usage": ["enabled": .bool($0)]] }
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("追加到每个会话的系统提示词")
@@ -54,7 +54,7 @@ struct DaemonSettingsView: View {
             }
 
             Section("工作区") {
-                toggle("PR 合并后自动归档工作区", on: config?["autoArchiveAfterMerge"]?.boolValue == true) { ["autoArchiveAfterMerge": .bool($0)] }
+                toggle(String(localized: "PR 合并后自动归档工作区"), on: config?["autoArchiveAfterMerge"]?.boolValue == true) { ["autoArchiveAfterMerge": .bool($0)] }
             }
 
             Section("Provider") {
@@ -67,7 +67,7 @@ struct DaemonSettingsView: View {
                                 Text(st).font(.caption).foregroundStyle(Theme.muted)
                             }
                             Spacer()
-                            Button("诊断") { Task { diagnostic = (id, (try? await host.providerDiagnostic(id)) ?? "诊断失败") } }
+                            Button("诊断") { Task { diagnostic = (id, (try? await host.providerDiagnostic(id)) ?? String(localized: "诊断失败")) } }
                                 .buttonStyle(.borderless).font(.caption)
                         }
                     }
@@ -94,7 +94,7 @@ struct DaemonSettingsView: View {
             }
 
             Section("终端") {
-                toggle("终端里 agent CLI 的状态钩子", on: config?["enableTerminalAgentHooks"]?.boolValue == true) { ["enableTerminalAgentHooks": .bool($0)] }
+                toggle(String(localized: "终端里 agent CLI 的状态钩子"), on: config?["enableTerminalAgentHooks"]?.boolValue == true) { ["enableTerminalAgentHooks": .bool($0)] }
                 ForEach(Array(host.terminalProfiles.enumerated()), id: \.offset) { i, p in
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -139,7 +139,7 @@ struct DaemonSettingsView: View {
             }
 
             Section("插件与中继") {
-                toggle("启用插件", on: config?["pluginsEnabled"]?.boolValue == true) { ["pluginsEnabled": .bool($0)] }
+                toggle(String(localized: "启用插件"), on: config?["pluginsEnabled"]?.boolValue == true) { ["pluginsEnabled": .bool($0)] }
                 if host.serverInfo?.hasFeature("relayConfig") == true {
                     Toggle("中继（手机等设备经它连接）", isOn: Binding(
                         get: { config?["relay"]?["enabled"]?.boolValue != false },
@@ -154,7 +154,7 @@ struct DaemonSettingsView: View {
             }
         }
         .sheet(isPresented: Binding(get: { diagnostic != nil }, set: { if !$0 { diagnostic = nil } })) {
-            TextReportSheet(title: "Provider 诊断 · " + (diagnostic?.0 ?? ""), text: diagnostic?.1 ?? "")
+            TextReportSheet(title: String(localized: "Provider 诊断 · \(diagnostic?.0 ?? "")"), text: diagnostic?.1 ?? "")
         }
         .formStyle(.grouped)
         .navigationTitle("daemon 设置")
@@ -211,7 +211,7 @@ struct DaemonSettingsView: View {
         error = nil
         Task {
             do { try await host.patchDaemonConfig(p) }
-            catch { self.error = "保存失败：\(error)" }
+            catch { self.error = String(localized: "保存失败：\(String(describing: error))") }
         }
     }
 

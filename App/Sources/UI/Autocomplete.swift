@@ -59,11 +59,11 @@ final class AutocompleteModel {
                 var list: [Suggestion] = []
                 if atStart, agentId != nil {
                     list += [
-                        Suggestion(id: "/new", title: "/new", detail: "在这个工作区开新会话（沿用模型和模式）", systemImage: "plus.bubble", insert: "", local: "new"),
-                        Suggestion(id: "/clear", title: "/clear", detail: "归档并开新会话（沿用模型和模式）", systemImage: "square.and.pencil", insert: "", local: "clear"),
-                        Suggestion(id: "/exit", title: "/exit", detail: "归档这个会话（也可以用 /quit、/q）", systemImage: "archivebox", insert: "", local: "exit"),
-                        Suggestion(id: "/quit", title: "/quit", detail: "归档这个会话", systemImage: "archivebox", insert: "", local: "exit"),
-                        Suggestion(id: "/q", title: "/q", detail: "归档这个会话", systemImage: "archivebox", insert: "", local: "exit"),
+                        Suggestion(id: "/new", title: "/new", detail: String(localized: "在这个工作区开新会话（沿用模型和模式）"), systemImage: "plus.bubble", insert: "", local: "new"),
+                        Suggestion(id: "/clear", title: "/clear", detail: String(localized: "归档并开新会话（沿用模型和模式）"), systemImage: "square.and.pencil", insert: "", local: "clear"),
+                        Suggestion(id: "/exit", title: "/exit", detail: String(localized: "归档这个会话（也可以用 /quit、/q）"), systemImage: "archivebox", insert: "", local: "exit"),
+                        Suggestion(id: "/quit", title: "/quit", detail: String(localized: "归档这个会话"), systemImage: "archivebox", insert: "", local: "exit"),
+                        Suggestion(id: "/q", title: "/q", detail: String(localized: "归档这个会话"), systemImage: "archivebox", insert: "", local: "exit"),
                     ]
                 }
                 let commands = agentId != nil ? await host.listCommands(agentId!) : []

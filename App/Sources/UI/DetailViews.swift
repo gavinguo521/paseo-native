@@ -190,7 +190,7 @@ struct WorkspacePicker: View {
 
     /// "project · workspace" (workspace only when it differs), machine only when there are several.
     private var label: String {
-        guard let selection, let w = model.workspace(selection) else { return "选择项目" }
+        guard let selection, let w = model.workspace(selection) else { return String(localized: "选择项目") }
         let host = model.hosts.count > 1 ? model.host(selection.serverId)?.label : nil
         let ws = w.name == w.projectDisplayName ? nil : w.name
         return [w.projectDisplayName, ws, host].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
@@ -340,13 +340,13 @@ struct HistoryView: View {
         }
         let cal = Calendar.current, now = Date()
         func bucket(_ d: Date?) -> (Int, String) {
-            guard let d else { return (5, "更早") }
-            if cal.isDateInToday(d) { return (0, "今天") }
-            if cal.isDateInYesterday(d) { return (1, "昨天") }
+            guard let d else { return (5, String(localized: "更早")) }
+            if cal.isDateInToday(d) { return (0, String(localized: "今天")) }
+            if cal.isDateInYesterday(d) { return (1, String(localized: "昨天")) }
             let days = cal.dateComponents([.day], from: d, to: now).day ?? 0
-            if days < 7 { return (2, "最近 7 天") }
-            if days < 30 { return (3, "最近 30 天") }
-            return (4, "更早")
+            if days < 7 { return (2, String(localized: "最近 7 天")) }
+            if days < 30 { return (3, String(localized: "最近 30 天")) }
+            return (4, String(localized: "更早"))
         }
         return Dictionary(grouping: items) { bucket($0.agent.updatedAt).0 }
             .sorted { $0.key < $1.key }
@@ -568,12 +568,18 @@ struct PreferencesView: View {
     /// Official defaultSend descriptions / commandEnterDescriptions (zh-CN).
     private var sendHint: String {
         let b = SendBehavior(rawValue: sendBehavior) ?? .steer
-        let action = switch b { case .interrupt: "中断"; case .steer: "引导当前回合"; case .queue: "排队" }
-        if sendKey == "cmdEnter" && !isPhone { return "Agent 运行时，⌘+Enter 会\(action)。Enter 会插入换行。" }
+        // 整句翻译：动作词单独翻译再嵌进句子，英文大小写和语序都对不上
+        if sendKey == "cmdEnter" && !isPhone {
+            return switch b {
+            case .interrupt: String(localized: "Agent 运行时，⌘+Enter 会中断。Enter 会插入换行。")
+            case .steer: String(localized: "Agent 运行时，⌘+Enter 会引导当前回合。Enter 会插入换行。")
+            case .queue: String(localized: "Agent 运行时，⌘+Enter 会排队。Enter 会插入换行。")
+            }
+        }
         return switch b {
-        case .interrupt: "Agent 运行时，Enter 会中断。⌘+Enter 会排队。"
-        case .steer: "Agent 运行时，Enter 会引导当前回合。⌘+Enter 会排队。"
-        case .queue: "Agent 运行时，Enter 会排队。⌘+Enter 会提交。"
+        case .interrupt: String(localized: "Agent 运行时，Enter 会中断。⌘+Enter 会排队。")
+        case .steer: String(localized: "Agent 运行时，Enter 会引导当前回合。⌘+Enter 会排队。")
+        case .queue: String(localized: "Agent 运行时，Enter 会排队。⌘+Enter 会提交。")
         }
     }
     @AppStorage("appearance") private var appearance = "system"
@@ -585,7 +591,7 @@ struct PreferencesView: View {
     @AppStorage("liveActivity") private var liveActivity = true
     @AppStorage("terminal.fontSize") private var terminalFontSize = 12.0
     @Environment(AppModel.self) private var model
-    @State private var permission = "检查中…"
+    @State private var permission = String(localized: "检查中…")
     @State private var diagnostics: DiagnosticsFile?
     @State private var buildingDiagnostics = false
 
@@ -694,7 +700,7 @@ struct PreferencesView: View {
                     #endif
                     LabeledContent("对齐官方版本", value: "v0.15.0")
                     ForEach(model.hosts) { h in
-                        LabeledContent(h.label, value: h.serverInfo?.version.map { "daemon v" + $0 } ?? "未连接")
+                        LabeledContent(h.label, value: h.serverInfo?.version.map { "daemon v" + $0 } ?? String(localized: "未连接"))
                     }
                     HStack {
                         Button("导出诊断信息…") {

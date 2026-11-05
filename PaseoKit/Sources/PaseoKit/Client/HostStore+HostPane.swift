@@ -21,7 +21,7 @@ extension HostStore {
         terminalStreamSubs.removeAll()
         terminalListSubs.removeAll()
         diffSubs.removeAll()
-        for (_, t) in fileTransfers { t.continuation.resume(throwing: ActionError.rejected("连接已断开")) }
+        for (_, t) in fileTransfers { t.continuation.resume(throwing: ActionError.rejected(String(localized: "连接已断开", bundle: .module))) }
         fileTransfers.removeAll()
     }
 
@@ -57,7 +57,7 @@ extension HostStore {
             default:
                 fileTransfers[requestId] = nil
                 guard t.data.count == t.size else {
-                    t.continuation.resume(throwing: ActionError.rejected("文件传输不完整"))
+                    t.continuation.resume(throwing: ActionError.rejected(String(localized: "文件传输不完整", bundle: .module)))
                     return
                 }
                 let kind: FileContent.Kind = t.mime.hasPrefix("image/") ? .image
@@ -85,7 +85,7 @@ extension HostStore {
                 t.continuation.resume(returning: FileContent(path: t.path, kind: kind, mimeType: f["mimeType"]?.stringValue ?? "",
                                                              data: data, size: Int(f["size"]?.doubleValue ?? 0), revision: f["revision"]?.stringValue))
             } else {
-                t.continuation.resume(throwing: ActionError.rejected("读取失败"))
+                t.continuation.resume(throwing: ActionError.rejected(String(localized: "读取失败", bundle: .module)))
             }
         case "checkout_status_update":
             if let cwd = p["cwd"]?.stringValue {
@@ -176,7 +176,7 @@ extension HostStore {
             }
             Task {
                 try? await Task.sleep(for: .seconds(120))
-                fileTransfers.removeValue(forKey: requestId)?.continuation.resume(throwing: ActionError.rejected("读取超时"))
+                fileTransfers.removeValue(forKey: requestId)?.continuation.resume(throwing: ActionError.rejected(String(localized: "读取超时", bundle: .module)))
             }
         }
     }
@@ -238,7 +238,7 @@ extension HostStore {
         }
         let r = try await conn().request(type, params, timeout: .seconds(180))
         if r["payload"]?["success"]?.boolValue == false {
-            throw ActionError.rejected(r["payload"]?["error"]?["message"]?.stringValue ?? r["payload"]?["error"]?.stringValue ?? "操作失败")
+            throw ActionError.rejected(r["payload"]?["error"]?["message"]?.stringValue ?? r["payload"]?["error"]?.stringValue ?? String(localized: "操作失败", bundle: .module))
         }
         await refreshCheckoutStatus(cwd: cwd)
     }
@@ -248,7 +248,7 @@ extension HostStore {
     /// Pairing link for adding this machine to another device. It is a key to the machine: show, never log.
     public func pairingLink() async throws -> String {
         let r = try await conn().request("daemon.get_pairing_offer.request")
-        guard let url = r["payload"]?["url"]?.stringValue else { throw ActionError.rejected("拿不到配对链接") }
+        guard let url = r["payload"]?["url"]?.stringValue else { throw ActionError.rejected(String(localized: "拿不到配对链接", bundle: .module)) }
         return url
     }
 
@@ -268,7 +268,7 @@ extension HostStore {
     /// Updates the daemon package; returns "old → new". The daemon restarts afterwards and the client reconnects.
     public func updateDaemon() async throws -> String {
         let p = try await conn().request("daemon.update.request", timeout: .seconds(600))["payload"]
-        if p?["success"]?.boolValue != true { throw ActionError.rejected(p?["error"]?.stringValue ?? "更新失败") }
+        if p?["success"]?.boolValue != true { throw ActionError.rejected(p?["error"]?.stringValue ?? String(localized: "更新失败", bundle: .module)) }
         return (p?["previousVersion"]?.stringValue ?? "?") + " → " + (p?["newVersion"]?.stringValue ?? "?")
     }
 
@@ -298,7 +298,7 @@ extension HostStore {
 
     private func checkoutError(_ r: JSONValue) -> String? {
         guard let e = r["payload"]?["error"], e != .null else { return nil }
-        return e["message"]?.stringValue ?? e.stringValue ?? "操作失败"
+        return e["message"]?.stringValue ?? e.stringValue ?? String(localized: "操作失败", bundle: .module)
     }
 
     /// Returns the new PR's URL.
@@ -328,7 +328,7 @@ extension HostStore {
         p["repoOwner"] = .string(pr.repoOwner ?? "")
         p["repoName"] = .string(pr.repoName ?? "")
         let r = try await conn().request("pull_request_timeline_request", p, timeout: .seconds(60))
-        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e["message"]?.stringValue ?? e.stringValue ?? "读取 PR 评论失败") }
+        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e["message"]?.stringValue ?? e.stringValue ?? String(localized: "读取 PR 评论失败", bundle: .module)) }
         return (r["payload"]?["items"]?.arrayValue ?? []).enumerated().map { PRTimelineItem($1, index: $0) }
     }
 
@@ -340,8 +340,8 @@ extension HostStore {
         if let id = check.workflowRunId { p["workflowRunId"] = .number(Double(id)) }
         if let n = pr.number { p["changeRequestNumber"] = .number(Double(n)) }
         let r = try await conn().request("checkout.forge.get_check_details.request", p, timeout: .seconds(60))
-        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e["message"]?.stringValue ?? "读取检查详情失败") }
-        guard let d = r["payload"]?["details"], d != .null else { throw ActionError.rejected("没有详情") }
+        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e["message"]?.stringValue ?? String(localized: "读取检查详情失败", bundle: .module)) }
+        guard let d = r["payload"]?["details"], d != .null else { throw ActionError.rejected(String(localized: "没有详情", bundle: .module)) }
         return CheckDetails(d)
     }
 
@@ -393,7 +393,7 @@ extension HostStore {
         }
         let r = try await conn().request("create_terminal_request", params)
         guard let t = r["payload"]?["terminal"].flatMap(TerminalInfo.init) else {
-            throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? "创建终端失败")
+            throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? String(localized: "创建终端失败", bundle: .module))
         }
         terminals[workspace.id, default: []].removeAll { $0.id == t.id }
         terminals[workspace.id, default: []].append(t)
@@ -402,7 +402,7 @@ extension HostStore {
 
     public func renameTerminal(_ terminalId: String, title: String) async throws {
         let r = try await conn().request("terminal.rename.request", ["terminalId": .string(terminalId), "title": .string(title)])
-        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e["message"]?.stringValue ?? e.stringValue ?? "重命名失败") }
+        if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e["message"]?.stringValue ?? e.stringValue ?? String(localized: "重命名失败", bundle: .module)) }
     }
 
     public func killTerminal(_ terminalId: String, workspaceId: String) async throws {
@@ -420,7 +420,7 @@ extension HostStore {
             "terminalId": .string(terminalId), "restore": ["mode": "visible-snapshot", "scrollbackLines": 500],
         ])
         guard let slot = r["payload"]?["slot"]?.doubleValue else {
-            throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? "无法附着终端")
+            throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? String(localized: "无法附着终端", bundle: .module))
         }
         terminalSlots[Int(slot)] = terminalId
         if let sub = r["payload"]?["subscriptionId"]?.stringValue { terminalStreamSubs[terminalId] = sub }
@@ -545,7 +545,7 @@ extension HostStore {
         try await c.sendBinary(frame(0x12))
         let r = try await responseTask.value
         guard let file = r["payload"]?["file"], file != .null, let id = file["id"]?.stringValue else {
-            throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? "上传失败")
+            throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? String(localized: "上传失败", bundle: .module))
         }
         return UploadedFile(id: id, fileName: file["fileName"]?.stringValue ?? fileName, size: data.count, attachment: file)
     }
@@ -784,7 +784,7 @@ extension HostStore {
 
     public func readPluginSettings(_ pluginId: String, _ settingsId: String) async throws -> PluginSettings {
         let out = try await invokePlugin(pluginId, "settings.\(settingsId).read")
-        guard out["status"]?.stringValue == "ready" else { throw ActionError.rejected(out["error"]?.stringValue ?? "设置无效") }
+        guard out["status"]?.stringValue == "ready" else { throw ActionError.rejected(out["error"]?.stringValue ?? String(localized: "设置无效", bundle: .module)) }
         return PluginSettings(revision: out["revision"]?.stringValue ?? "missing", values: out["values"]?.objectValue ?? [:])
     }
 
@@ -793,8 +793,8 @@ extension HostStore {
         let out = try await invokePlugin(pluginId, "settings.\(settingsId).write", ["revision": .string(revision), "values": .object(values)])
         switch out["status"]?.stringValue {
         case "saved": return PluginSettings(revision: out["revision"]?.stringValue ?? revision, values: out["values"]?.objectValue ?? values)
-        case "conflict": throw ActionError.rejected("设置已在其他设备上修改，请重新打开再改")
-        default: throw ActionError.rejected(out["error"]?.stringValue ?? "保存失败")
+        case "conflict": throw ActionError.rejected(String(localized: "设置已在其他设备上修改，请重新打开再改", bundle: .module))
+        default: throw ActionError.rejected(out["error"]?.stringValue ?? String(localized: "保存失败", bundle: .module))
         }
     }
 
@@ -804,7 +804,7 @@ extension HostStore {
         var p: [String: JSONValue] = isPath ? ["path": .string(source)] : ["source": .string(source)]
         if !isPath, let ref, !ref.isEmpty { p["ref"] = .string(ref) }
         let r = try await conn().request(isPath ? "plugin.directory.install.request" : "plugin.source.install.request", p, timeout: .seconds(300))
-        if r["payload"]?["plugin"] == nil { throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? "安装失败") }
+        if r["payload"]?["plugin"] == nil { throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? String(localized: "安装失败", bundle: .module)) }
         await loadPlugins()
     }
 
@@ -846,7 +846,7 @@ extension HostStore {
         init(_ p: JSONValue?) {
             state = p?["state"]?.stringValue ?? "not-installed"
             pendingOps = (p?["ops"]?.arrayValue ?? []).compactMap { o in
-                let kind = ["add": "添加", "update": "更新", "delete": "删除"][o["kind"]?.stringValue ?? ""] ?? ""
+                let kind = ["add": String(localized: "添加", bundle: .module), "update": String(localized: "更新", bundle: .module), "delete": String(localized: "删除", bundle: .module)][o["kind"]?.stringValue ?? ""] ?? ""
                 return o["name"]?.stringValue.map { kind + " " + $0 }
             }
             available = (p?["available"]?.arrayValue ?? []).compactMap(\.stringValue)
@@ -912,9 +912,9 @@ extension HostStore {
                                                                   "providerHandleId": .string(s.handleId), "cwd": .string(s.cwd)],
                                          timeout: .seconds(180))
         let p = r["payload"]
-        if p?["status"]?.stringValue == "agent_create_failed" { throw ActionError.rejected(p?["error"]?.stringValue ?? "导入失败") }
+        if p?["status"]?.stringValue == "agent_create_failed" { throw ActionError.rejected(p?["error"]?.stringValue ?? String(localized: "导入失败", bundle: .module)) }
         if let a = p?["agent"].flatMap(Agent.init) { agents[a.id] = a }
-        guard let id = p?["agentId"]?.stringValue else { throw ActionError.rejected("导入失败") }
+        guard let id = p?["agentId"]?.stringValue else { throw ActionError.rejected(String(localized: "导入失败", bundle: .module)) }
         return id
     }
 

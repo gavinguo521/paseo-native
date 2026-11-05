@@ -14,6 +14,7 @@ DIST=build.noindex/dist
 ARCHIVE="$DIST/Paseo.xcarchive"
 DMG="$DIST/Paseo-Native-$VERSION.dmg"
 source scripts/signing.sh
+[[ "${SKIP_I18N_CHECK:-}" == "1" ]] || scripts/check-i18n.sh
 LS=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
 sed -i '' -E "s/^(    MARKETING_VERSION: ).*/\1\"$VERSION\"/" project.yml

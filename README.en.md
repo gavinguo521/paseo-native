@@ -3,16 +3,16 @@
 An unofficial native client for [Paseo](https://paseo.sh) on Mac, iPhone and iPad, from one SwiftUI codebase.
 
 > **Not affiliated with the Paseo project.** Like the official apps, it connects to the Paseo daemon on your own
-> computer, and can be installed and used side by side with them. **The interface is in Simplified Chinese only.**
+> computer, and can be installed and used side by side with them. The interface is available in English and Simplified Chinese and follows your system language (from 1.0.8).
 
 [中文说明](README.md)
 
-<p align="center"><img src="docs/images/mac-session.png" width="820" alt="Mac"></p>
+<p align="center"><img src="docs/images/en/mac-session.png" width="820" alt="Mac"></p>
 
 <p align="center">
-  <img src="docs/images/iphone-home.png" width="200" alt="iPhone session list">
-  <img src="docs/images/iphone-permission.png" width="200" alt="Approving a command on iPhone">
-  <img src="docs/images/ipad-session.png" width="380" alt="iPad">
+  <img src="docs/images/en/iphone-home.png" width="200" alt="iPhone session list">
+  <img src="docs/images/en/iphone-permission.png" width="200" alt="Approving a command on iPhone">
+  <img src="docs/images/en/ipad-session.png" width="380" alt="iPad">
 </p>
 
 ## Features
@@ -54,7 +54,7 @@ machine at once and see the same sessions.
 
 ## Companion plugins (optional)
 
-<img src="docs/images/mac-plugins.png" width="520" alt="Companion plugins">
+<img src="docs/images/en/mac-plugins.png" width="520" alt="Companion plugins">
 
 Plugins run on the **machine with the daemon** and work for every client of that machine. **All of them are
 optional.** The app offers them once when you first connect a machine ("以后再说" skips them); manage them later in
@@ -109,8 +109,8 @@ notifications are unavailable (the Live Activity still updates while the app is 
 ## Dynamic Island and notifications (optional, paid developer account)
 
 <p>
-  <img src="docs/images/activity-expanded.png" width="380" alt="Dynamic Island">
-  <img src="docs/images/activity-lock.png" width="380" alt="Lock screen">
+  <img src="docs/images/en/activity-expanded.png" width="380" alt="Dynamic Island">
+  <img src="docs/images/en/activity-lock.png" width="380" alt="Lock screen">
 </p>
 
 Running and waiting sessions from all machines are combined into one Live Activity (Dynamic Island and lock screen on

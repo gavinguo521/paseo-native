@@ -32,7 +32,7 @@ struct ProviderSubagentTab: View {
             }
             bottomBar
         }
-        .navigationTitle(subagent?.label ?? "子代理")
+        .navigationTitle(subagent?.label ?? String(localized: "子代理"))
         #if os(macOS)
         .navigationSubtitle(subagent?.detail ?? parent?.displayTitle ?? "")
         #endif

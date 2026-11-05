@@ -124,12 +124,12 @@ final class LocalDaemon {
     func migrateFromOfficial() async {
         await perform {
             if !self.isInstalled { try await self.installCLI(self.status?.version ?? Self.initialVersion) }
-            self.step = "退出官方 Paseo App"
+            self.step = String(localized: "退出官方 Paseo App")
             for app in NSRunningApplication.runningApplications(withBundleIdentifier: Self.officialBundleId) { app.terminate() }
             for _ in 0..<30 where !NSRunningApplication.runningApplications(withBundleIdentifier: Self.officialBundleId).isEmpty {
                 try await Task.sleep(for: .milliseconds(500))
             }
-            self.step = "停止官方 App 的 daemon"
+            self.step = String(localized: "停止官方 App 的 daemon")
             _ = try? await self.run(self.wrapper.path, ["daemon", "stop", "--home", self.home.path], timeout: 60)
             try await self.startService()
             if !self.isTest { try self.relinkCLI() }
@@ -143,8 +143,8 @@ final class LocalDaemon {
     /// 再打开官方 App，由它用同一个 ~/.paseo 启动 daemon，机器 ID 和配对不变。装好的命令行和 Node 留着，以后再切回来不用重装。
     func returnToOfficial() async {
         await perform {
-            guard let app = self.officialAppURL else { throw Failure("这台 Mac 上没有找到官方 Paseo App，先装好它再切回去") }
-            self.step = "停止本 App 的 daemon"
+            guard let app = self.officialAppURL else { throw Failure(String(localized: "这台 Mac 上没有找到官方 Paseo App，先装好它再切回去")) }
+            self.step = String(localized: "停止本 App 的 daemon")
             _ = try? await self.launchctl(["disable", self.serviceTarget])
             _ = try? await self.launchctl(["bootout", self.serviceTarget])
             for _ in 0..<30 {
@@ -152,22 +152,22 @@ final class LocalDaemon {
                 if self.status?.owner == .stopped { break }
                 try await Task.sleep(for: .milliseconds(500))
             }
-            guard self.status?.owner == .stopped else { throw Failure("本 App 的 daemon 没有停下来，看看日志：\(self.logFile.path)") }
+            guard self.status?.owner == .stopped else { throw Failure(String(localized: "本 App 的 daemon 没有停下来，看看日志：\(self.logFile.path)")) }
             // 启动项文件移到废纸篓（可恢复）；以后再点「改由本 App 运行」会重新生成
             if self.isServiceInstalled { try FileManager.default.trashItem(at: self.plist, resultingItemURL: nil) }
             if self.isTest { return }
             try self.restoreCLILink()
-            self.step = "打开官方 Paseo App"
+            self.step = String(localized: "打开官方 Paseo App")
             let config = NSWorkspace.OpenConfiguration()
             config.activates = false
             _ = try await NSWorkspace.shared.openApplication(at: app, configuration: config)
-            self.step = "等待官方 App 启动 daemon"
+            self.step = String(localized: "等待官方 App 启动 daemon")
             for _ in 0..<60 {
                 await self.refresh()
                 if self.status?.owner == .official { return }
                 try await Task.sleep(for: .seconds(1))
             }
-            throw Failure("官方 App 已打开，但 60 秒内没看到它启动 daemon；可以在官方 App 里看看，或稍后回到这里刷新")
+            throw Failure(String(localized: "官方 App 已打开，但 60 秒内没看到它启动 daemon；可以在官方 App 里看看，或稍后回到这里刷新"))
         }
     }
 
@@ -175,19 +175,19 @@ final class LocalDaemon {
     func update() async {
         await perform {
             await self.checkLatest()
-            guard let latest = self.latestVersion else { throw Failure("查不到最新版本") }
+            guard let latest = self.latestVersion else { throw Failure(String(localized: "查不到最新版本")) }
             try await self.installCLI(latest)
-            try await self.startService(step: "重启 daemon")
+            try await self.startService(step: String(localized: "重启 daemon"))
         }
     }
 
     /// Reloads the LaunchAgent rather than `kickstart -k`, so a LaunchAgent written by an older version
     /// picks up the current environment (LANG).
-    func restart() async { await perform { try await self.startService(step: "重启 daemon") } }
+    func restart() async { await perform { try await self.startService(step: String(localized: "重启 daemon")) } }
 
     func stop() async {
         await perform {
-            self.step = "停止 daemon"
+            self.step = String(localized: "停止 daemon")
             // Disabled survives logout and reboot: the LaunchAgent stays off until 「启动」.
             _ = try? await self.launchctl(["disable", self.serviceTarget])
             _ = try? await self.launchctl(["bootout", self.serviceTarget])
@@ -202,7 +202,7 @@ final class LocalDaemon {
     func start() async { await perform { try await self.startService() } }
 
     func logTail(lines: Int = 200) -> String {
-        guard let text = try? String(contentsOf: logFile, encoding: .utf8) else { return "（还没有日志）" }
+        guard let text = try? String(contentsOf: logFile, encoding: .utf8) else { return String(localized: "（还没有日志）") }
         return text.split(separator: "\n", omittingEmptySubsequences: false).suffix(lines).joined(separator: "\n")
     }
 
@@ -230,13 +230,13 @@ final class LocalDaemon {
         try fm.createDirectory(at: runtime, withIntermediateDirectories: true)
         try fm.createDirectory(at: wrapper.deletingLastPathComponent(), withIntermediateDirectories: true)
         try fm.createDirectory(at: logFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        step = "准备 Node"
+        step = String(localized: "准备 Node")
         let node = try await ensureNode()
-        step = "安装 Paseo 命令行 \(version)（约 1–2 分钟）"
+        step = String(localized: "安装 Paseo 命令行 \(version)（约 1–2 分钟）")
         let npm = node.deletingLastPathComponent().appending(path: "npm").path
         let result = try await run(npm, ["install", "--prefix", runtime.path, "@getpaseo/cli@\(version)",
                                          "--no-fund", "--no-audit", "--loglevel=error"], env: toolEnv(nodeBin: node.deletingLastPathComponent()), timeout: 900)
-        if result.status != 0 { throw Failure("npm 安装失败：\(result.output.suffix(600))") }
+        if result.status != 0 { throw Failure(String(localized: "npm 安装失败：\(String(result.output.suffix(600)))")) }
         try await writeWrapper(nodeDir: node.deletingLastPathComponent().path)
         installedVersion = readInstalledVersion()
     }
@@ -264,7 +264,7 @@ final class LocalDaemon {
 
     private var serviceTarget: String { "gui/\(getuid())/\(label)" }
 
-    private func startService(step stepTitle: String = "设置开机自动启动") async throws {
+    private func startService(step stepTitle: String = String(localized: "设置开机自动启动")) async throws {
         step = stepTitle
         cachedLoginPath = nil
         let path = await loginPath()
@@ -285,7 +285,7 @@ final class LocalDaemon {
         let data = try PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)
         try data.write(to: plist, options: .atomic)
         _ = try? await launchctl(["bootout", serviceTarget])
-        step = "启动 daemon"
+        step = String(localized: "启动 daemon")
         _ = try? await launchctl(["enable", serviceTarget])
         try await launchctl(["bootstrap", "gui/\(getuid())", plist.path])
         try await waitUntilRunning()
@@ -297,7 +297,7 @@ final class LocalDaemon {
             if status?.owner == .native { return }
             try await Task.sleep(for: .seconds(1))
         }
-        throw Failure("daemon 没有在 90 秒内启动，看看日志：\(logFile.path)")
+        throw Failure(String(localized: "daemon 没有在 90 秒内启动，看看日志：\(logFile.path)"))
     }
 
     /// ~/.local/bin/paseo → our wrapper; the previous target is remembered so it can be restored.
@@ -346,7 +346,7 @@ final class LocalDaemon {
     }
 
     private func downloadNode() async throws {
-        step = "下载 Node \(Self.nodeVersion)"
+        step = String(localized: "下载 Node \(Self.nodeVersion)")
         var machine = utsname()
         uname(&machine)
         let arch = withUnsafeBytes(of: &machine.machine) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
@@ -355,16 +355,16 @@ final class LocalDaemon {
         let (sums, _) = try await URLSession.shared.data(from: base.appending(path: "SHASUMS256.txt"))
         guard let expected = String(decoding: sums, as: UTF8.self).split(separator: "\n")
             .first(where: { $0.hasSuffix("  " + name) })?.split(separator: " ").first.map(String.init) else {
-            throw Failure("nodejs.org 的校验文件里没有 \(name)")
+            throw Failure(String(localized: "nodejs.org 的校验文件里没有 \(name)"))
         }
         let (file, _) = try await URLSession.shared.download(from: base.appending(path: name))
         let digest = SHA256.hash(data: try Data(contentsOf: file)).map { String(format: "%02x", $0) }.joined()
-        guard digest == expected else { throw Failure("Node 安装包校验失败") }
+        guard digest == expected else { throw Failure(String(localized: "Node 安装包校验失败")) }
         let fm = FileManager.default
         try? fm.removeItem(at: nodeDir)
         try fm.createDirectory(at: nodeDir, withIntermediateDirectories: true)
         let r = try await run("/usr/bin/tar", ["-xzf", file.path, "-C", nodeDir.path, "--strip-components", "1"], timeout: 300)
-        if r.status != 0 { throw Failure("解压 Node 失败：\(r.output)") }
+        if r.status != 0 { throw Failure(String(localized: "解压 Node 失败：\(r.output)")) }
     }
 
     private func npmPath() async -> String? {

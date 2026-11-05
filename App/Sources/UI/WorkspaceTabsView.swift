@@ -184,7 +184,7 @@ struct WorkspaceTabsView: View {
                 if let i = tabs.firstIndex(of: .browser(url)), newURL != url { model.removeTab(.browser(url), in: ref, replacement: .browser(newURL)); _ = i }
             }
             .id(url)
-            .navigationTitle(URL(string: url)?.host() ?? "浏览器").modifier(WorkspaceSubtitle(host: host, workspace: workspace))
+            .navigationTitle(URL(string: url)?.host() ?? String(localized: "浏览器")).modifier(WorkspaceSubtitle(host: host, workspace: workspace))
         case .file(let path):
             FileViewer(host: host, cwd: (path as NSString).deletingLastPathComponent, path: (path as NSString).lastPathComponent,
                        line: model.fileLines[path])
@@ -209,7 +209,7 @@ struct WorkspaceTabsView: View {
             } actions: {
                 Button("新会话") { perform(.newAgent) }.buttonStyle(.glassProminent).tint(Theme.accent)
             }
-            .navigationTitle(workspace?.name ?? "工作区")
+            .navigationTitle(workspace?.name ?? String(localized: "工作区"))
         }
     }
 
@@ -220,9 +220,9 @@ struct WorkspaceTabsView: View {
             HStack(spacing: 8) {
                 if s.status == "running" { ProgressView().controlSize(.small) }
                 else { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(s.status == "failed" ? Theme.destructive : Theme.dotWarning) }
-                Text(s.status == "running" ? "正在初始化 worktree（\(done)/\(max(s.commands.count, 1))）"
-                     : s.status == "blocked" ? "worktree 初始化被拦下，需要你确认后手动运行"
-                     : "worktree 初始化失败" + (s.error.map { "：" + $0 } ?? ""))
+                Text(s.status == "running" ? String(localized: "正在初始化 worktree（\(done)/\(max(s.commands.count, 1))）")
+                     : s.status == "blocked" ? String(localized: "worktree 初始化被拦下，需要你确认后手动运行")
+                     : (s.error.map { String(localized: "worktree 初始化失败：\($0)") } ?? String(localized: "worktree 初始化失败")))
                     .font(.system(size: 12)).lineLimit(1)
                 Spacer()
                 Button("查看日志") { showSetupLog = true }.controlSize(.small)
@@ -321,14 +321,14 @@ struct WorkspaceTabsView: View {
         }
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        .accessibilityLabel(headerTitle + "，轻点切换标签")
+        .accessibilityLabel(String(localized: "\(headerTitle)，轻点切换标签"))
     }
 
     /// Workspace title, the same as its sidebar row; "project · machine" under it (official CompactWorkspaceHeader).
     private var headerTitle: String {
         if let t = workspace?.title, !t.isEmpty { return t }
         if case .agent(let id) = selected, let a = host.agents[id] { return a.displayTitle }
-        return workspace?.name ?? "工作区"
+        return workspace?.name ?? String(localized: "工作区")
     }
 
     private var compactTitle: some View {
@@ -439,8 +439,8 @@ struct WorkspaceTabsView: View {
     }
 
     private func closeLabel(_ tab: WorkspaceTab) -> String {
-        if case .agent(let id) = tab, host.agents[id]?.isSubagent == false { return "关闭并归档" }
-        return "关闭"
+        if case .agent(let id) = tab, host.agents[id]?.isSubagent == false { return String(localized: "关闭并归档") }
+        return String(localized: "关闭")
     }
 
     @ViewBuilder private func icon(_ tab: WorkspaceTab) -> some View {
@@ -481,15 +481,15 @@ struct WorkspaceTabsView: View {
 
     private func title(_ tab: WorkspaceTab) -> String {
         switch tab {
-        case .agent(let id): host.agents[id]?.displayTitle ?? "会话"
+        case .agent(let id): host.agents[id]?.displayTitle ?? String(localized: "会话")
         case .terminal(let id):
-            host.terminals[ref.workspaceId]?.first { $0.id == id }.map { $0.title ?? $0.name } ?? "终端"
-        case .changes: "改动"
-        case .files: "文件"
+            host.terminals[ref.workspaceId]?.first { $0.id == id }.map { $0.title ?? $0.name } ?? String(localized: "终端")
+        case .changes: String(localized: "改动")
+        case .files: String(localized: "文件")
         case .file(let path): (path as NSString).lastPathComponent
-        case .browser(let url): URL(string: url)?.host().map { h in URL(string: url)?.port.map { "\(h):\($0)" } ?? h } ?? "浏览器"
-        case .draft: "新会话"
-        case .subagent(let parent, let id): providerSubagent(parent, id)?.label ?? "子代理"
+        case .browser(let url): URL(string: url)?.host().map { h in URL(string: url)?.port.map { "\(h):\($0)" } ?? h } ?? String(localized: "浏览器")
+        case .draft: String(localized: "新会话")
+        case .subagent(let parent, let id): providerSubagent(parent, id)?.label ?? String(localized: "子代理")
         }
     }
 
@@ -561,14 +561,14 @@ struct WorkspaceTabsView: View {
                 model.closingTabs.insert(tab)
                 model.removeTab(tab, in: ref)
                 Task {
-                    do { try await host.archive(id) } catch { self.error = "归档失败：\(error)" }
+                    do { try await host.archive(id) } catch { self.error = String(localized: "归档失败：\(error)") }
                     model.closingTabs.remove(tab)
                 }
             case .terminal(let id):
                 model.closingTabs.insert(tab)
                 model.removeTab(tab, in: ref)
                 Task {
-                    do { try await host.killTerminal(id, workspaceId: ref.workspaceId) } catch { self.error = "关闭终端失败：\(error)" }
+                    do { try await host.killTerminal(id, workspaceId: ref.workspaceId) } catch { self.error = String(localized: "关闭终端失败：\(error)") }
                     model.closingTabs.remove(tab)
                 }
             default:
@@ -591,19 +591,19 @@ struct WorkspaceTabsView: View {
 
     private var closeTitle: String {
         let c = closeCounts
-        if pendingClose.count == 1, c.terminals == 1 { return "关闭这个终端？" }
-        if pendingClose.count == 1, c.agents == 1 { return "归档运行中的会话？" }
-        return "关闭 \(pendingClose.count) 个标签？"
+        if pendingClose.count == 1, c.terminals == 1 { return String(localized: "关闭这个终端？") }
+        if pendingClose.count == 1, c.agents == 1 { return String(localized: "归档运行中的会话？") }
+        return String(localized: "关闭 \(pendingClose.count) 个标签？")
     }
 
-    private var closeButton: String { closeCounts.agents > 0 ? "关闭并归档" : "关闭" }
+    private var closeButton: String { closeCounts.agents > 0 ? String(localized: "关闭并归档") : String(localized: "关闭") }
 
     private var closeMessage: String {
         let c = closeCounts
         var parts: [String] = []
-        if c.agents > 0 { parts.append("归档 \(c.agents) 个会话（可在会话历史里找回）") }
-        if c.terminals > 0 { parts.append("结束 \(c.terminals) 个终端里运行的进程") }
-        return parts.isEmpty ? "" : "将会" + parts.joined(separator: "，") + "。"
+        if c.agents > 0 { parts.append(String(localized: "归档 \(c.agents) 个会话（可在会话历史里找回）")) }
+        if c.terminals > 0 { parts.append(String(localized: "结束 \(c.terminals) 个终端里运行的进程")) }
+        return parts.isEmpty ? "" : String(localized: "将会\(parts.joined(separator: String(localized: "，", comment: "列举时的分隔符（逗号）")))。")
     }
 
     private func applyDebugTab() {
@@ -699,7 +699,7 @@ private struct PRPanel: View {
                         if let d = details[c.id] {
                             VStack(alignment: .leading, spacing: 4) {
                                 if let t = d.title { Text(t).font(.system(size: 12, weight: .medium)) }
-                                if !d.failedJobs.isEmpty { Text("失败的 job：" + d.failedJobs.joined(separator: "、")).font(.system(size: 11)) }
+                                if !d.failedJobs.isEmpty { Text(String(localized: "失败的 job：\(d.failedJobs.joined(separator: String(localized: "、", comment: "列举时的分隔符（顿号）")))")).font(.system(size: 11)) }
                                 ForEach(d.annotations.prefix(12), id: \.self) { a in
                                     Text([a.path.map { $0 + (a.line.map { ":\($0)" } ?? "") }, a.message].compactMap { $0 }.joined(separator: " "))
                                         .font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.muted).lineLimit(3)
@@ -886,7 +886,7 @@ private struct SetupLogSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("worktree 初始化" + (setup.branchName.map { " · " + $0 } ?? "")).font(.headline)
+                Text(setup.branchName.map { String(localized: "worktree 初始化 · \($0)") } ?? String(localized: "worktree 初始化")).font(.headline)
                 Spacer()
                 Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
             }

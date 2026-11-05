@@ -65,21 +65,22 @@ struct LiveActivityPushSection: View {
     }
 
     private func keyLabel(_ key: JSONValue?) -> String {
-        guard let key, key != .null else { return "未配置" }
+        guard let key, key != .null else { return String(localized: "未配置") }
         return "Key ID " + (key["keyId"]?.stringValue ?? "?")
     }
 
     private var keyLabel: String {
-        guard let status else { return "读取中…" }
-        guard status["configured"]?.boolValue == true else { return "未配置" }
-        return "已配置（Key ID " + (status["keyId"]?.stringValue ?? "?") + "）"
+        guard let status else { return String(localized: "读取中…") }
+        guard status["configured"]?.boolValue == true else { return String(localized: "未配置") }
+        return String(localized: "已配置（Key ID \(status["keyId"]?.stringValue ?? "?")）")
     }
 
     private func lastPushLabel(_ last: JSONValue) -> String {
         let at = last["at"]?.doubleValue.map { Date(timeIntervalSince1970: $0 > 1e12 ? $0 / 1000 : $0) }
         let when = at.map { $0.formatted(date: .omitted, time: .shortened) } ?? ""
-        if last["ok"]?.boolValue == true { return when + " 成功" }
-        return when + " 失败：" + (last["reason"]?.stringValue ?? last["status"]?.doubleValue.map { "HTTP \(Int($0))" } ?? "未知原因")
+        if last["ok"]?.boolValue == true { return String(localized: "\(when) 成功") }
+        let reason = last["reason"]?.stringValue ?? last["status"]?.doubleValue.map { "HTTP \(Int($0))" } ?? String(localized: "未知原因")
+        return String(localized: "\(when) 失败：\(reason)")
     }
 
     private func loadStatus() async {
@@ -88,7 +89,7 @@ struct LiveActivityPushSection: View {
             status = try await pusher.invokePlugin(Self.pluginId, "activity.status", [:], timeout: .seconds(15))
             error = nil
         } catch {
-            self.error = "读不到插件状态：\(error)"
+            self.error = String(localized: "读不到插件状态：\(error)")
         }
     }
 }
@@ -123,7 +124,7 @@ private struct APNsKeySheet: View {
                 Section {
                     TextField("Team ID", text: $teamId).autocorrectionDisabled()
                     TextField("Key ID", text: $keyId).autocorrectionDisabled()
-                    Button(fileName.map { "已选：\($0)" } ?? "选择 .p8 文件…") { picking = true }
+                    Button(fileName.map { String(localized: "已选：\($0)") } ?? String(localized: "选择 .p8 文件…")) { picking = true }
                     if perEnvironment {
                         Picker("用于", selection: $environment) {
                             Text("Sandbox（Xcode 直装）").tag("development")
@@ -153,7 +154,7 @@ private struct APNsKeySheet: View {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             guard let text = try? String(contentsOf: url, encoding: .utf8), text.contains("PRIVATE KEY") else {
-                error = "这个文件不像 .p8 密钥"
+                error = String(localized: "这个文件不像 .p8 密钥")
                 return
             }
             p8 = text
@@ -183,7 +184,7 @@ private struct APNsKeySheet: View {
             onSaved()
             dismiss()
         } catch {
-            self.error = "保存失败：\(error)"
+            self.error = String(localized: "保存失败：\(error)")
         }
     }
 }

@@ -144,13 +144,13 @@ public struct PrStatus: Sendable {
         switch authState {
         case "authenticated": nil
         case "unauthenticated":
-            forge == "github" ? "GitHub 命令行未登录（在主机上运行 gh auth login）"
-                : forge == "gitlab" ? "GitLab 命令行未登录（在主机上运行 glab auth login）"
-                : "\(forgeName) 未登录，PR 功能不可用"
+            forge == "github" ? String(localized: "GitHub 命令行未登录（在主机上运行 gh auth login）", bundle: .module)
+                : forge == "gitlab" ? String(localized: "GitLab 命令行未登录（在主机上运行 glab auth login）", bundle: .module)
+                : String(localized: "\(forgeName) 未登录，PR 功能不可用", bundle: .module)
         case "cli_missing":
-            forge == "github" ? "主机上没有安装 gh 命令行工具" : forge == "gitlab" ? "主机上没有安装 glab 命令行工具" : "主机上缺少 \(forgeName) 的命令行工具"
-        case "no_remote": "没有找到 \(forgeName) 上的远程仓库，PR 功能不可用"
-        default: "无法连接 \(forgeName)"
+            forge == "github" ? String(localized: "主机上没有安装 gh 命令行工具", bundle: .module) : forge == "gitlab" ? String(localized: "主机上没有安装 glab 命令行工具", bundle: .module) : String(localized: "主机上缺少 \(forgeName) 的命令行工具", bundle: .module)
+        case "no_remote": String(localized: "没有找到 \(forgeName) 上的远程仓库，PR 功能不可用", bundle: .module)
+        default: String(localized: "无法连接 \(forgeName)", bundle: .module)
         }
     }
 
@@ -332,7 +332,7 @@ public struct TerminalInfo: Sendable, Identifiable, Hashable {
     init?(_ v: JSONValue) {
         guard let id = v["id"]?.stringValue else { return nil }
         self.id = id
-        name = v["name"]?.stringValue ?? "终端"
+        name = v["name"]?.stringValue ?? String(localized: "终端", bundle: .module)
         title = v["title"]?.stringValue
         activity = v["activity"]?["state"]?.stringValue
     }
@@ -355,10 +355,10 @@ public struct WorkspaceScript: Sendable, Identifiable, Hashable {
     /// Every address the service is reachable at, most shareable first.
     public var urls: [(label: String, url: String)] {
         var out: [(String, String)] = []
-        if let u = publicProxyUrl { out.append(("公网代理", u)) }
-        if let u = proxyUrl, u != publicProxyUrl { out.append(("代理", u)) }
-        if let u = localProxyUrl, u != proxyUrl { out.append(("本地代理", u)) }
-        if let port { out.append(("直连", "http://\(hostname ?? "localhost"):\(port)")) }
+        if let u = publicProxyUrl { out.append((String(localized: "公网代理", bundle: .module), u)) }
+        if let u = proxyUrl, u != publicProxyUrl { out.append((String(localized: "代理", bundle: .module), u)) }
+        if let u = localProxyUrl, u != proxyUrl { out.append((String(localized: "本地代理", bundle: .module), u)) }
+        if let port { out.append((String(localized: "直连", bundle: .module), "http://\(hostname ?? "localhost"):\(port)")) }
         return out
     }
 
@@ -417,7 +417,7 @@ public struct ProviderSubagent: Sendable, Identifiable, Hashable {
 
     public var isFinished: Bool { status != "running" }
     /// Official presentation: the task names the row, the provider context sits below it.
-    public var label: String { description ?? title ?? "子代理" }
+    public var label: String { description ?? title ?? String(localized: "子代理", bundle: .module) }
     public var detail: String? { subtitle ?? (description != nil ? title : nil) }
 
     init?(_ v: JSONValue) {

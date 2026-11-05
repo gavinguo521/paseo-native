@@ -70,7 +70,7 @@ public struct Schedule: Sendable, Identifiable {
         if let name, !name.isEmpty { return name }
         if let t = config?["title"]?.stringValue, !t.isEmpty { return t }
         let first = prompt.split(separator: "\n").first.map(String.init) ?? ""
-        return first.isEmpty ? (isHeartbeat ? "未命名心跳" : "未命名计划任务") : first
+        return first.isEmpty ? (isHeartbeat ? String(localized: "未命名心跳", bundle: .module) : String(localized: "未命名计划任务", bundle: .module)) : first
     }
 
     public var isExpired: Bool { expiresAt.map { $0 < Date() } ?? false }
@@ -128,12 +128,14 @@ public struct UsageReport: Sendable, Identifiable {
         case "unavailable":
             let p = report["problem"]
             switch p?["kind"]?.stringValue {
-            case "expired": problem = "登录已过期" + (p?["refreshedBy"]?.stringValue.map { "，运行 \($0) 重新登录" } ?? "")
-            case "rejected": problem = "凭据被拒绝（\(Int(p?["status"]?.doubleValue ?? 0))）"
-            case "no_quota": problem = p?["detail"]?.stringValue ?? "没有额度信息"
-            default: problem = "不可用"
+            case "expired":
+                if let cmd = p?["refreshedBy"]?.stringValue { problem = String(localized: "登录已过期，运行 \(cmd) 重新登录", bundle: .module) }
+                else { problem = String(localized: "登录已过期", bundle: .module) }
+            case "rejected": problem = String(localized: "凭据被拒绝（\(Int(p?["status"]?.doubleValue ?? 0))）", bundle: .module)
+            case "no_quota": problem = p?["detail"]?.stringValue ?? String(localized: "没有额度信息", bundle: .module)
+            default: problem = String(localized: "不可用", bundle: .module)
             }
-        case "error": problem = report["error"]?.stringValue ?? "获取失败"
+        case "error": problem = report["error"]?.stringValue ?? String(localized: "获取失败", bundle: .module)
         default: break
         }
         if problem != nil, let last = e["lastSuccessful"]?["report"] { report = last; retained = true }

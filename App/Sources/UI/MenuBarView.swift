@@ -14,7 +14,7 @@ struct MenuBarLabel: View {
             Image(systemName: n > 0 ? "bubble.left.and.exclamationmark.bubble.right.fill" : "bubble.left.and.bubble.right")
             if n > 0 { Text("\(n)") }
         }
-        .accessibilityLabel(n > 0 ? "Paseo，\(n) 个会话等你处理" : "Paseo")
+        .accessibilityLabel(n > 0 ? String(localized: "Paseo，\(n) 个会话等你处理") : "Paseo")
     }
 }
 
@@ -65,8 +65,8 @@ struct MenuBarContent: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 18)
             }
-            section("等你处理", sessions.waiting)
-            section("运行中", sessions.running)
+            section(String(localized: "等你处理"), sessions.waiting)
+            section(String(localized: "运行中"), sessions.running)
             Divider().padding(.vertical, 4)
             HStack {
                 Button("打开 Paseo") { showMain() }
@@ -98,11 +98,11 @@ struct MenuBarContent: View {
         var parts = [row.project]
         if !row.host.isEmpty { parts.append(row.host) }
         switch row.agent.bucket {
-        case .needsInput: parts.append("需要你批准或回答")
-        case .failed: parts.append("出错了")
-        case .attention: parts.append("已完成，未查看")
+        case .needsInput: parts.append(String(localized: "需要你批准或回答"))
+        case .failed: parts.append(String(localized: "出错了"))
+        case .attention: parts.append(String(localized: "已完成，未查看"))
         case .running:
-            if let quiet = row.agent.quietMinutes() { parts.append("\(quiet) 分钟没有动静") }
+            if let quiet = row.agent.quietMinutes() { parts.append(String(localized: "\(quiet) 分钟没有动静")) }
         case .done: break
         }
         return parts.joined(separator: " · ")
@@ -144,7 +144,7 @@ enum MainWindow {
         guard let model else { return nil }
         let sessions = MenuBarSessions(model: model)
         let menu = NSMenu()
-        for (title, rows) in [("等你处理", sessions.waiting), ("运行中", sessions.running)] where !rows.isEmpty {
+        for (title, rows) in [(String(localized: "等你处理"), sessions.waiting), (String(localized: "运行中"), sessions.running)] where !rows.isEmpty {
             menu.addItem(.sectionHeader(title: title))
             for row in rows.prefix(10) {
                 let item = NSMenuItem(title: row.agent.displayTitle, action: #selector(openSession(_:)), keyEquivalent: "")

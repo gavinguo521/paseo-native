@@ -155,11 +155,11 @@ private struct ScheduleRow: View {
 
     private var badge: String {
         let s = item.schedule
-        if s.isExpired { return "已过期" }
-        if gone { return "目标已不存在" }
-        if s.status == "completed" { return "已完成" }
-        if s.status == "paused" { return "已暂停" }
-        return "进行中"
+        if s.isExpired { return String(localized: "已过期") }
+        if gone { return String(localized: "目标已不存在") }
+        if s.status == "completed" { return String(localized: "已完成") }
+        if s.status == "paused" { return String(localized: "已暂停") }
+        return String(localized: "进行中")
     }
 
     private var badgeColor: Color {
@@ -169,8 +169,8 @@ private struct ScheduleRow: View {
 
     private var target: String {
         let s = item.schedule
-        if let id = s.targetAgentId { return "发给会话：" + (item.host.agents[id]?.displayTitle ?? String(id.prefix(8))) }
-        return "新建会话于 " + ((s.cwd as NSString?)?.lastPathComponent ?? "?")
+        if let id = s.targetAgentId { return String(localized: "发给会话：\(item.host.agents[id]?.displayTitle ?? String(id.prefix(8)))") }
+        return String(localized: "新建会话于 \((s.cwd as NSString?)?.lastPathComponent ?? "?")")
     }
 
     private var meta: String {
@@ -178,25 +178,25 @@ private struct ScheduleRow: View {
         var parts: [String] = []
         if showHost { parts.append(item.host.label) }
         parts.append(describeCadence(s))
-        parts.append(s.lastRunAt.map { "上次 " + $0.formatted(.relative(presentation: .named)) } ?? "还没运行过")
-        if s.status == "active", let next = s.nextRunAt { parts.append("下次 " + next.formatted(.relative(presentation: .named))) }
+        parts.append(s.lastRunAt.map { String(localized: "上次 \($0.formatted(.relative(presentation: .named)))") } ?? String(localized: "还没运行过"))
+        if s.status == "active", let next = s.nextRunAt { parts.append(String(localized: "下次 \(next.formatted(.relative(presentation: .named)))")) }
         return parts.joined(separator: " · ")
     }
 }
 
 func describeCadence(_ s: Schedule) -> String {
-    if let ms = s.everyMs { return "每 \(Int(ms / 60000)) 分钟" }
+    if let ms = s.everyMs { return String(localized: "每 \(Int(ms / 60000)) 分钟") }
     guard let e = s.cronExpression else { return "—" }
     let f = e.split(separator: " ").map(String.init)
     guard f.count == 5 else { return e }
     let time = (Int(f[1]).map { String(format: "%02d", $0) } ?? f[1]) + ":" + (Int(f[0]).map { String(format: "%02d", $0) } ?? f[0])
     switch (f[0], f[1], f[2], f[3], f[4]) {
-    case ("*", "*", "*", "*", "*"): return "每分钟"
-    case (let m, "*", "*", "*", "*") where m.hasPrefix("*/"): return "每 \(m.dropFirst(2)) 分钟"
-    case (_, "*", "*", "*", "*") where Int(f[0]) != nil: return "每小时第 \(f[0]) 分"
-    case (_, _, "*", "*", "*") where Int(f[0]) != nil && Int(f[1]) != nil: return "每天 " + time
-    case (_, _, "*", "*", "1-5"): return "工作日 " + time
-    case (_, _, "*", "*", "1"): return "每周一 " + time
+    case ("*", "*", "*", "*", "*"): return String(localized: "每分钟")
+    case (let m, "*", "*", "*", "*") where m.hasPrefix("*/"): return String(localized: "每 \(m.dropFirst(2)) 分钟")
+    case (_, "*", "*", "*", "*") where Int(f[0]) != nil: return String(localized: "每小时第 \(f[0]) 分")
+    case (_, _, "*", "*", "*") where Int(f[0]) != nil && Int(f[1]) != nil: return String(localized: "每天 \(time)")
+    case (_, _, "*", "*", "1-5"): return String(localized: "工作日 \(time)")
+    case (_, _, "*", "*", "1"): return String(localized: "每周一 \(time)")
     default: return e
     }
 }
@@ -227,8 +227,8 @@ private struct ScheduleForm: View {
     @State private var saving = false
 
     private static let presets: [(String, String)] = [
-        ("每分钟", "* * * * *"), ("每小时", "0 * * * *"), ("每天 9:00", "0 9 * * *"),
-        ("工作日 9:00", "0 9 * * 1-5"), ("每周一 9:00", "0 9 * * 1"),
+        (String(localized: "每分钟"), "* * * * *"), (String(localized: "每小时"), "0 * * * *"), (String(localized: "每天 9:00"), "0 9 * * *"),
+        (String(localized: "工作日 9:00"), "0 9 * * 1-5"), (String(localized: "每周一 9:00"), "0 9 * * 1"),
     ]
 
     private var editing: (String, Schedule)? { if case .edit(let h, let s) = target { (h, s) } else { nil } }
@@ -426,7 +426,7 @@ private struct ScheduleDetail: View {
                     ProgressView()
                 }
             }
-            .navigationTitle(schedule?.title ?? "计划任务")
+            .navigationTitle(schedule?.title ?? String(localized: "计划任务"))
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
             .task { schedule = try? await host.inspectSchedule(scheduleId) }
         }
@@ -483,7 +483,7 @@ struct UsageView: View {
 
     private func load(force: Bool) async {
         for h in model.hosts where h.state == .connected {
-            guard h.usageQueriesEnabled else { errors[h.id] = "这台机器关闭了用量查询（机器设置 → 会话）"; continue }
+            guard h.usageQueriesEnabled else { errors[h.id] = String(localized: "这台机器关闭了用量查询（机器设置 → 会话）"); continue }
             Task { await load(h, force: force) }
         }
     }
@@ -518,7 +518,7 @@ private struct UsageCard: View {
                 Spacer()
                 if let at = report.fetchedAt { Text(at.formatted(.relative(presentation: .named))).font(.caption).foregroundStyle(Theme.extraMuted) }
             }
-            if let problem = report.problem { Banner(level: report.retained ? "warning" : "error", message: problem + (report.retained ? "（显示上次成功的数据）" : "")) }
+            if let problem = report.problem { Banner(level: report.retained ? "warning" : "error", message: problem + (report.retained ? String(localized: "（显示上次成功的数据）") : "")) }
             ForEach(report.windows) { w in
                 let used = w.usedPct ?? (w.remainingPct.map { 100 - $0 } ?? 0)
                 let shown = displayRemaining ? 100 - used : used
@@ -526,12 +526,12 @@ private struct UsageCard: View {
                     HStack {
                         Text(windowLabel(w)).font(.system(size: 13))
                         Spacer()
-                        Text("\(Int(shown.rounded()))%" + (displayRemaining ? " 剩余" : " 已用")).font(.system(size: 13, weight: .medium)).monospacedDigit()
+                        Text(displayRemaining ? String(localized: "\(Int(shown.rounded()))% 剩余") : String(localized: "\(Int(shown.rounded()))% 已用")).font(.system(size: 13, weight: .medium)).monospacedDigit()
                     }
                     ProgressView(value: min(max(used, 0), 100), total: 100).tint(tone(w.tone, used))
                     if let at = w.runsOutAt ?? w.resetsAt {
                         // Countdown plus the exact moment (official 0.15 #8162).
-                        Text(at.formatted(.relative(presentation: .named)) + (w.runsOutAt != nil ? "用完" : "重置") + " · " + formatWhen(at))
+                        Text(w.runsOutAt != nil ? String(localized: "\(at.formatted(.relative(presentation: .named)))用完 · \(formatWhen(at))") : String(localized: "\(at.formatted(.relative(presentation: .named)))重置 · \(formatWhen(at))"))
                             .font(.caption).foregroundStyle(Theme.muted)
                     }
                 }
@@ -556,9 +556,9 @@ private struct UsageCard: View {
 
     /// Built-in window ids get Chinese names (official: usage/format.ts localizes the same ids).
     private func windowLabel(_ w: UsageWindow) -> String {
-        let names = ["five_hour": "5 小时窗口", "session": "5 小时窗口", "weekly": "本周", "monthly": "本月", "daily": "今日"]
+        let names = ["five_hour": String(localized: "5 小时窗口"), "session": String(localized: "5 小时窗口"), "weekly": String(localized: "本周"), "monthly": String(localized: "本月"), "daily": String(localized: "今日")]
         if let n = names[w.id] { return n }
-        return w.label.replacingOccurrences(of: "Weekly", with: "本周").replacingOccurrences(of: "Session", with: "5 小时窗口")
+        return w.label.replacingOccurrences(of: "Weekly", with: String(localized: "本周")).replacingOccurrences(of: "Session", with: String(localized: "5 小时窗口"))
     }
 
     private func tone(_ t: String?, _ used: Double) -> Color {
@@ -604,11 +604,11 @@ struct ContextRing: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("上下文用量").font(.system(size: 13, weight: .semibold))
             ProgressView(value: min(pct / 100, 1)).tint(pct > 90 ? Theme.destructive : pct >= 70 ? Theme.dotWarning : Theme.accent)
-            row("已用", "\(Int(used).formatted()) / \(Int(max).formatted()) tokens（\(Int(pct))%）")
-            if let v = usage.inputTokens { row("本轮输入", Int(v).formatted() + " tokens") }
-            if let v = usage.cachedInputTokens, v > 0 { row("其中缓存命中", Int(v).formatted() + " tokens") }
-            if let v = usage.outputTokens { row("本轮输出", Int(v).formatted() + " tokens") }
-            if let c = usage.totalCostUsd, c > 0 { row("累计花费", c < 0.01 ? String(format: "$%.4f", c) : String(format: "$%.2f", c)) }
+            row(String(localized: "已用"), String(localized: "\(Int(used).formatted()) / \(Int(max).formatted()) tokens（\(Int(pct))%）"))
+            if let v = usage.inputTokens { row(String(localized: "本轮输入"), Int(v).formatted() + " tokens") }
+            if let v = usage.cachedInputTokens, v > 0 { row(String(localized: "其中缓存命中"), Int(v).formatted() + " tokens") }
+            if let v = usage.outputTokens { row(String(localized: "本轮输出"), Int(v).formatted() + " tokens") }
+            if let c = usage.totalCostUsd, c > 0 { row(String(localized: "累计花费"), c < 0.01 ? String(format: "$%.4f", c) : String(format: "$%.2f", c)) }
             if pct >= 70 { Text("快满时可以发 /compact 压缩上下文").font(.system(size: 11)).foregroundStyle(Theme.muted) }
             if let quota, AgentQuotaSection.available(quota.host) {
                 Divider().padding(.vertical, 4)

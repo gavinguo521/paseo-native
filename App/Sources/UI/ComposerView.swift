@@ -39,18 +39,18 @@ enum SendBehavior: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .steer: "插话（引导当前回合）"
-        case .interrupt: "打断并重新开始"
-        case .queue: "排队，等这一轮结束再发"
+        case .steer: String(localized: "插话（引导当前回合）")
+        case .interrupt: String(localized: "打断并重新开始")
+        case .queue: String(localized: "排队，等这一轮结束再发")
         }
     }
 
     /// Official option names (settings.general.defaultSend.options).
     var shortLabel: String {
         switch self {
-        case .interrupt: "中断"
-        case .steer: "引导"
-        case .queue: "排队"
+        case .interrupt: String(localized: "中断")
+        case .steer: String(localized: "引导")
+        case .queue: String(localized: "排队")
         }
     }
 }
@@ -84,26 +84,31 @@ struct ComposerView: View {
     private var running: Bool { agent?.status == .running }
     private var behavior: SendBehavior { SendBehavior(rawValue: sendBehavior) ?? .steer }
     private var queued: [QueuedMessage] { model.queue[agentId] ?? [] }
-    private var subagents: [Agent] {
-        host.agents.values.filter { $0.parentAgentId == agentId && $0.archivedAt == nil }
-            .sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+    /// 直接子会话（含跨机器的），带上它所在的主机：归档、解除父子关系都要发给那台主机。
+    private var subagents: [(agent: Agent, host: HostStore)] {
+        descendants.filter { $0.depth == 0 }.map { ($0.agent, $0.host) }
     }
     /// 全部后代会话（子会话、子会话的子会话……），深度优先，depth 0 = 直接子会话；弹层按它缩进成树，
-    /// 不然孙会话只能先点进子会话才看得到。
-    private var descendants: [(agent: Agent, depth: Int)] {
-        let live = host.agents.values.filter { $0.archivedAt == nil && $0.parentAgentId != nil
-            && ($0.parentServerId == nil || $0.parentServerId == host.id) }
-        let children = Dictionary(grouping: live) { $0.parentAgentId! }
-        var out: [(agent: Agent, depth: Int)] = []
-        var seen: Set<String> = [agentId]
-        func walk(_ id: String, _ depth: Int) {
-            for c in (children[id] ?? []).sorted(by: { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) })
-            where seen.insert(c.id).inserted {
-                out.append((c, depth))
-                walk(c.id, depth + 1)
+    /// 不然孙会话只能先点进子会话才看得到。子会话可能开在别的机器上（label `paseo.parent-server-id`
+    /// 指回父会话所在主机），所以在所有已连接主机里找，按「父主机|父会话 id」归组。
+    private var descendants: [(agent: Agent, host: HostStore, depth: Int)] {
+        var children: [String: [(agent: Agent, host: HostStore)]] = [:]
+        for h in model.hosts {
+            for a in h.agents.values where a.archivedAt == nil {
+                guard let parent = a.parentAgentId else { continue }
+                children[(a.parentServerId ?? h.id) + "|" + parent, default: []].append((a, h))
             }
         }
-        walk(agentId, 0)
+        var out: [(agent: Agent, host: HostStore, depth: Int)] = []
+        var seen: Set<String> = [host.id + "|" + agentId]
+        func walk(_ serverId: String, _ id: String, _ depth: Int) {
+            for c in (children[serverId + "|" + id] ?? []).sorted(by: { ($0.agent.createdAt ?? .distantPast) > ($1.agent.createdAt ?? .distantPast) })
+            where seen.insert(c.host.id + "|" + c.agent.id).inserted {
+                out.append((c.agent, c.host, depth))
+                walk(c.host.id, c.agent.id, depth + 1)
+            }
+        }
+        walk(host.id, agentId, 0)
         return out
     }
 
@@ -125,12 +130,12 @@ struct ComposerView: View {
                 if !compact { subagentPill }
                 if let usage = agent?.lastUsage { ContextRing(usage: usage, quota: (host, agentId, agent?.model), compact: compact) }
                 if hasContent {
-                    RoundButton(systemImage: "arrow.up", busy: sending, help: running ? behavior.label : "发送") { send() }
+                    RoundButton(systemImage: "arrow.up", busy: sending, help: running ? behavior.label : String(localized: "发送")) { send() }
                 } else if let s = suggestion, !running, !s.needsEditing {
                     // One tap sends the suggested next message; accent and a paper plane so it never reads as "send nothing".
-                    RoundButton(systemImage: "paperplane.fill", busy: sending, help: "发送建议：" + s.text, fill: Theme.accent) { sendSuggestion(s) }
+                    RoundButton(systemImage: "paperplane.fill", busy: sending, help: String(localized: "发送建议：\(s.text)"), fill: Theme.accent) { sendSuggestion(s) }
                 } else if running {
-                    RoundButton(systemImage: "stop.fill", busy: false, help: "中断（Esc）") { Task { try? await host.cancel(agentId) } }
+                    RoundButton(systemImage: "stop.fill", busy: false, help: String(localized: "中断（Esc）")) { Task { try? await host.cancel(agentId) } }
                 }
             } onSubmit: { send() }
         }
@@ -180,7 +185,7 @@ struct ComposerView: View {
         sending = true
         Task {
             do { try await NextInputSource.send(s, host: host, agentId: agentId); suggestion = nil }
-            catch { self.error = "发送建议失败：\(error)" }
+            catch { self.error = String(localized: "发送建议失败：\(error)") }
             sending = false
         }
     }
@@ -191,15 +196,15 @@ struct ComposerView: View {
 
     private var placeholder: String {
         #if os(macOS)
-        if let s = suggestion { return s.text + "　（Tab 采用）" }
+        if let s = suggestion { return String(localized: "\(s.text)　（Tab 采用）") }
         #else
         if let s = suggestion { return s.text }
         #endif
-        guard running else { return "发送消息" }
+        guard running else { return String(localized: "发送消息") }
         switch behavior {
-        case .steer: return "插话，引导当前回合"
-        case .interrupt: return "发送会打断当前回合"
-        case .queue: return "排队，这一轮结束后发送"
+        case .steer: return String(localized: "插话，引导当前回合")
+        case .interrupt: return String(localized: "发送会打断当前回合")
+        case .queue: return String(localized: "排队，这一轮结束后发送")
         }
     }
 
@@ -215,7 +220,7 @@ struct ComposerView: View {
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("把建议填进输入框：" + s.text)
+            .accessibilityLabel(String(localized: "把建议填进输入框：\(s.text)"))
         }
         #endif
         if let todos = latestTodos, !todos.isEmpty, todos.contains(where: { !$0.completed }) {
@@ -328,23 +333,23 @@ struct ComposerView: View {
         let needsInput = subagents.filter { $0.bucket == .needsInput }.count
         let review = subagents.filter { $0.bucket == .attention }.count
         var parts: [String] = []
-        if needsInput > 0 { parts.append("\(needsInput) 个需要输入") }
-        if failed > 0 { parts.append("\(failed) 个失败") }
-        if running > 0 { parts.append("\(running) 个运行中") }
-        if review > 0 { parts.append("\(review) 个待查看") }
-        return parts.isEmpty ? "\(subagents.count + providerSubs.count) 个子代理" : parts.joined(separator: " · ")
+        if needsInput > 0 { parts.append(String(localized: "\(needsInput) 个需要输入")) }
+        if failed > 0 { parts.append(String(localized: "\(failed) 个失败")) }
+        if running > 0 { parts.append(String(localized: "\(running) 个运行中")) }
+        if review > 0 { parts.append(String(localized: "\(review) 个待查看")) }
+        return parts.isEmpty ? String(localized: "\(subagents.count + providerSubs.count) 个子代理") : parts.joined(separator: " · ")
     }
 
     private var finishedSubagentCount: Int {
         host.providerSubagents(of: agentId).filter(\.isFinished).count
-            + subagents.filter { $0.status == .idle || $0.status == .error }.count
+            + subagents.filter { $0.agent.status == .idle || $0.agent.status == .error }.count
     }
 
     /// Clears finished provider subagents from the pill and archives finished child sessions.
     private func archiveFinishedSubagents() {
         host.hideProviderSubagents(host.providerSubagents(of: agentId).filter(\.isFinished).map(\.id))
-        let finished = subagents.filter { $0.status == .idle || $0.status == .error }.map(\.id)
-        Task { for id in finished { try? await host.archive(id) } }
+        let finished = subagents.filter { $0.agent.status == .idle || $0.agent.status == .error }
+        Task { for f in finished { try? await f.host.archive(f.agent.id) } }
         showSubagents = false
     }
 
@@ -365,7 +370,7 @@ struct ComposerView: View {
                         }
                     }
                 } label: {
-                    ControlLabel(systemImage: "shield.lefthalf.filled", title: agent.currentMode?.label ?? "模式", rowTitle: "模式")
+                    ControlLabel(systemImage: "shield.lefthalf.filled", title: agent.currentMode?.label ?? String(localized: "模式"), rowTitle: String(localized: "模式"))
                 }
                 .controlMenuStyle()
             }
@@ -377,10 +382,10 @@ struct ComposerView: View {
                 Menu {
                     Section("套用配置") {
                         ForEach(profiles, id: \.self) { p in
-                            Button(p["name"]?.stringValue ?? "配置") { apply(profile: p) }
+                            Button(p["name"]?.stringValue ?? String(localized: "配置")) { apply(profile: p) }
                         }
                     }
-                } label: { ControlLabel(systemImage: "person.crop.square", title: "配置", rowTitle: "套用配置", rowValue: false) }
+                } label: { ControlLabel(systemImage: "person.crop.square", title: String(localized: "配置"), rowTitle: String(localized: "套用配置"), rowValue: false) }
                     .controlMenuStyle()
                     .help("套用 Agent 配置（模型、思考、模式、开关）")
             }
@@ -401,21 +406,22 @@ struct ComposerView: View {
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(descendants, id: \.agent.id) { sub, depth in
+                    ForEach(descendants, id: \.agent.id) { sub, subHost, depth in
                         HStack(spacing: 0) {
                             if depth > 0 {
                                 Image(systemName: "arrow.turn.down.right").font(.system(size: 10)).foregroundStyle(Theme.muted)
                                     .padding(.leading, 14 + CGFloat(depth - 1) * 16).padding(.trailing, -8)
                             }
-                            SubagentRowButton(label: sub.displayTitle, detail: sub.status == .running ? "运行中" : nil) {
+                            SubagentRowButton(label: sub.displayTitle, detail: sub.status == .running ? String(localized: "运行中") : nil,
+                                              tag: subHost.id == host.id ? nil : subHost.label) {
                                 StatusDot(bucket: sub.bucket)
                             } action: {
                                 showSubagents = false
-                                model.open(AgentRef(serverId: host.id, agentId: sub.id))
+                                model.open(AgentRef(serverId: subHost.id, agentId: sub.id))
                             }
                             Menu {
-                                Button("解除父子关系", systemImage: "link") { Task { try? await host.detach(sub.id) } }
-                                Button("归档", systemImage: "archivebox", role: .destructive) { Task { try? await host.archive(sub.id) } }
+                                Button("解除父子关系", systemImage: "link") { Task { try? await subHost.detach(sub.id) } }
+                                Button("归档", systemImage: "archivebox", role: .destructive) { Task { try? await subHost.archive(sub.id) } }
                             } label: { Image(systemName: "ellipsis").frame(width: 24, height: 24) }
                                 .controlMenuStyle()
                                 .accessibilityLabel("更多操作")
@@ -524,7 +530,7 @@ struct ComposerView: View {
         guard hasContent, !sending else { return }
         var behavior = self.behavior
         if alternate { behavior = behavior == .queue ? .steer : .queue }
-        guard !uploads.contains(where: { !$0.done && $0.error == nil }) else { error = "文件还在上传"; return }
+        guard !uploads.contains(where: { !$0.done && $0.error == nil }) else { error = String(localized: "文件还在上传"); return }
         let attached = images
         let files = uploads.compactMap(\.file).map(\.attachment)
         text = ""
@@ -546,7 +552,7 @@ struct ComposerView: View {
                 try await host.send(message, to: agentId, steer: steer, images: attached, attachments: files)
                 sentCount += 1
             } catch {
-                self.error = "发送失败：\(error)"
+                self.error = String(localized: "发送失败：\(error)")
                 if text.isEmpty { text = message; images = attached }
             }
             sending = false
@@ -600,7 +606,7 @@ struct FeatureChip: View {
                     }
                 }
             } label: {
-                ControlLabel(systemImage: "slider.horizontal.3", title: inSheet ? (feature.options.first { $0.id == feature.selectedId }?.label ?? "默认") : feature.label + "：" + (feature.options.first { $0.id == feature.selectedId }?.label ?? "默认"), rowTitle: feature.label)
+                ControlLabel(systemImage: "slider.horizontal.3", title: inSheet ? (feature.options.first { $0.id == feature.selectedId }?.label ?? String(localized: "默认")) : String(localized: "\(feature.label)：\(feature.options.first { $0.id == feature.selectedId }?.label ?? String(localized: "默认"))"), rowTitle: feature.label)
             }
             .controlMenuStyle()
         }
@@ -610,6 +616,8 @@ struct FeatureChip: View {
 struct SubagentRowButton<Icon: View>: View {
     let label: String
     let detail: String?
+    /// 跟在标题后面的灰色小标签：子会话开在另一台机器上时显示机器名。
+    var tag: String? = nil
     @ViewBuilder let icon: Icon
     let action: () -> Void
 
@@ -618,7 +626,13 @@ struct SubagentRowButton<Icon: View>: View {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 icon.frame(width: 16)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(label).font(.system(size: 13)).lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(label).font(.system(size: 13)).lineLimit(1)
+                        if let tag {
+                            Label(tag, systemImage: "desktopcomputer").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                                .lineLimit(1).fixedSize()
+                        }
+                    }
                     if let detail { Text(detail).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1) }
                 }
                 Spacer(minLength: 0)
@@ -689,7 +703,7 @@ func uploadFiles(_ urls: [URL], to host: HostStore, into items: Binding<[UploadI
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             do {
                 let data = try Data(contentsOf: url)
-                guard data.count <= 50 * 1024 * 1024 else { throw HostStore.ActionError.rejected("文件超过 50 MB") }
+                guard data.count <= 50 * 1024 * 1024 else { throw HostStore.ActionError.rejected(String(localized: "文件超过 50 MB")) }
                 let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
                 let f = try await host.upload(fileName: url.lastPathComponent, mimeType: mime, data: data)
                 if let i = items.wrappedValue.firstIndex(where: { $0.id == item.id }) { items.wrappedValue[i].file = f }
@@ -771,7 +785,7 @@ struct DraftComposerView: View {
     }
 
     private var shell: some View {
-        ComposerShell(text: $text, images: $images, focused: $focused, error: error, placeholder: "发送消息",
+        ComposerShell(text: $text, images: $images, focused: $focused, error: error, placeholder: String(localized: "发送消息"),
                       autocomplete: autocomplete, onPick: { autocomplete.apply($0, to: &text) }, uploads: $uploads,
                       onFiles: { uploadFiles($0, to: host, into: $uploads) },
                       searchForge: workspace.isGit ? { [host, dir = workspace.directory] q in try await host.forgeSearch(cwd: dir, query: q) } : nil) {
@@ -786,7 +800,7 @@ struct DraftComposerView: View {
                     }
                 }
             } label: {
-                ControlLabel(systemImage: "cpu", title: providerLabel, rowTitle: "提供方")
+                ControlLabel(systemImage: "cpu", title: providerLabel, rowTitle: String(localized: "提供方"))
             }
             .controlMenuStyle()
             ModelMenu(host: host, provider: provider, cwd: workspace.directory, selection: model.isEmpty ? nil : model) { model = $0 ?? ""; thinking = "" }
@@ -803,7 +817,7 @@ struct DraftComposerView: View {
                     }
                 } label: {
                     ControlLabel(systemImage: "shield.lefthalf.filled",
-                                 title: modes.first { $0["id"]?.stringValue == current }?["label"]?.stringValue ?? "模式", rowTitle: "模式")
+                                 title: modes.first { $0["id"]?.stringValue == current }?["label"]?.stringValue ?? String(localized: "模式"), rowTitle: String(localized: "模式"))
                 }
                 .controlMenuStyle()
             }
@@ -811,7 +825,7 @@ struct DraftComposerView: View {
                 Menu {
                     Section("套用配置") {
                         ForEach(host.agentProfiles, id: \.self) { p in
-                            Button(p["name"]?.stringValue ?? "配置") {
+                            Button(p["name"]?.stringValue ?? String(localized: "配置")) {
                                 provider = p["provider"]?.stringValue ?? provider
                                 model = p["model"]?.stringValue ?? ""
                                 thinking = p["thinkingOptionId"]?.stringValue ?? ""
@@ -819,13 +833,13 @@ struct DraftComposerView: View {
                             }
                         }
                     }
-                } label: { ControlLabel(systemImage: "person.crop.square", title: "配置", rowTitle: "套用配置", rowValue: false) }
+                } label: { ControlLabel(systemImage: "person.crop.square", title: String(localized: "配置"), rowTitle: String(localized: "套用配置"), rowValue: false) }
                     .controlMenuStyle()
             }
             }
         } trailing: {
             if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                RoundButton(systemImage: "arrow.up", busy: sending, help: "开始") { create() }
+                RoundButton(systemImage: "arrow.up", busy: sending, help: String(localized: "开始")) { create() }
             }
         } onSubmit: { create() }
         .task { await host.loadProviders(cwd: workspace.directory) }
@@ -894,7 +908,7 @@ struct DraftComposerView: View {
                     if !effectiveMode.isEmpty { config["modeId"] = .string(effectiveMode) }
                     let (_, agentId) = try await host.createWorkspace(source: .object(worktree.source), agentConfig: config, prompt: prompt, images: images,
                                                                       attachments: attachments)
-                    guard let agentId else { throw HostStore.ActionError.rejected("工作区已创建，但会话没有启动") }
+                    guard let agentId else { throw HostStore.ActionError.rejected(String(localized: "工作区已创建，但会话没有启动")) }
                     id = agentId
                 } else if newWorkspace, !workspace.projectId.isEmpty {
                     var config: [String: JSONValue] = ["provider": .string(provider), "cwd": .string(projectDirectory)]
@@ -905,7 +919,7 @@ struct DraftComposerView: View {
                                                        "projectId": .string(workspace.projectId)]
                     let (_, agentId) = try await host.createWorkspace(source: .object(source), agentConfig: config, prompt: prompt,
                                                                       images: images, attachments: attachments)
-                    guard let agentId else { throw HostStore.ActionError.rejected("工作区已创建，但会话没有启动") }
+                    guard let agentId else { throw HostStore.ActionError.rejected(String(localized: "工作区已创建，但会话没有启动")) }
                     id = agentId
                 } else {
                     id = try await host.createAgent(workspace: workspace, provider: provider, model: effectiveModel,
@@ -920,7 +934,7 @@ struct DraftComposerView: View {
                 onPending(nil)
                 if text.isEmpty { text = prompt }
                 if self.images.isEmpty { self.images = images }
-                self.error = "创建失败：\(error)"
+                self.error = String(localized: "创建失败：\(error)")
             }
             sending = false
         }
@@ -935,7 +949,7 @@ struct DraftComposerView: View {
 @MainActor func composerSummary(_ host: HostStore, _ provider: String, _ model: String?, _ thinking: String?) -> String {
     let list = models(host, provider)
     let entry = list.first { $0["id"]?.stringValue == model } ?? list.first { $0["isDefault"]?.boolValue == true }
-    let modelLabel = entry?["label"]?.stringValue ?? model ?? "默认模型"
+    let modelLabel = entry?["label"]?.stringValue ?? model ?? String(localized: "默认模型")
     let current = thinking ?? entry?["defaultThinkingOptionId"]?.stringValue
     let thinkingLabel = (entry?["thinkingOptions"]?.arrayValue ?? []).first { $0["id"]?.stringValue == current }?["label"]?.stringValue
     return [modelLabel, thinkingLabel].compactMap { $0 }.joined(separator: " · ")
@@ -1018,7 +1032,7 @@ struct ModelMenu: View {
         let list = models(host, provider)
         Group {
             if list.count > 8 {
-                Button { browsing = true } label: { ControlLabel(systemImage: "sparkle", title: label(list), rowTitle: "模型") }
+                Button { browsing = true } label: { ControlLabel(systemImage: "sparkle", title: label(list), rowTitle: String(localized: "模型")) }
                     .buttonStyle(.plain)
                     .popover(isPresented: $browsing, arrowEdge: .bottom) { browser(list) }
             } else {
@@ -1077,15 +1091,15 @@ struct ModelMenu: View {
                 }
             }
         } label: {
-            ControlLabel(systemImage: "sparkle", title: label(list), rowTitle: "模型")
+            ControlLabel(systemImage: "sparkle", title: label(list), rowTitle: String(localized: "模型"))
         }
         .controlMenuStyle()
     }
 
     private func label(_ list: [JSONValue]) -> String {
         if let selection, let m = list.first(where: { $0["id"]?.stringValue == selection }) { return m["label"]?.stringValue ?? selection }
-        if selection == nil, let m = list.first(where: { $0["isDefault"]?.boolValue == true }) { return m["label"]?.stringValue ?? "默认模型" }
-        return selection ?? "默认模型"
+        if selection == nil, let m = list.first(where: { $0["isDefault"]?.boolValue == true }) { return m["label"]?.stringValue ?? String(localized: "默认模型") }
+        return selection ?? String(localized: "默认模型")
     }
 }
 
@@ -1111,7 +1125,7 @@ struct ThinkingMenu: View {
                     }
                 }
             } label: {
-                ControlLabel(systemImage: "brain", title: options.first { $0["id"]?.stringValue == current }?["label"]?.stringValue ?? current ?? "思考", rowTitle: "思考")
+                ControlLabel(systemImage: "brain", title: options.first { $0["id"]?.stringValue == current }?["label"]?.stringValue ?? current ?? String(localized: "思考"), rowTitle: String(localized: "思考"))
             }
             .controlMenuStyle()
         }
@@ -1628,7 +1642,7 @@ private struct BackgroundTaskRow: View {
                     if task.state == .running, let start = task.startedAt {
                         // 每 30 秒刷新「已运行」。
                         TimelineView(.periodic(from: .now, by: 30)) { context in
-                            Text("运行中 · 已运行 " + formatDuration(max(0, context.date.timeIntervalSince(start))))
+                            Text(String(localized: "运行中 · 已运行 \(formatDuration(max(0, context.date.timeIntervalSince(start))))"))
                         }
                     } else {
                         Text([stateLabel, task.summary].compactMap { $0 }.joined(separator: " · "))
@@ -1644,11 +1658,11 @@ private struct BackgroundTaskRow: View {
 
     private var stateLabel: String {
         switch task.state {
-        case .running: "运行中"
-        case .completed: "已完成"
-        case .failed: "失败"
-        case .stopped: "已停止"
-        case .interrupted: "已中断（会话已结束）"
+        case .running: String(localized: "运行中")
+        case .completed: String(localized: "已完成")
+        case .failed: String(localized: "失败")
+        case .stopped: String(localized: "已停止")
+        case .interrupted: String(localized: "已中断（会话已结束）")
         }
     }
 

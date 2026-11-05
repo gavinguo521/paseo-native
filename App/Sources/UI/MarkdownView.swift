@@ -418,7 +418,7 @@ struct MarkdownImage: View {
                     .task(id: "\(url)|\(reader != nil)") { await loadRemote() }
             }
         }
-        .help(alt.isEmpty ? "点击放大" : alt + "（点击放大）")
+        .help(alt.isEmpty ? String(localized: "点击放大") : String(localized: "\(alt)（点击放大）"))
         .sheet(isPresented: Binding(get: { zoomed != nil }, set: { if !$0 { zoomed = nil } })) {
             if let zoomed { ImageLightbox(image: zoomed, title: alt) }
         }
@@ -456,7 +456,7 @@ struct MarkdownImage: View {
     private func placeholder(loading: Bool) -> some View {
         HStack(spacing: 8) {
             if loading { ProgressView().controlSize(.small) } else { Image(systemName: "photo") }
-            Text(alt.isEmpty || alt == "Image" ? "图片（无法预览）" : alt).lineLimit(1)
+            Text(alt.isEmpty || alt == "Image" ? String(localized: "图片（无法预览）") : alt).lineLimit(1)
         }
         .font(.system(size: 12))
         .foregroundStyle(Theme.muted)
@@ -563,7 +563,7 @@ struct ImageLightbox: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Text(title.isEmpty || title == "Image" ? "图片" : title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                Text(title.isEmpty || title == "Image" ? String(localized: "图片") : title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                 Spacer()
                 Button { zoom(1 / 1.25) } label: { Image(systemName: "minus.magnifyingglass") }.keyboardShortcut("-", modifiers: .command)
                     .accessibilityLabel("缩小")

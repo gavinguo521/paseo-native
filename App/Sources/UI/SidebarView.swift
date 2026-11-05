@@ -154,7 +154,7 @@ struct SidebarView: View {
             }
         } message: {
             let machines = removingProject?.targets.count ?? 0
-            Text((machines > 1 ? "会从 \(machines) 台机器上一起移除。" : "") + "里面的工作区和会话会一起归档，正在运行的会被停止；磁盘上的文件不会删除。")
+            Text((machines > 1 ? String(localized: "会从 \(machines) 台机器上一起移除。") : "") + String(localized: "里面的工作区和会话会一起归档，正在运行的会被停止；磁盘上的文件不会删除。"))
         }
         .alert("移除项目失败", isPresented: Binding(get: { removeError != nil }, set: { if !$0 { removeError = nil } })) {
             Button("好") {}
@@ -167,22 +167,22 @@ struct SidebarView: View {
     private var filterBar: some View {
         HStack {
             Menu {
-                Button { model.hostFilter = nil } label: { check("全部主机", model.hostFilter == nil) }
+                Button { model.hostFilter = nil } label: { check(String(localized: "全部主机"), model.hostFilter == nil) }
                 Divider()
                 ForEach(model.hosts) { h in
                     Button { model.hostFilter = h.id } label: { check(h.label, model.hostFilter == h.id) }
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Text(model.hostFilter.flatMap { model.host($0)?.label } ?? "全部主机")
+                    Text(model.hostFilter.flatMap { model.host($0)?.label } ?? String(localized: "全部主机"))
                     Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
                 }
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
             Spacer()
-            if !hiddenNav.contains("history") { navIcon("clock.arrow.circlepath", "会话历史", .history) }
-            if !hiddenNav.contains("schedules") { navIcon("calendar", "计划任务", .schedules) }
-            if model.hasBoardPlugin && !hiddenNav.contains("board") { navIcon("rectangle.split.3x1", "看板", .board) }
+            if !hiddenNav.contains("history") { navIcon("clock.arrow.circlepath", String(localized: "会话历史"), .history) }
+            if !hiddenNav.contains("schedules") { navIcon("calendar", String(localized: "计划任务"), .schedules) }
+            if model.hasBoardPlugin && !hiddenNav.contains("board") { navIcon("rectangle.split.3x1", String(localized: "看板"), .board) }
             Menu {
                 Picker("分组", selection: Binding(get: { model.grouping }, set: { model.grouping = $0 })) {
                     ForEach(SidebarGrouping.allCases, id: \.self) { Text($0.label).tag($0) }
@@ -193,7 +193,7 @@ struct SidebarView: View {
                 }
                 .pickerStyle(.inline)
                 Menu("侧栏显示") {
-                    ForEach([("history", "会话历史"), ("schedules", "计划任务"), ("board", "看板")], id: \.0) { id, title in
+                    ForEach([("history", String(localized: "会话历史")), ("schedules", String(localized: "计划任务")), ("board", String(localized: "看板"))], id: \.0) { id, title in
                         Button { toggleNav(id) } label: { check(title, !hiddenNav.contains(id)) }
                     }
                 }
@@ -202,7 +202,7 @@ struct SidebarView: View {
                         ForEach(model.allLabels) { l in
                             Button { toggleLabel(l.id) } label: { check(l.name, model.labelFilter.contains(l.id)) }
                         }
-                        Button { toggleLabel("") } label: { check("无标签", model.labelFilter.contains("")) }
+                        Button { toggleLabel("") } label: { check(String(localized: "无标签"), model.labelFilter.contains("")) }
                         if !model.labelFilter.isEmpty { Button("清除筛选") { model.labelFilter = [] } }
                     }
                 }
@@ -348,12 +348,12 @@ struct SidebarView: View {
                 #if os(iOS)
                 .modifier(SwipeActions(
                     leading: row.bucket == .attention
-                        ? SwipeAction(title: "已读", systemImage: "checkmark", tint: Theme.dotSuccess) {
+                        ? SwipeAction(title: String(localized: "已读"), systemImage: "checkmark", tint: Theme.dotSuccess) {
                             if let workspace, let h = model.host(row.serverId) { Task { try? await h.markWorkspaceRead(workspace.id) } }
                             else { model.host(row.serverId)?.clearAttention(row.agent.id) }
                         }
                         : nil,
-                    trailing: SwipeAction(title: "归档", systemImage: "archivebox", tint: Theme.destructive) {
+                    trailing: SwipeAction(title: String(localized: "归档"), systemImage: "archivebox", tint: Theme.destructive) {
                         if let workspace { archivingWorkspace = workspace } else { archivingAgent = ref }
                     }))
                 #endif
@@ -396,7 +396,7 @@ struct SidebarView: View {
             }
             if editable.count > 1 {
                 Menu("编辑项目", systemImage: "pencil") {
-                    ForEach(editable) { t in Button(t.host.label + " 上的「" + t.project.displayName + "」…") { editingProject = t } }
+                    ForEach(editable) { t in Button(String(localized: "\(t.host.label) 上的「\(t.project.displayName)」…")) { editingProject = t } }
                 }
             } else if let t = editable.first {
                 Button("编辑项目…", systemImage: "pencil") { editingProject = t }
@@ -536,9 +536,9 @@ struct SidebarView: View {
         GlassEffectContainer(spacing: 12) {
             HStack {
                 HStack(spacing: 2) {
-                    footerButton("folder.badge.plus", help: "添加项目") { NotificationCenter.default.post(name: .addProject, object: nil) }
+                    footerButton("folder.badge.plus", help: String(localized: "添加项目")) { NotificationCenter.default.post(name: .addProject, object: nil) }
                     UsageFooterButton { model.destination = .usage } fallback: {
-                        footerButton("gauge.with.dots.needle.50percent", help: "用量", selected: model.destination == .usage) { model.destination = .usage }
+                        footerButton("gauge.with.dots.needle.50percent", help: String(localized: "用量"), selected: model.destination == .usage) { model.destination = .usage }
                     }
                     machinesMenu
                 }
@@ -547,7 +547,7 @@ struct SidebarView: View {
                 Spacer()
                 HStack(spacing: 2) {
                     helpMenu
-                    footerButton("gearshape", help: "设置（⌘,）") { model.settingsTab = 0; showSettings = true }
+                    footerButton("gearshape", help: String(localized: "设置（⌘,）")) { model.settingsTab = 0; showSettings = true }
                         .keyboardShortcut(",", modifiers: .command)
                 }
                 .padding(4)
@@ -706,7 +706,7 @@ private struct SessionRow: View {
                 Text("−\(del)").foregroundStyle(Theme.diffRemove)
             }
             .font(.system(size: Theme.base - 2.5, design: .monospaced))
-            .help(w.currentBranch.map { "分支 \($0)" } ?? "未提交的改动")
+            .help(w.currentBranch.map { String(localized: "分支 \($0)") } ?? String(localized: "未提交的改动"))
         }
         if let pr = pullRequest, let n = pr.number, pr.isOpen || pr.isMerged {
             HStack(spacing: 3) {
@@ -721,15 +721,15 @@ private struct SessionRow: View {
     /// Official hover card, as a tooltip: title, path, branch, PR and checks.
     private var hoverInfo: String {
         var lines = [title, agent.cwd]
-        if let b = workspace?.currentBranch { lines.append("分支 " + b) }
+        if let b = workspace?.currentBranch { lines.append(String(localized: "分支 \(b)")) }
         if let pr = workspace?.pullRequest {
             lines.append("PR " + (pr.number.map { "#\($0) " } ?? "") + pr.title)
             if !pr.checks.isEmpty {
                 let failed = pr.checks.filter { $0.status == "failure" }.count, pending = pr.checks.filter { $0.status == "pending" }.count
-                lines.append("检查：" + (failed > 0 ? "\(failed) 项失败" : pending > 0 ? "\(pending) 项进行中" : "全部通过"))
+                lines.append(String(localized: "检查：") + (failed > 0 ? String(localized: "\(failed) 项失败") : pending > 0 ? String(localized: "\(pending) 项进行中") : String(localized: "全部通过")))
             }
         }
-        if let w = workspace, let a = w.additions, let d = w.deletions, a + d > 0 { lines.append("未提交 +\(a) −\(d)") }
+        if let w = workspace, let a = w.additions, let d = w.deletions, a + d > 0 { lines.append(String(localized: "未提交 +\(a) −\(d)")) }
         return lines.joined(separator: "\n")
     }
 

@@ -96,11 +96,11 @@ struct StatusDot: View {
 
     private var accessibilityText: String {
         switch bucket {
-        case .needsInput: "需要输入"
-        case .failed: "失败"
-        case .running: "运行中"
-        case .attention: "待查看"
-        case .done: "已完成"
+        case .needsInput: String(localized: "需要输入")
+        case .failed: String(localized: "失败")
+        case .running: String(localized: "运行中")
+        case .attention: String(localized: "待查看")
+        case .done: String(localized: "已完成")
         }
     }
 }
@@ -224,11 +224,11 @@ struct HostStatusDot: View {
 extension ConnectionState {
     var label: String {
         switch self {
-        case .idle: "未连接"
-        case .connecting(let n): n == 0 ? "连接中…" : "重连中（第 \(n + 1) 次）…"
-        case .connected: "在线"
-        case .waiting(let m, _): "离线：\(m)"
-        case .failed(let m, let needsPassword): needsPassword ? "需要密码" : "连接失败：\(m)"
+        case .idle: String(localized: "未连接")
+        case .connecting(let n): n == 0 ? String(localized: "连接中…") : String(localized: "重连中（第 \(n + 1) 次）…")
+        case .connected: String(localized: "在线")
+        case .waiting(let m, _): String(localized: "离线：\(m)")
+        case .failed(let m, let needsPassword): needsPassword ? String(localized: "需要密码") : String(localized: "连接失败：\(m)")
         }
     }
 }

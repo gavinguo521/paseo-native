@@ -140,7 +140,7 @@ struct ActivityFootnote: View {
         if isStale {
             Text("可能不是最新：机器连不上或很久没有更新").font(.caption2).foregroundStyle(.secondary)
         } else if !state.offline.isEmpty {
-            Text("连不上：" + state.offline.joined(separator: "、")).font(.caption2).foregroundStyle(.secondary)
+            Text(String(localized: "连不上：\(state.offline.joined(separator: String(localized: "、", comment: "列举时的分隔符（顿号）")))")).font(.caption2).foregroundStyle(.secondary)
         }
     }
 }
@@ -168,16 +168,21 @@ struct ActivityLockScreen: View {
 #if DEBUG
 /// 预览和 PASEO_ACTIVITY_DEMO=1 渲染用的演示数据：两台机器、一个等你处理。
 extension PaseoActivityAttributes.ContentState {
-    static let preview = Self(
-        updatedAt: Date().timeIntervalSince1970, running: 2, waiting: 1, failed: 0,
-        rows: [
-            .init(serverId: "s1", agentId: "a1", host: "Mac Studio", title: "修复登录页样式", project: "web-app", status: "waiting", since: nil),
-            .init(serverId: "s1", agentId: "a2", host: "Mac Studio", title: "灵动岛适配", project: "paseo-native", status: "running",
-                  since: Date().addingTimeInterval(-754).timeIntervalSince1970),
-            .init(serverId: "s2", agentId: "a3", host: "Mac mini", title: "数据库迁移", project: "api-server", status: "running",
-                  since: Date().addingTimeInterval(-62).timeIntervalSince1970),
-        ],
-        offline: [])
+    static let preview: Self = {
+        // 会话标题是用户数据、不走翻译：英文环境（截英文 README 配图）换一套英文示例
+        let en = Bundle.main.preferredLocalizations.first?.hasPrefix("en") == true
+        return Self(
+            updatedAt: Date().timeIntervalSince1970, running: 2, waiting: 1, failed: 0,
+            rows: [
+                .init(serverId: "s1", agentId: "a1", host: "Mac Studio", title: en ? "Fix login page styles" : "修复登录页样式",
+                      project: "web-app", status: "waiting", since: nil),
+                .init(serverId: "s1", agentId: "a2", host: "Mac Studio", title: en ? "Dynamic Island support" : "灵动岛适配",
+                      project: "paseo-native", status: "running", since: Date().addingTimeInterval(-754).timeIntervalSince1970),
+                .init(serverId: "s2", agentId: "a3", host: "Mac mini", title: en ? "Database migration" : "数据库迁移",
+                      project: "api-server", status: "running", since: Date().addingTimeInterval(-62).timeIntervalSince1970),
+            ],
+            offline: [])
+    }()
 }
 #endif
 #endif

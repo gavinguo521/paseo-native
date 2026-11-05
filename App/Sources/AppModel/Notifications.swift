@@ -29,10 +29,10 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         // 回复会给会话发消息（可能让它去执行命令），和「允许」一样要先解锁。
-        let reply = UNTextInputNotificationAction(identifier: Category.reply, title: "回复", options: [.authenticationRequired],
-                                                  textInputButtonTitle: "发送", textInputPlaceholder: "回复这个会话…")
-        let allow = UNNotificationAction(identifier: Category.allow, title: "允许", options: [.authenticationRequired])
-        let deny = UNNotificationAction(identifier: Category.deny, title: "拒绝", options: [.destructive])
+        let reply = UNTextInputNotificationAction(identifier: Category.reply, title: String(localized: "回复"), options: [.authenticationRequired],
+                                                  textInputButtonTitle: String(localized: "发送"), textInputPlaceholder: String(localized: "回复这个会话…"))
+        let allow = UNNotificationAction(identifier: Category.allow, title: String(localized: "允许"), options: [.authenticationRequired])
+        let deny = UNNotificationAction(identifier: Category.deny, title: String(localized: "拒绝"), options: [.destructive])
         center.setNotificationCategories([
             UNNotificationCategory(identifier: Category.finished, actions: [reply], intentIdentifiers: []),
             UNNotificationCategory(identifier: Category.permission, actions: [allow, deny], intentIdentifiers: []),
@@ -51,9 +51,9 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         guard UserDefaults.standard.object(forKey: "notifications") as? Bool ?? true else { return }
         let content = UNMutableNotificationContent()
         switch e.reason {
-        case "permission": content.title = "需要你批准 · \(workspaceTitle)"
-        case "error": content.title = "出错了 · \(workspaceTitle)"
-        default: content.title = "完成 · \(workspaceTitle)"
+        case "permission": content.title = String(localized: "需要你批准 · \(workspaceTitle)")
+        case "error": content.title = String(localized: "出错了 · \(workspaceTitle)")
+        default: content.title = String(localized: "完成 · \(workspaceTitle)")
         }
         content.body = e.body
         content.sound = UserDefaults.standard.object(forKey: "notifications.sound") as? Bool ?? true ? .default : nil
@@ -78,17 +78,17 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     func test() {
         let content = UNMutableNotificationContent()
-        content.title = "测试通知"
-        content.body = "会话完成、需要批准或出错时会这样提醒你。"
+        content.title = String(localized: "测试通知")
+        content.body = String(localized: "会话完成、需要批准或出错时会这样提醒你。")
         content.sound = UserDefaults.standard.object(forKey: "notifications.sound") as? Bool ?? true ? .default : nil
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 
     func permissionLabel() async -> String {
         switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
-        case .authorized, .provisional, .ephemeral: "已允许"
-        case .denied: "已拒绝（到系统设置里打开）"
-        default: "未决定"
+        case .authorized, .provisional, .ephemeral: String(localized: "已允许")
+        case .denied: String(localized: "已拒绝（到系统设置里打开）")
+        default: String(localized: "未决定")
         }
     }
 

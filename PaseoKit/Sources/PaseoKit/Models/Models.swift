@@ -178,7 +178,7 @@ public struct Agent: Sendable, Identifiable {
         raw = v
     }
 
-    public var displayTitle: String { (title?.isEmpty == false ? title : nil) ?? "新会话" }
+    public var displayTitle: String { (title?.isEmpty == false ? title : nil) ?? String(localized: "新会话", bundle: .module) }
 
     /// The provider's own CLI command to resume this session in a terminal (official "Copy resume command").
     public var resumeCommand: String? {

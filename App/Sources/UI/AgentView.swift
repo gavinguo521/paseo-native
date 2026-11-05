@@ -156,7 +156,7 @@ struct AgentView: View {
                 do {
                     let attachment = try await host.forkContext(agentId, boundaryMessageId: messageId)
                     model.startFork(from: AgentRef(serverId: host.id, agentId: agentId), attachment: attachment, newWorkspace: newWorkspace)
-                } catch { errorSink("分叉失败：\(error)") }
+                } catch { errorSink(String(localized: "分叉失败：\(error)")) }
             }
         })
         let cwd = agent?.cwd ?? workspace?.directory ?? "/"
@@ -224,7 +224,8 @@ struct AgentView: View {
             case .waiting(let message, let retryAt):
                 notice {
                     Image(systemName: "wifi.exclamationmark").foregroundStyle(Theme.dotWarning)
-                    Text("与 \(host.label) 的连接断开，") + Text(retryAt, style: .relative) + Text("后重试")
+                    // 整句翻译（中英文语序不同）：倒计时作为插值嵌进同一句
+                    Text("与 \(host.label) 的连接断开，\(Text(retryAt, style: .relative))后重试")
                     Button("立即重连") { host.reconnectNow() }.buttonStyle(.borderless).controlSize(.small)
                 }
                 .help(message)
@@ -258,13 +259,15 @@ struct AgentView: View {
     }
 
     private func parentBanner(_ parentId: String) -> some View {
-        let parent = host.agents[parentId]
+        // 跨机器开的子会话：父会话在 label `paseo.parent-server-id` 指的那台主机上。
+        let parentHost = agent?.parentServerId.flatMap { model.host($0) } ?? host
+        let parent = parentHost.agents[parentId]
         return HStack(spacing: 8) {
             Image(systemName: "arrow.turn.left.up").foregroundStyle(Theme.muted)
             Text("「\(parent?.displayTitle ?? String(parentId.prefix(7)))」的子会话").foregroundStyle(Theme.muted).lineLimit(1)
             Spacer()
             if parent != nil {
-                Button("返回父会话") { model.open(AgentRef(serverId: host.id, agentId: parentId)) }.buttonStyle(.bordered).controlSize(.small)
+                Button("返回父会话") { model.open(AgentRef(serverId: parentHost.id, agentId: parentId)) }.buttonStyle(.bordered).controlSize(.small)
             }
         }
         .font(.system(size: 12))
@@ -461,7 +464,7 @@ struct PermissionCard: View {
 
     private var permissionBody: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(request.kind == "plan" ? "计划" : request.title ?? "需要权限")
+            Text(request.kind == "plan" ? String(localized: "计划") : request.title ?? String(localized: "需要权限"))
                 .font(.system(size: Theme.base, weight: .medium))
             if let d = request.description, d != request.title {
                 Text(d).font(.system(size: Theme.base)).foregroundStyle(Theme.muted)
@@ -496,11 +499,11 @@ struct PermissionCard: View {
     private var buttons: [PermissionAction] {
         if !request.actions.isEmpty { return request.actions }
         if request.kind == "question" {
-            return [PermissionAction(id: "reject", label: "跳过", behavior: "deny", variant: "secondary"),
-                    PermissionAction(id: "accept", label: "提交", behavior: "allow", variant: "primary")]
+            return [PermissionAction(id: "reject", label: String(localized: "跳过"), behavior: "deny", variant: "secondary"),
+                    PermissionAction(id: "accept", label: String(localized: "提交"), behavior: "allow", variant: "primary")]
         }
-        return [PermissionAction(id: "reject", label: "拒绝", behavior: "deny", variant: "secondary"),
-                PermissionAction(id: "accept", label: request.kind == "plan" ? "执行" : "允许", behavior: "allow", variant: "primary")]
+        return [PermissionAction(id: "reject", label: String(localized: "拒绝"), behavior: "deny", variant: "secondary"),
+                PermissionAction(id: "accept", label: request.kind == "plan" ? String(localized: "执行") : String(localized: "允许"), behavior: "allow", variant: "primary")]
     }
 
     @ViewBuilder private func detailPreview(_ d: ToolCallDetail) -> some View {

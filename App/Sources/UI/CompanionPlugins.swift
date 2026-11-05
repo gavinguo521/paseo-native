@@ -18,18 +18,18 @@ struct CompanionPlugin: Identifiable {
 
 enum CompanionPlugins {
     static let all: [CompanionPlugin] = [
-        CompanionPlugin(id: "usage-reset", name: "限额刷新时间", summary: "侧栏底部的用量环和各限额的刷新时间",
+        CompanionPlugin(id: "usage-reset", name: String(localized: "限额刷新时间"), summary: String(localized: "侧栏底部的用量环和各限额的刷新时间"),
                         source: "plugins.paseo.sh/52216108/usage-reset"),
-        CompanionPlugin(id: "turn-speed", name: "回合速度", summary: "每轮回复底部的生成速度和 token 数",
+        CompanionPlugin(id: "turn-speed", name: String(localized: "回合速度"), summary: String(localized: "每轮回复底部的生成速度和 token 数"),
                         source: "plugins.paseo.sh/52216108/turn-speed"),
-        CompanionPlugin(id: "next-input", name: "下一句建议", summary: "空输入框里预测你接下来要说的话",
+        CompanionPlugin(id: "next-input", name: String(localized: "下一句建议"), summary: String(localized: "空输入框里预测你接下来要说的话"),
                         source: "plugins.paseo.sh/52216108/next-input"),
-        CompanionPlugin(id: "title-style", name: "标题风格", summary: "新会话自动起中文任务标题",
+        CompanionPlugin(id: "title-style", name: String(localized: "标题风格"), summary: String(localized: "新会话自动起中文任务标题"),
                         source: "github:gavinguo521/title-style"),
-        CompanionPlugin(id: "agent-taskboard", name: "看板", summary: "在侧栏打开 agent-taskboard 看板；要先在那台机器上装好并启动看板服务",
+        CompanionPlugin(id: "agent-taskboard", name: String(localized: "看板"), summary: String(localized: "在侧栏打开 agent-taskboard 看板；要先在那台机器上装好并启动看板服务"),
                         source: "git:gavinguo521/paseo-plugins:agent-taskboard", recommended: false),
         // 只要装在一台机器上（它会合并已关联机器的会话），所以不默认勾选。
-        CompanionPlugin(id: "live-activity", name: "灵动岛推送", summary: "App 不在前台时也更新 iPhone 灵动岛和锁屏；装一台就够，装完在设置 → 通知里配置 APNs 密钥",
+        CompanionPlugin(id: "live-activity", name: String(localized: "灵动岛推送"), summary: String(localized: "App 不在前台时也更新 iPhone 灵动岛和锁屏；装一台就够，装完在设置 → 通知里配置 APNs 密钥"),
                         source: "git:gavinguo521/paseo-plugins:live-activity", recommended: false),
     ]
 

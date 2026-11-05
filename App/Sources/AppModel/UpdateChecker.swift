@@ -75,11 +75,11 @@ final class UpdateChecker {
                 if alert, manual || UserDefaults.standard.string(forKey: "updates.skipped") != release.version { prompt = release }
             } else {
                 status = .upToDate
-                if manual, alert { notice = "已是最新版本（\(currentVersion)）" }
+                if manual, alert { notice = String(localized: "已是最新版本（\(currentVersion)）") }
             }
         } catch {
             status = .failed("\(error)")
-            if manual, alert { notice = "检查更新失败：\(error)" }
+            if manual, alert { notice = String(localized: "检查更新失败：\(error)") }
         }
     }
 
@@ -97,16 +97,16 @@ final class UpdateChecker {
     private struct Failure: Error, CustomStringConvertible { let description: String }
 
     private func fetchLatest() async throws -> Release {
-        guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases/latest") else { throw Failure(description: "仓库地址无效") }
+        guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases/latest") else { throw Failure(description: String(localized: "仓库地址无效")) }
         var req = URLRequest(url: url, timeoutInterval: 20)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("Paseo-Native/\(currentVersion)", forHTTPHeaderField: "User-Agent")
         let (data, response) = try await URLSession.shared.data(for: req)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard code == 200 else { throw Failure(description: code == 404 ? "还没有发布版本" : "GitHub 返回 \(code)") }
+        guard code == 200 else { throw Failure(description: code == 404 ? String(localized: "还没有发布版本") : String(localized: "GitHub 返回 \(code)")) }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tag = json["tag_name"] as? String,
-              let page = (json["html_url"] as? String).flatMap(URL.init(string:)) else { throw Failure(description: "发布信息格式不对") }
+              let page = (json["html_url"] as? String).flatMap(URL.init(string:)) else { throw Failure(description: String(localized: "发布信息格式不对")) }
         let assets = json["assets"] as? [[String: Any]] ?? []
         let dmg = assets.first { ($0["name"] as? String)?.hasSuffix(".dmg") == true }?["browser_download_url"] as? String
         let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag

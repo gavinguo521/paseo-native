@@ -50,14 +50,14 @@ struct CommandPalette: View {
         var out = globalActions + workspaceActions + agentActions
         for h in model.hosts {
             for a in h.agents.values where a.archivedAt == nil && !h.isNested(a) {
-                out.append(Item(id: "a" + h.id + a.id, section: "会话", title: a.displayTitle,
+                out.append(Item(id: "a" + h.id + a.id, section: String(localized: "会话"), title: a.displayTitle,
                                 subtitle: model.projectName(of: a, in: h) + " · " + h.label, systemImage: "bubble.left",
                                 bucket: a.bucket, date: a.lastUserMessageAt ?? a.updatedAt ?? .distantPast) {
                     model.open(AgentRef(serverId: h.id, agentId: a.id))
                 })
             }
             for w in h.workspaces.values {
-                out.append(Item(id: "w" + h.id + w.id, section: "工作区", title: w.name.isEmpty ? w.projectDisplayName : w.name,
+                out.append(Item(id: "w" + h.id + w.id, section: String(localized: "工作区"), title: w.name.isEmpty ? w.projectDisplayName : w.name,
                                 subtitle: [w.projectDisplayName, w.currentBranch, h.label].compactMap { $0 }.joined(separator: " · "),
                                 systemImage: w.pinnedAt != nil ? "pin" : "folder", date: w.activityAt ?? .distantPast) {
                     let ref = WorkspaceRef(serverId: h.id, workspaceId: w.id)
@@ -70,21 +70,21 @@ struct CommandPalette: View {
 
     private var globalActions: [Item] {
         [
-            Item(id: "new", section: "操作", title: "新聊天", subtitle: "⌘N", systemImage: "square.and.pencil") { model.destination = .newChat },
-            Item(id: "files", section: "操作", title: "搜索文件…", subtitle: "⌘P", systemImage: "doc.text.magnifyingglass",
-                 page: { Page(title: "搜索文件", items: []) }),
-            Item(id: "addProject", section: "操作", title: "添加项目…", systemImage: "folder.badge.plus") { post(.addProject) },
-            Item(id: "import", section: "操作", title: "导入外部会话…", systemImage: "square.and.arrow.down") { post(.importSessions) },
-            Item(id: "history", section: "操作", title: "会话历史", subtitle: "⌘Y", systemImage: "clock.arrow.circlepath") { model.destination = .history },
-            Item(id: "projects", section: "操作", title: "项目", subtitle: "⌥⌘P", systemImage: "folder") { model.destination = .projects },
-            Item(id: "schedules", section: "操作", title: "计划任务", systemImage: "calendar") { model.destination = .schedules },
-            Item(id: "usage", section: "操作", title: "用量", systemImage: "chart.bar") { model.destination = .usage },
-            Item(id: "settings", section: "操作", title: "设置", subtitle: "⌘,", systemImage: "gearshape") { showSettings = true },
-            Item(id: "sidebar", section: "操作", title: "显示/隐藏侧栏", subtitle: "⌘B", systemImage: "sidebar.left") { post(.toggleSidebar) },
-            Item(id: "theme", section: "操作", title: "切换主题", subtitle: "⌥⌘T", systemImage: "circle.lefthalf.filled") { post(.cycleAppearance) },
-            Item(id: "keys", section: "操作", title: "键盘快捷键", subtitle: "⌘/", systemImage: "keyboard") { post(.showShortcuts) },
-            Item(id: "groupProject", section: "操作", title: "侧栏按项目分组", systemImage: "folder") { model.grouping = .project },
-            Item(id: "groupStatus", section: "操作", title: "侧栏按状态分组", systemImage: "circle.grid.2x1") { model.grouping = .status },
+            Item(id: "new", section: String(localized: "操作"), title: String(localized: "新聊天"), subtitle: "⌘N", systemImage: "square.and.pencil") { model.destination = .newChat },
+            Item(id: "files", section: String(localized: "操作"), title: String(localized: "搜索文件…"), subtitle: "⌘P", systemImage: "doc.text.magnifyingglass",
+                 page: { Page(title: String(localized: "搜索文件"), items: []) }),
+            Item(id: "addProject", section: String(localized: "操作"), title: String(localized: "添加项目…"), systemImage: "folder.badge.plus") { post(.addProject) },
+            Item(id: "import", section: String(localized: "操作"), title: String(localized: "导入外部会话…"), systemImage: "square.and.arrow.down") { post(.importSessions) },
+            Item(id: "history", section: String(localized: "操作"), title: String(localized: "会话历史"), subtitle: "⌘Y", systemImage: "clock.arrow.circlepath") { model.destination = .history },
+            Item(id: "projects", section: String(localized: "操作"), title: String(localized: "项目"), subtitle: "⌥⌘P", systemImage: "folder") { model.destination = .projects },
+            Item(id: "schedules", section: String(localized: "操作"), title: String(localized: "计划任务"), systemImage: "calendar") { model.destination = .schedules },
+            Item(id: "usage", section: String(localized: "操作"), title: String(localized: "用量"), systemImage: "chart.bar") { model.destination = .usage },
+            Item(id: "settings", section: String(localized: "操作"), title: String(localized: "设置"), subtitle: "⌘,", systemImage: "gearshape") { showSettings = true },
+            Item(id: "sidebar", section: String(localized: "操作"), title: String(localized: "显示/隐藏侧栏"), subtitle: "⌘B", systemImage: "sidebar.left") { post(.toggleSidebar) },
+            Item(id: "theme", section: String(localized: "操作"), title: String(localized: "切换主题"), subtitle: "⌥⌘T", systemImage: "circle.lefthalf.filled") { post(.cycleAppearance) },
+            Item(id: "keys", section: String(localized: "操作"), title: String(localized: "键盘快捷键"), subtitle: "⌘/", systemImage: "keyboard") { post(.showShortcuts) },
+            Item(id: "groupProject", section: String(localized: "操作"), title: String(localized: "侧栏按项目分组"), systemImage: "folder") { model.grouping = .project },
+            Item(id: "groupStatus", section: String(localized: "操作"), title: String(localized: "侧栏按状态分组"), systemImage: "circle.grid.2x1") { model.grouping = .status },
         ]
     }
 
@@ -92,28 +92,28 @@ struct CommandPalette: View {
         guard let ref = workspaceRef, let host, let w = workspace else { return [] }
         let tab: (WorkspaceTabCommand) -> Void = { c in NotificationCenter.default.post(name: .workspaceTabCommand, object: c) }
         var out: [Item] = [
-            Item(id: "wsAgent", section: "当前工作区", title: "新会话标签", subtitle: "⇧⌘A", systemImage: "square.and.pencil") { tab(.newAgent) },
-            Item(id: "wsTerm", section: "当前工作区", title: "新终端", subtitle: "⇧⌘T", systemImage: "apple.terminal") { tab(.newTerminal) },
-            Item(id: "wsChanges", section: "当前工作区", title: "打开改动", subtitle: "⇧⌘G", systemImage: "plusminus") { model.select(.changes, in: ref) },
-            Item(id: "wsFiles", section: "当前工作区", title: "打开文件", subtitle: "⇧⌘E", systemImage: "folder") { model.select(.files, in: ref) },
-            Item(id: "wsExplorer", section: "当前工作区", title: "显示/隐藏右栏", subtitle: "⌘E", systemImage: "sidebar.right") { tab(.toggleExplorer) },
-            Item(id: "wsPin", section: "当前工作区", title: w.pinnedAt == nil ? "置顶工作区" : "取消置顶工作区", subtitle: "⇧⌘P", systemImage: "pin") {
+            Item(id: "wsAgent", section: String(localized: "当前工作区"), title: String(localized: "新会话标签"), subtitle: "⇧⌘A", systemImage: "square.and.pencil") { tab(.newAgent) },
+            Item(id: "wsTerm", section: String(localized: "当前工作区"), title: String(localized: "新终端"), subtitle: "⇧⌘T", systemImage: "apple.terminal") { tab(.newTerminal) },
+            Item(id: "wsChanges", section: String(localized: "当前工作区"), title: String(localized: "打开改动"), subtitle: "⇧⌘G", systemImage: "plusminus") { model.select(.changes, in: ref) },
+            Item(id: "wsFiles", section: String(localized: "当前工作区"), title: String(localized: "打开文件"), subtitle: "⇧⌘E", systemImage: "folder") { model.select(.files, in: ref) },
+            Item(id: "wsExplorer", section: String(localized: "当前工作区"), title: String(localized: "显示/隐藏右栏"), subtitle: "⌘E", systemImage: "sidebar.right") { tab(.toggleExplorer) },
+            Item(id: "wsPin", section: String(localized: "当前工作区"), title: w.pinnedAt == nil ? String(localized: "置顶工作区") : String(localized: "取消置顶工作区"), subtitle: "⇧⌘P", systemImage: "pin") {
                 Task { try? await host.pinWorkspace(w.id, pinned: w.pinnedAt == nil) }
             },
-            Item(id: "wsPath", section: "当前工作区", title: "复制工作区路径", systemImage: "doc.on.doc") { Pasteboard.copy(w.directory) },
+            Item(id: "wsPath", section: String(localized: "当前工作区"), title: String(localized: "复制工作区路径"), systemImage: "doc.on.doc") { Pasteboard.copy(w.directory) },
         ]
         if let b = w.currentBranch {
-            out.append(Item(id: "wsBranch", section: "当前工作区", title: "复制分支名", subtitle: b, systemImage: "arrow.triangle.branch") { Pasteboard.copy(b) })
+            out.append(Item(id: "wsBranch", section: String(localized: "当前工作区"), title: String(localized: "复制分支名"), subtitle: b, systemImage: "arrow.triangle.branch") { Pasteboard.copy(b) })
         }
         if w.isGit {
-            for (id, title, icon) in [("pull", "Git：拉取", "arrow.down"), ("push", "Git：推送", "arrow.up"), ("pullPush", "Git：拉取后推送", "arrow.up.arrow.down"),
-                                      ("mergeFromBase", "Git：从 base 合并", "arrow.triangle.merge")] {
-                out.append(Item(id: "git" + id, section: "当前工作区", title: title, systemImage: icon) {
+            for (id, title, icon) in [("pull", String(localized: "Git：拉取"), "arrow.down"), ("push", String(localized: "Git：推送"), "arrow.up"), ("pullPush", String(localized: "Git：拉取后推送"), "arrow.up.arrow.down"),
+                                      ("mergeFromBase", String(localized: "Git：从 base 合并"), "arrow.triangle.merge")] {
+                out.append(Item(id: "git" + id, section: String(localized: "当前工作区"), title: title, systemImage: icon) {
                     Task { try? await host.gitAction(id, cwd: w.directory) }
                 })
             }
             if let pr = w.pullRequest, let u = URL(string: pr.url) {
-                out.append(Item(id: "prOpen", section: "当前工作区", title: "在浏览器打开 PR", subtitle: pr.number.map { "#\($0)" } ?? "", systemImage: "safari") {
+                out.append(Item(id: "prOpen", section: String(localized: "当前工作区"), title: String(localized: "在浏览器打开 PR"), subtitle: pr.number.map { "#\($0)" } ?? "", systemImage: "safari") {
                     openURL(u)
                 })
             }
@@ -128,20 +128,20 @@ struct CommandPalette: View {
         var out: [Item] = []
         let models = host.providers.first { $0["provider"]?.stringValue == a.provider }?["models"]?.arrayValue ?? []
         if !models.isEmpty {
-            out.append(Item(id: "agModel", section: "当前会话", title: "切换模型…", subtitle: a.model ?? "", systemImage: "sparkle", page: {
-                Page(title: "切换模型", items: models.map { m in
+            out.append(Item(id: "agModel", section: String(localized: "当前会话"), title: String(localized: "切换模型…"), subtitle: a.model ?? "", systemImage: "sparkle", page: {
+                Page(title: String(localized: "切换模型"), items: models.map { m in
                     let id = m["id"]?.stringValue ?? ""
-                    return Item(id: "m" + id, section: "模型", title: m["label"]?.stringValue ?? id, subtitle: id == a.model ? "当前" : "",
+                    return Item(id: "m" + id, section: String(localized: "模型"), title: m["label"]?.stringValue ?? id, subtitle: id == a.model ? String(localized: "当前") : "",
                                 systemImage: id == a.model ? "checkmark" : "sparkle") { Task { try? await host.setModel(a.id, modelId: id) } }
                 })
             }))
             let entry = models.first { $0["id"]?.stringValue == a.model } ?? models.first { $0["isDefault"]?.boolValue == true }
             let thinking = entry?["thinkingOptions"]?.arrayValue ?? []
             if !thinking.isEmpty {
-                out.append(Item(id: "agThink", section: "当前会话", title: "切换思考强度…", systemImage: "brain", page: {
-                    Page(title: "思考强度", items: thinking.map { o in
+                out.append(Item(id: "agThink", section: String(localized: "当前会话"), title: String(localized: "切换思考强度…"), systemImage: "brain", page: {
+                    Page(title: String(localized: "思考强度"), items: thinking.map { o in
                         let id = o["id"]?.stringValue ?? ""
-                        return Item(id: "t" + id, section: "思考", title: o["label"]?.stringValue ?? id, systemImage: "brain") {
+                        return Item(id: "t" + id, section: String(localized: "思考"), title: o["label"]?.stringValue ?? id, systemImage: "brain") {
                             Task { try? await host.setThinking(a.id, optionId: id) }
                         }
                     })
@@ -149,24 +149,24 @@ struct CommandPalette: View {
             }
         }
         if !a.availableModes.isEmpty {
-            out.append(Item(id: "agMode", section: "当前会话", title: "切换权限模式…", subtitle: a.currentMode?.label ?? "", systemImage: "shield.lefthalf.filled", page: {
-                Page(title: "权限模式", items: a.availableModes.map { m in
-                    Item(id: "md" + m.id, section: "模式", title: m.label, subtitle: m.id == a.currentModeId ? "当前" : "",
+            out.append(Item(id: "agMode", section: String(localized: "当前会话"), title: String(localized: "切换权限模式…"), subtitle: a.currentMode?.label ?? "", systemImage: "shield.lefthalf.filled", page: {
+                Page(title: String(localized: "权限模式"), items: a.availableModes.map { m in
+                    Item(id: "md" + m.id, section: String(localized: "模式"), title: m.label, subtitle: m.id == a.currentModeId ? String(localized: "当前") : "",
                          systemImage: m.id == a.currentModeId ? "checkmark" : "shield") { Task { try? await host.setMode(a.id, modeId: m.id) } }
                 })
             }))
         }
         for f in a.composerFeatures where f.isToggle {
             let on = f.boolValue
-            out.append(Item(id: "ft" + f.id, section: "当前会话", title: (on ? "关闭 " : "打开 ") + f.label, systemImage: "bolt") {
+            out.append(Item(id: "ft" + f.id, section: String(localized: "当前会话"), title: on ? String(localized: "关闭 \(f.label)") : String(localized: "打开 \(f.label)"), systemImage: "bolt") {
                 Task { try? await host.setFeature(a.id, featureId: f.id, value: .bool(!on)) }
             })
         }
-        out.append(Item(id: "agFind", section: "当前会话", title: "在会话中查找", subtitle: "⌘F", systemImage: "magnifyingglass") { post(.findInSession) })
-        out.append(Item(id: "agOutline", section: "当前会话", title: "提问大纲", subtitle: "⇧⌘O", systemImage: "list.bullet.indent") { post(.showOutline) })
-        out.append(Item(id: "agRename", section: "当前会话", title: "重命名会话", subtitle: "⇧⌘R", systemImage: "pencil") { post(.renameCurrent) })
-        out.append(Item(id: "agId", section: "当前会话", title: "复制会话 ID", systemImage: "doc.on.doc") { Pasteboard.copy(a.id) })
-        out.append(Item(id: "agArchive", section: "当前会话", title: "归档会话", subtitle: "⇧⌘⌫", systemImage: "archivebox") { post(.archiveCurrent) })
+        out.append(Item(id: "agFind", section: String(localized: "当前会话"), title: String(localized: "在会话中查找"), subtitle: "⌘F", systemImage: "magnifyingglass") { post(.findInSession) })
+        out.append(Item(id: "agOutline", section: String(localized: "当前会话"), title: String(localized: "提问大纲"), subtitle: "⇧⌘O", systemImage: "list.bullet.indent") { post(.showOutline) })
+        out.append(Item(id: "agRename", section: String(localized: "当前会话"), title: String(localized: "重命名会话"), subtitle: "⇧⌘R", systemImage: "pencil") { post(.renameCurrent) })
+        out.append(Item(id: "agId", section: String(localized: "当前会话"), title: String(localized: "复制会话 ID"), systemImage: "doc.on.doc") { Pasteboard.copy(a.id) })
+        out.append(Item(id: "agArchive", section: String(localized: "当前会话"), title: String(localized: "归档会话"), subtitle: "⇧⌘⌫", systemImage: "archivebox") { post(.archiveCurrent) })
         return out
     }
 
@@ -175,7 +175,7 @@ struct CommandPalette: View {
         return files.filter { !$0.isDirectory }.map { f in
             let abs = f.path.hasPrefix("/") ? f.path : w.directory + "/" + f.path
             let rel = abs.hasPrefix(w.directory + "/") ? String(abs.dropFirst(w.directory.count + 1)) : abs
-            return Item(id: "f" + abs, section: "文件", title: (rel as NSString).lastPathComponent,
+            return Item(id: "f" + abs, section: String(localized: "文件"), title: (rel as NSString).lastPathComponent,
                         subtitle: (rel as NSString).deletingLastPathComponent, systemImage: "doc.text") {
                 model.openFile(abs, line: nil, in: ref)
             }
@@ -185,10 +185,10 @@ struct CommandPalette: View {
     private var filtered: [Item] {
         let q = query.trimmingCharacters(in: .whitespaces)
         let items = allItems
-        if filesMode || page?.title == "搜索文件" { return Array(fileItems.prefix(60)) }
+        if filesMode || page?.title == String(localized: "搜索文件") { return Array(fileItems.prefix(60)) }
         guard !q.isEmpty else {
             // Recent sessions only when nothing is typed; workspaces and the long tail wait for a query.
-            let recent = items.filter { $0.section == "会话" }.sorted { $0.date > $1.date }.prefix(6)
+            let recent = items.filter { $0.section == String(localized: "会话") }.sorted { $0.date > $1.date }.prefix(6)
             return Array(recent) + agentActions + workspaceActions + globalActions
         }
         return items.compactMap { item -> (Item, Int)? in
@@ -199,7 +199,7 @@ struct CommandPalette: View {
         .prefix(60).map(\.0)
     }
 
-    private var searchingFiles: Bool { filesMode || page?.title == "搜索文件" }
+    private var searchingFiles: Bool { filesMode || page?.title == String(localized: "搜索文件") }
 
     // MARK: View
 
@@ -328,15 +328,15 @@ struct ShortcutsHelpView: View {
     @State private var query = ""
 
     private static let groups: [(String, [(String, String)])] = [
-        ("全局", [("⌘K", "命令面板"), ("⌘P", "搜索当前工作区的文件"), ("⌘N", "新聊天"), ("⌘O", "在当前工作区新建会话"), ("⌘,", "设置"),
-                  ("⌘B", "显示/隐藏侧栏"), ("⌘E", "显示/隐藏右栏（改动与文件）"), ("⌥⌘T", "切换主题"), ("⌘/", "键盘快捷键")]),
-        ("前往", [("⌘Y", "会话历史"), ("⌥⌘P", "项目"), ("⌘1…9", "第 N 个会话"), ("⌘[ / ⌘]", "上一个/下一个会话")]),
-        ("标签", [("⇧⌘A", "新会话标签"), ("⇧⌘T", "新终端"), ("⇧⌘G", "改动"), ("⇧⌘E", "文件"), ("⇧⌘B", "浏览器"), ("⌘W", "关闭标签"),
-                  ("⌥⌘1…9", "第 N 个标签"), ("⌥⇧[ / ⌥⇧]", "上一个/下一个标签")]),
-        ("会话", [("⌘L", "聚焦输入框"), ("⌘F", "在会话中查找"), ("⇧⌘O", "提问大纲"), ("⇧⌘R", "重命名"),
-                  ("⇧⌘⌫", "归档"), ("⇧⌘P", "置顶/取消置顶工作区")]),
-        ("输入框", [("↩", "发送"), ("⇧↩", "换行"), ("⌘↩", "换一种方式发送（排队 ↔ 立即）"), ("↑", "空输入框时调出上一条消息"),
-                   ("⇧⇥", "切换权限模式"), ("Esc", "中断当前回合")]),
+        (String(localized: "全局"), [("⌘K", String(localized: "命令面板")), ("⌘P", String(localized: "搜索当前工作区的文件")), ("⌘N", String(localized: "新聊天")), ("⌘O", String(localized: "在当前工作区新建会话")), ("⌘,", String(localized: "设置")),
+                  ("⌘B", String(localized: "显示/隐藏侧栏")), ("⌘E", String(localized: "显示/隐藏右栏（改动与文件）")), ("⌥⌘T", String(localized: "切换主题")), ("⌘/", String(localized: "键盘快捷键"))]),
+        (String(localized: "前往"), [("⌘Y", String(localized: "会话历史")), ("⌥⌘P", String(localized: "项目")), ("⌘1…9", String(localized: "第 N 个会话")), ("⌘[ / ⌘]", String(localized: "上一个/下一个会话"))]),
+        (String(localized: "标签"), [("⇧⌘A", String(localized: "新会话标签")), ("⇧⌘T", String(localized: "新终端")), ("⇧⌘G", String(localized: "改动")), ("⇧⌘E", String(localized: "文件")), ("⇧⌘B", String(localized: "浏览器")), ("⌘W", String(localized: "关闭标签")),
+                  ("⌥⌘1…9", String(localized: "第 N 个标签")), ("⌥⇧[ / ⌥⇧]", String(localized: "上一个/下一个标签"))]),
+        (String(localized: "会话"), [("⌘L", String(localized: "聚焦输入框")), ("⌘F", String(localized: "在会话中查找")), ("⇧⌘O", String(localized: "提问大纲")), ("⇧⌘R", String(localized: "重命名")),
+                  ("⇧⌘⌫", String(localized: "归档")), ("⇧⌘P", String(localized: "置顶/取消置顶工作区"))]),
+        (String(localized: "输入框"), [("↩", String(localized: "发送")), ("⇧↩", String(localized: "换行")), ("⌘↩", String(localized: "换一种方式发送（排队 ↔ 立即）")), ("↑", String(localized: "空输入框时调出上一条消息")),
+                   ("⇧⇥", String(localized: "切换权限模式")), ("Esc", String(localized: "中断当前回合"))]),
     ]
 
     var body: some View {

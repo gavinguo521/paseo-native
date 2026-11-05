@@ -2,7 +2,7 @@
 
 非官方的 [Paseo](https://paseo.sh) 原生客户端，Mac、iPhone、iPad 共用一套 SwiftUI 代码。
 
-> **与 Paseo 官方无关。** 它和官方 App 一样，连接你自己电脑上的 Paseo daemon；可以和官方 App 同时装、同时用。界面只有简体中文。
+> **与 Paseo 官方无关。** 它和官方 App 一样，连接你自己电脑上的 Paseo daemon；可以和官方 App 同时装、同时用。界面有简体中文和英文，跟随系统语言。
 
 [English](README.en.md)
 
@@ -192,7 +192,7 @@ Mac 版的通知由 App 自己发：关掉窗口 App 还在运行（菜单栏或
 作为客户端可以同时开，互不影响。唯一要避免的是「改由本 App 运行 daemon」之后又让官方 App 也起一个 daemon。
 
 **界面能改成英文吗？**
-暂时只有简体中文。
+1.0.8 起支持简体中文和英文，默认跟随系统语言。想单独给本 App 换语言：Mac 在「系统设置 → 通用 → 语言与地区 → App」里添加 Paseo Native；iPhone / iPad 在「设置 → Paseo → 语言」。agent 的回复内容和插件自己的界面不在翻译范围内。
 
 ## 反馈与交流
 

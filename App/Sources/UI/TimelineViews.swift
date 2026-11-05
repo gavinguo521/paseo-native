@@ -8,9 +8,9 @@ enum TimelineDetail: String, CaseIterable {
     case full, collapseTools, collapseTurns
     var label: String {
         switch self {
-        case .full: "完整显示"
-        case .collapseTools: "折叠工具调用"
-        case .collapseTurns: "折叠做完的回合"
+        case .full: String(localized: "完整显示")
+        case .collapseTools: String(localized: "折叠工具调用")
+        case .collapseTurns: String(localized: "折叠做完的回合")
         }
     }
 }
@@ -74,7 +74,7 @@ indirect enum DisplayItem: Identifiable {
                 let hidden = before.filter { !isCompaction($0) }
                 let label = workSummary(hidden)
                 items.append(.turnSummary(id: "turn-" + (head?.id ?? before.first!.id),
-                                          label: label.isEmpty ? "查看轮次详情" : label,
+                                          label: label.isEmpty ? String(localized: "查看轮次详情") : label,
                                           hidden: groupOps(hidden, finalIndex: nil, separateReasoning: separateReasoning)))
                 items += before.filter(isCompaction).map { .row($0, footer: false) }
                 items += groupOps(Array(body[finalIndex...]), finalIndex: 0, separateReasoning: separateReasoning)
@@ -281,16 +281,16 @@ extension TimelineRow {
 
 func formatDuration(_ t: TimeInterval) -> String {
     let s = max(0, Int(t.rounded()))
-    if s < 60 { return "\(s)秒" }
-    if s < 3600 { return "\(s / 60)分钟\(s % 60)秒" }
-    return "\(s / 3600)小时\(s % 3600 / 60)分钟"
+    if s < 60 { return String(localized: "\(s)秒") }
+    if s < 3600 { return String(localized: "\(s / 60)分钟\(s % 60)秒") }
+    return String(localized: "\(s / 3600)小时\(s % 3600 / 60)分钟")
 }
 
 func formatTimestamp(_ d: Date) -> String {
     let cal = Calendar.current
     let time = d.formatted(date: .omitted, time: .shortened)
     if cal.isDateInToday(d) { return time }
-    if cal.isDateInYesterday(d) { return "昨天 " + time }
+    if cal.isDateInYesterday(d) { return String(localized: "昨天 \(time)") }
     return d.formatted(.dateTime.month().day()) + " " + time
 }
 
@@ -469,7 +469,7 @@ private struct RowView: View {
             .accessibilityLabel("复制")
         MessageMenu(text: text, messageId: messageId, isAssistant: true, turnText: turn?.text)
         if let t = row.timestamp { Text(formatTimestamp(t)).lineLimit(1) }
-        if let d = turn?.duration, d >= 1 { Text("用时 " + formatDuration(d)).lineLimit(1) }
+        if let d = turn?.duration, d >= 1 { Text(String(localized: "用时 \(formatDuration(d))")).lineLimit(1) }
     }
     @Environment(\.sentImages) private var sentImages
     @State private var zoomed: Image?
@@ -498,7 +498,7 @@ private struct RowView: View {
                 }
                 HStack(spacing: 12) {
                     if !row.isPending { MessageMenu(text: text, messageId: row.id) }
-                    if let t = row.timestamp { Text(row.isPending ? "发送中…" : formatTimestamp(t)) }
+                    if let t = row.timestamp { Text(row.isPending ? String(localized: "发送中…") : formatTimestamp(t)) }
                 }
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.extraMuted)
@@ -530,7 +530,7 @@ private struct RowView: View {
             if let agentMessage, agentMessage["event"]?.stringValue == "message", let text = agentMessage["text"]?.stringValue {
                 // Official presentation: a message from another session reads as a user message with its sender.
                 UserBubble(text: text, sender: agentMessage["sender"]?["title"]?.stringValue
-                           ?? agentMessage["sender"]?["id"]?.stringValue.map { String($0.prefix(7)) } ?? "其他会话")
+                           ?? agentMessage["sender"]?["id"]?.stringValue.map { String($0.prefix(7)) } ?? String(localized: "其他会话"))
                     .padding(.top, 16)
             } else if let agentMessage {
                 AgentMessageView(message: agentMessage)
@@ -548,9 +548,9 @@ private struct RowView: View {
         case .compaction(let status, let trigger, let preTokens):
             HStack {
                 VStack { Divider() }
-                Text(status == "loading" ? "正在压缩上下文…"
-                     : (trigger == "manual" ? "已手动压缩上下文" : trigger == "auto" ? "已自动压缩上下文" : "上下文已压缩")
-                        + (preTokens.map { "（压缩前 \(formatTokens($0))）" } ?? ""))
+                Text(status == "loading" ? String(localized: "正在压缩上下文…")
+                     : (trigger == "manual" ? String(localized: "已手动压缩上下文") : trigger == "auto" ? String(localized: "已自动压缩上下文") : String(localized: "上下文已压缩"))
+                        + (preTokens.map { String(localized: "（压缩前 \(formatTokens($0))）") } ?? ""))
                     .font(.caption).foregroundStyle(Theme.muted)
                 VStack { Divider() }
             }
@@ -691,7 +691,7 @@ struct ToolGroupView: View {
         }
         if rows.count == 1 { return rows[0].item.toolSummary }
         let detail = detailedSummary
-        return "\(rows.count) 项操作" + (detail.isEmpty ? "" : " · " + detail)
+        return String(localized: "\(rows.count) 项操作") + (detail.isEmpty ? "" : " · " + detail)
     }
 
     private var detailedSummary: String {
@@ -721,13 +721,13 @@ func workSummary<S: Sequence>(_ rows: S) -> String where S.Element == TimelineRo
         }
     }
     var parts: [String] = []
-    if !edited.isEmpty { parts.append("改了 \(edited.count) 个文件") }
-    if commands > 0 { parts.append("运行 \(commands) 个命令") }
-    if !read.isEmpty { parts.append("读了 \(read.count) 个文件") }
-    if searches > 0 { parts.append("搜索 \(searches) 次") }
-    if other > 0 { parts.append("\(other) 个其他操作") }
-    if thoughts > 0 && parts.isEmpty { parts.append("思考") }
-    return parts.joined(separator: "，")
+    if !edited.isEmpty { parts.append(String(localized: "改了 \(edited.count) 个文件")) }
+    if commands > 0 { parts.append(String(localized: "运行 \(commands) 个命令")) }
+    if !read.isEmpty { parts.append(String(localized: "读了 \(read.count) 个文件")) }
+    if searches > 0 { parts.append(String(localized: "搜索 \(searches) 次")) }
+    if other > 0 { parts.append(String(localized: "\(other) 个其他操作")) }
+    if thoughts > 0 && parts.isEmpty { parts.append(String(localized: "思考")) }
+    return parts.joined(separator: String(localized: "，", comment: "列举时的分隔符（逗号）"))
 }
 
 private struct ToolDetailView: View {
@@ -940,10 +940,10 @@ extension PlanCard {
     /// Plan tool call outcome: completed = approved, failed = rejected, canceled.
     fileprivate var statusLabel: (String, SwiftUI.Color)? {
         switch status {
-        case "completed": ("已批准", Theme.dotSuccess)
-        case "failed": ("已拒绝", Theme.destructive)
-        case "canceled", "cancelled": ("已取消", Theme.muted)
-        case "running": ("等待确认", Theme.dotWarning)
+        case "completed": (String(localized: "已批准"), Theme.dotSuccess)
+        case "failed": (String(localized: "已拒绝"), Theme.destructive)
+        case "canceled", "cancelled": (String(localized: "已取消"), Theme.muted)
+        case "running": (String(localized: "等待确认"), Theme.dotWarning)
         default: nil
         }
     }
@@ -1009,14 +1009,14 @@ private struct AgentMessageView: View {
     @State private var expanded = false
 
     var body: some View {
-        let sender = message["sender"]?["title"]?.stringValue ?? message["sender"]?["id"]?.stringValue.map { String($0.prefix(7)) } ?? "其他会话"
+        let sender = message["sender"]?["title"]?.stringValue ?? message["sender"]?["id"]?.stringValue.map { String($0.prefix(7)) } ?? String(localized: "其他会话")
         let event = message["event"]?.stringValue ?? "message"
         let label = switch event {
-        case "finished": "「\(sender)」完成了"
-        case "errored": "「\(sender)」出错"
-        case "permission-required": "「\(sender)」需要权限"
-        case "closed": "「\(sender)」已关闭"
-        default: "来自「\(sender)」的消息"
+        case "finished": String(localized: "「\(sender)」完成了")
+        case "errored": String(localized: "「\(sender)」出错")
+        case "permission-required": String(localized: "「\(sender)」需要权限")
+        case "closed": String(localized: "「\(sender)」已关闭")
+        default: String(localized: "来自「\(sender)」的消息")
         }
         VStack(alignment: .leading, spacing: 6) {
             Button { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } } label: {
@@ -1054,18 +1054,18 @@ extension TimelineItem {
     /// One-line label (official: packages/protocol/src/tool-call-display.ts).
     var toolSummary: String {
         switch self {
-        case .reasoning: return "思考"
+        case .reasoning: return String(localized: "思考")
         case .toolCall(_, let name, _, let d, _, _):
             switch d {
             case .shell(let c, _, _, _): return c
-            case .read(let p, _): return "读取 " + (p as NSString).lastPathComponent
-            case .edit(let p, _, _, _): return "编辑 " + (p as NSString).lastPathComponent
-            case .write(let p, _): return "写入 " + (p as NSString).lastPathComponent
-            case .search(let q, _, _): return "搜索 " + q
-            case .fetch(let u, _): return "抓取 " + u
-            case .subAgent(let desc, _): return "子任务 " + (desc ?? "")
+            case .read(let p, _): return String(localized: "读取 \((p as NSString).lastPathComponent)")
+            case .edit(let p, _, _, _): return String(localized: "编辑 \((p as NSString).lastPathComponent)")
+            case .write(let p, _): return String(localized: "写入 \((p as NSString).lastPathComponent)")
+            case .search(let q, _, _): return String(localized: "搜索 \(q)")
+            case .fetch(let u, _): return String(localized: "抓取 \(u)")
+            case .subAgent(let desc, _): return String(localized: "子任务 \(desc ?? "")")
             case .plainText(let label, _, _): return label ?? name
-            case .plan: return "计划"
+            case .plan: return String(localized: "计划")
             case .unknown: return name
             }
         default: return ""

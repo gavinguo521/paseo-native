@@ -28,7 +28,7 @@ struct IsolationPicker: View {
             } label: {
                 Chip {
                     Image(systemName: choice == nil ? "folder" : "arrow.triangle.branch")
-                    Text(choice.map { "worktree · 从 \($0.label)" } ?? "项目目录")
+                    Text(choice.map { String(localized: "worktree · 从 \($0.label)") } ?? String(localized: "项目目录"))
                 }
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
@@ -162,13 +162,13 @@ struct AddProjectView: View {
 
     private var title: String {
         switch page {
-        case .host: "选择机器"
-        case .method: "添加项目"
-        case .directory: "搜索目录"
-        case .githubSearch: "从 GitHub 克隆"
-        case .githubLocation: "克隆到哪里"
-        case .newParent: "选择父目录"
-        case .newName: "目录名"
+        case .host: String(localized: "选择机器")
+        case .method: String(localized: "添加项目")
+        case .directory: String(localized: "搜索目录")
+        case .githubSearch: String(localized: "从 GitHub 克隆")
+        case .githubLocation: String(localized: "克隆到哪里")
+        case .newParent: String(localized: "选择父目录")
+        case .newName: String(localized: "目录名")
         }
     }
 
@@ -186,25 +186,25 @@ struct AddProjectView: View {
             }
         case .method:
             List {
-                row("搜索目录", subtitle: "在「\(host?.label ?? "")」上找一个已有的目录", icon: "magnifyingglass") { stack.append(.directory) }
+                row(String(localized: "搜索目录"), subtitle: String(localized: "在「\(host?.label ?? "")」上找一个已有的目录"), icon: "magnifyingglass") { stack.append(.directory) }
                 #if os(macOS)
                 if isLocalHost {
-                    row("在访达中选择", subtitle: "用系统的文件夹选择器，也可以在里面新建文件夹", icon: "folder") { browse() }
+                    row(String(localized: "在访达中选择"), subtitle: String(localized: "用系统的文件夹选择器，也可以在里面新建文件夹"), icon: "folder") { browse() }
                 }
                 #endif
-                row("从 GitHub 克隆", subtitle: can("projectGithubClone") ? (can("workspaceGithubRepositorySearch") ? "搜索你 GitHub 账号能访问的仓库" : "填写 GitHub 地址或 owner/repo") : "先升级这台机器上的 Paseo",
+                row(String(localized: "从 GitHub 克隆"), subtitle: can("projectGithubClone") ? (can("workspaceGithubRepositorySearch") ? String(localized: "搜索你 GitHub 账号能访问的仓库") : String(localized: "填写 GitHub 地址或 owner/repo")) : String(localized: "先升级这台机器上的 Paseo"),
                     icon: "arrow.down.circle", disabled: !can("projectGithubClone")) { stack.append(.githubSearch) }
-                row("新建目录", subtitle: can("projectCreateDirectory") ? "在「\(host?.label ?? "")」上建一个空目录" : "先升级这台机器上的 Paseo",
+                row(String(localized: "新建目录"), subtitle: can("projectCreateDirectory") ? String(localized: "在「\(host?.label ?? "")」上建一个空目录") : String(localized: "先升级这台机器上的 Paseo"),
                     icon: "folder.badge.plus", disabled: !can("projectCreateDirectory")) { stack.append(.newParent) }
             }
         case .directory:
-            searchField("搜索目录或输入路径")
+            searchField(String(localized: "搜索目录或输入路径"))
             List {
-                if isPath(query) { row(query, subtitle: "打开这个路径", icon: "arrow.right.circle") { add(query) } }
+                if isPath(query) { row(query, subtitle: String(localized: "打开这个路径"), icon: "arrow.right.circle") { add(query) } }
                 ForEach(directoryCandidates, id: \.self) { p in row(abbreviate(p), subtitle: nil, icon: "folder") { add(p) } }
             }
         case .githubSearch:
-            searchField("搜索或填写 GitHub 仓库（地址或 owner/repo）")
+            searchField(String(localized: "搜索或填写 GitHub 仓库（地址或 owner/repo）"))
             List {
                 ForEach(manualRepoChoices, id: \.0) { label, repo, name, proto, sub in
                     row(label, subtitle: sub, icon: "link") { stack.append(.githubLocation(repo: repo, name: name, proto: proto)) }
@@ -220,20 +220,20 @@ struct AddProjectView: View {
                 }
             }
         case .githubLocation(let repo, let name, let proto):
-            searchField("搜索父目录或输入路径")
+            searchField(String(localized: "搜索父目录或输入路径"))
             List {
                 ForEach(parentCandidates, id: \.self) { parent in
                     let target = (parent as NSString).appendingPathComponent(name)
                     let exists = existingTargets.contains((target as NSString).standardizingPath)
-                    row(abbreviate(target), subtitle: exists ? "已经存在" : "父目录：" + abbreviate(parent), icon: "folder", disabled: exists) {
+                    row(abbreviate(target), subtitle: exists ? String(localized: "已经存在") : String(localized: "父目录：\(abbreviate(parent))"), icon: "folder", disabled: exists) {
                         clone(repo, proto: proto, parent: parent)
                     }
                 }
             }
         case .newParent:
-            searchField("搜索父目录或输入路径")
+            searchField(String(localized: "搜索父目录或输入路径"))
             List {
-                if isPath(query) { row(query, subtitle: "用这个目录作父目录", icon: "arrow.right.circle") { newName = ""; stack.append(.newName(parent: query)) } }
+                if isPath(query) { row(query, subtitle: String(localized: "用这个目录作父目录"), icon: "arrow.right.circle") { newName = ""; stack.append(.newName(parent: query)) } }
                 ForEach(directoryCandidates, id: \.self) { p in
                     row(abbreviate(p), subtitle: nil, icon: "folder") { newName = ""; stack.append(.newName(parent: p)) }
                 }
@@ -331,12 +331,12 @@ struct AddProjectView: View {
             var name = (q as NSString).lastPathComponent
             if name.hasSuffix(".git") { name.removeLast(4) }
             guard !repos.contains(where: { $0.cloneUrl == q }) else { return [] }
-            return [(q, q, name, nil, "克隆这个仓库地址")]
+            return [(q, q, name, nil, String(localized: "克隆这个仓库地址"))]
         }
         let parts = q.split(separator: "/")
         guard parts.count == 2, !repos.contains(where: { $0.nameWithOwner.lowercased() == q.lowercased() }) else { return [] }
         let name = String(parts[1])
-        return [(q + "（HTTPS）", q, name, "https", "用 HTTPS 克隆 " + q), (q + "（SSH）", q, name, "ssh", "用 SSH 克隆 " + q)]
+        return [(String(localized: "\(q)（HTTPS）"), q, name, "https", String(localized: "用 HTTPS 克隆 \(q)")), (String(localized: "\(q)（SSH）"), q, name, "ssh", String(localized: "用 SSH 克隆 \(q)"))]
     }
 
     private func refresh() async {
@@ -362,7 +362,7 @@ struct AddProjectView: View {
         case .githubSearch:
             guard can("workspaceGithubRepositorySearch") else { repos = []; repoNote = nil; return }
             do { (repos, repoNote) = try await host.searchGitHubRepositories(query) }
-            catch { repos = []; repoNote = "搜索 GitHub 仓库失败：\(error)" }
+            catch { repos = []; repoNote = String(localized: "搜索 GitHub 仓库失败：\(error)") }
         default: break
         }
     }
@@ -392,24 +392,24 @@ struct AddProjectView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
-        panel.prompt = "添加"
+        panel.prompt = String(localized: "添加")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         add(url.path)
     }
     #endif
 
     private func add(_ path: String) {
-        run("正在添加项目…") { try await $0.addProject(cwd: expand(path)) }
+        run(String(localized: "正在添加项目…")) { try await $0.addProject(cwd: expand(path)) }
     }
 
     private func create(_ parent: String) {
-        guard validName else { error = "请输入目录名"; return }
-        run("正在新建目录…") { try await $0.createProjectDirectory(parent: expand(parent), name: newName.trimmingCharacters(in: .whitespaces)) }
+        guard validName else { error = String(localized: "请输入目录名"); return }
+        run(String(localized: "正在新建目录…")) { try await $0.createProjectDirectory(parent: expand(parent), name: newName.trimmingCharacters(in: .whitespaces)) }
     }
 
     private func clone(_ repo: String, proto: String?, parent: String) {
         lastCloneParent = parent
-        run("正在克隆，可能要几分钟…") { try await $0.cloneGitHubRepository(repo, protocol: proto, parent: expand(parent)) }
+        run(String(localized: "正在克隆，可能要几分钟…")) { try await $0.cloneGitHubRepository(repo, protocol: proto, parent: expand(parent)) }
     }
 
     /// Runs the step, then opens a new chat in the project (official: new-workspace page for it).
@@ -420,7 +420,7 @@ struct AddProjectView: View {
         Task {
             do {
                 let project = try await work(host)
-                guard let project else { throw HostStore.ActionError.rejected("没有拿到项目信息") }
+                guard let project else { throw HostStore.ActionError.rejected(String(localized: "没有拿到项目信息")) }
                 let existing = host.workspaces.values.first { $0.projectId == project.id && $0.directory == project.rootPath }
                 var wsId = existing?.id
                 if wsId == nil {
@@ -545,8 +545,8 @@ struct WorkspaceDialogs: ViewModifier {
     private var archiveWarning: String {
         guard let w = archiving else { return "" }
         let dirty = (w.additions ?? 0) + (w.deletions ?? 0) > 0
-        if w.kind == "worktree" && dirty { return "这个 worktree 还有未提交的改动，归档会删除它。里面的会话也会一起归档。" }
-        return "里面的会话会一起归档，正在运行的会被停止。"
+        if w.kind == "worktree" && dirty { return String(localized: "这个 worktree 还有未提交的改动，归档会删除它。里面的会话也会一起归档。") }
+        return String(localized: "里面的会话会一起归档，正在运行的会被停止。")
     }
 
     private func host(of w: Workspace) -> HostStore? { model.hosts.first { $0.workspaces[w.id] != nil } }
@@ -684,7 +684,7 @@ struct ImportSessionView: View {
                 dismiss()
                 try? await Task.sleep(for: .milliseconds(300))
                 model.open(AgentRef(serverId: host.id, agentId: id))
-            } catch { self.error = "导入失败：\(error)" }
+            } catch { self.error = String(localized: "导入失败：\(error)") }
             importing = nil
         }
     }

@@ -86,7 +86,7 @@ struct ProjectEditSheet: View {
                 photo = nil
                 Task {
                     if let data = try? await item.loadTransferable(type: Data.self) { usePicked(data) }
-                    else { error = "读不了这张照片，换一张试试" }
+                    else { error = String(localized: "读不了这张照片，换一张试试") }
                 }
             }
             #endif
@@ -94,7 +94,7 @@ struct ProjectEditSheet: View {
                 guard case .success(let url) = result else { return }
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                if let data = try? Data(contentsOf: url) { usePicked(data) } else { error = "读不了这张图片，换一张 PNG 或 JPEG 试试" }
+                if let data = try? Data(contentsOf: url) { usePicked(data) } else { error = String(localized: "读不了这张图片，换一张 PNG 或 JPEG 试试") }
             }
         }
         #if os(macOS)
@@ -108,7 +108,7 @@ struct ProjectEditSheet: View {
             useAutomatic = false
             error = nil
         } else {
-            error = "读不了这张图片，换一张 PNG 或 JPEG 试试"
+            error = String(localized: "读不了这张图片，换一张 PNG 或 JPEG 试试")
         }
     }
 
@@ -136,7 +136,7 @@ struct ProjectEditSheet: View {
                 }
                 dismiss()
             } catch {
-                self.error = "保存失败：\(error)"
+                self.error = String(localized: "保存失败：\(error)")
             }
             saving = false
         }

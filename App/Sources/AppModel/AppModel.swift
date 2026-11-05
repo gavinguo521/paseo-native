@@ -55,7 +55,7 @@ enum SidebarSort: String, CaseIterable, Codable {
     case updated, created
 
     /// "最近活动" orders by the last prompt (falling back to updates), which keeps rows from jumping while agents work.
-    var label: String { self == .updated ? "最近活动" : "创建时间" }
+    var label: String { self == .updated ? String(localized: "最近活动") : String(localized: "创建时间") }
 }
 
 struct ReviewComment: Identifiable, Hashable {
@@ -73,7 +73,7 @@ struct ReviewComment: Identifiable, Hashable {
 enum SidebarGrouping: String, CaseIterable, Codable {
     case project, status
 
-    var label: String { self == .project ? "按项目" : "按状态" }
+    var label: String { self == .project ? String(localized: "按项目") : String(localized: "按状态") }
 }
 
 /// One sidebar group: a project on one machine (or a status, or the pinned section), with its top-level sessions.
@@ -298,16 +298,16 @@ final class AppModel {
                 }
             }
         case .status:
-            let names: [StatusBucket: String] = [.needsInput: "需要输入", .failed: "失败", .running: "运行中", .attention: "待查看", .done: "已完成"]
+            let names: [StatusBucket: String] = [.needsInput: String(localized: "需要输入"), .failed: String(localized: "失败"), .running: String(localized: "运行中"), .attention: String(localized: "待查看"), .done: String(localized: "已完成")]
             let byBucket = Dictionary(grouping: rest) { $0.bucket }
             for b in byBucket.keys.sorted() {
                 let list = (byBucket[b] ?? []).sorted { $0.key > $1.key }
                 out.append(SessionGroup(id: "status:" + b.rawValue, serverId: list[0].host.id, name: names[b] ?? b.rawValue,
-                                        hostLabel: multiHost ? "全部主机" : list[0].host.label, kind: .status(b), rows: rowsOf(list)))
+                                        hostLabel: multiHost ? String(localized: "全部主机") : list[0].host.label, kind: .status(b), rows: rowsOf(list)))
             }
         }
         if !pinned.isEmpty {
-            out.insert(SessionGroup(id: "pinned", serverId: pinned[0].host.id, name: "置顶", hostLabel: "", kind: .pinned,
+            out.insert(SessionGroup(id: "pinned", serverId: pinned[0].host.id, name: String(localized: "置顶"), hostLabel: "", kind: .pinned,
                                     rows: rowsOf(pinned)), at: 0)
         }
         return out
@@ -378,7 +378,7 @@ final class AppModel {
             (wsId, _) = try await host.createWorkspace(source: ["kind": "directory", "path": .string(project.rootPath),
                                                                 "projectId": .string(project.id)])
         }
-        guard let wsId else { throw HostStore.ActionError.rejected("没有拿到工作区") }
+        guard let wsId else { throw HostStore.ActionError.rejected(String(localized: "没有拿到工作区")) }
         select(.draft(UUID().uuidString), in: WorkspaceRef(serverId: host.id, workspaceId: wsId))
     }
 
@@ -699,7 +699,7 @@ final class AppModel {
                                                          expectedServerId: "")
         let info = await c.serverInfo
         await c.close()
-        guard let serverId = info?.serverId, !serverId.isEmpty else { throw HostStore.ActionError.rejected("没有拿到这台机器的 ID") }
+        guard let serverId = info?.serverId, !serverId.isEmpty else { throw HostStore.ActionError.rejected(String(localized: "没有拿到这台机器的 ID")) }
         let offer = PairingOffer.direct(serverId: serverId, endpoint: endpoint, useTls: useTls, password: pw)
         if let existing = host(serverId) {
             // Already paired through the relay: keep that connection, just remember the name.
@@ -762,7 +762,7 @@ final class AppModel {
             if host.state == .connected, let a = host.agents[ref.agentId], isReply || !a.pendingPermissions.isEmpty { break }
             try? await Task.sleep(for: .milliseconds(500))
         }
-        let title = host.agents[ref.agentId]?.displayTitle ?? "会话"
+        let title = host.agents[ref.agentId]?.displayTitle ?? String(localized: "会话")
         do {
             switch action {
             case .reply(let text):
@@ -776,11 +776,11 @@ final class AppModel {
                 let target = requestId.flatMap { id in pending.first { $0.id == id } }
                 guard let request = target, request.kind != "question", request.kind != "plan" else {
                     if requestId != nil, target == nil {
-                        NotificationManager.shared.postFailure("已经处理过了 · \(title)", body: "通知里的这个请求已经不在等你批准了。", ref: ref)
+                        NotificationManager.shared.postFailure(String(localized: "已经处理过了 · \(title)"), body: String(localized: "通知里的这个请求已经不在等你批准了。"), ref: ref)
                     } else if Self.userCanSee {
                         open(ref)
                     } else {
-                        NotificationManager.shared.postFailure("要在 App 里处理 · \(title)", body: "这是问题、计划或多个请求，点这里打开会话。", ref: ref)
+                        NotificationManager.shared.postFailure(String(localized: "要在 App 里处理 · \(title)"), body: String(localized: "这是问题、计划或多个请求，点这里打开会话。"), ref: ref)
                     }
                     return
                 }
@@ -794,7 +794,7 @@ final class AppModel {
                 try await host.respond(to: request, agentId: ref.agentId, response: response)
             }
         } catch {
-            NotificationManager.shared.postFailure("没能完成 · \(title)", body: "\(error)", ref: ref)
+            NotificationManager.shared.postFailure(String(localized: "没能完成 · \(title)"), body: "\(error)", ref: ref)
         }
     }
 
@@ -812,7 +812,7 @@ final class AppModel {
             let pending = store.agents[e.agentId]?.pendingPermissions ?? []
             let requestId = e.reason == "permission" && pending.count == 1 ? pending.first?.id : nil
             let agent = store.agents[e.agentId]
-            let agentTitle = agent?.displayTitle ?? "会话"
+            let agentTitle = agent?.displayTitle ?? String(localized: "会话")
             let workspace = agent?.workspaceId.flatMap { store.workspaces[$0] }
             let workspaceTitle = workspace?.title.flatMap { $0.isEmpty ? nil : $0 } ?? agentTitle
             NotificationManager.shared.post(e, hostLabel: store.label, workspaceTitle: workspaceTitle, agentTitle: agentTitle,
