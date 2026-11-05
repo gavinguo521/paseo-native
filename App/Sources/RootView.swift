@@ -255,7 +255,8 @@ struct RootView: View {
         case .usage:
             UsageView()
         case .board:
-            BoardView(workspace: model.boardWorkspace).id(model.boardWorkspace)
+            BoardView(workspace: model.boardWorkspace, agent: model.boardAgent)
+                .id("\(model.boardWorkspace.map { $0.serverId + $0.workspaceId } ?? "")|\(model.boardAgent?.agentId ?? "")")
         case nil:
             missing
         }

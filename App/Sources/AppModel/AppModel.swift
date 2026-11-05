@@ -168,6 +168,8 @@ final class AppModel {
     var forkDraft: ForkDraft?
     /// Workspace the board opens for (nil = board home).
     var boardWorkspace: WorkspaceRef?
+    /// 打开看板时所在的会话没有关联工作区（老会话），就用它的目录定位项目。
+    var boardAgent: AgentRef?
     var hasBoardPlugin: Bool { hosts.contains { $0.isPluginRunning("agent-taskboard") } }
 
     struct ForkDraft {
@@ -653,6 +655,26 @@ final class AppModel {
             let parts = spec.split(separator: ":").map(String.init)
             let pages: [String: Destination] = ["newChat": .newChat, "projects": .projects, "history": .history,
                                                 "schedules": .schedules, "usage": .usage, "board": .board]
+            // board:<工作区 id 或会话 id 前缀>：先认出那个会话所在的工作区再打开看板，测试「从项目里打开看板」
+            if parts[0] == "board", parts.count > 1 {
+                Task {
+                    for _ in 0..<600 {
+                        if let h = hosts.first(where: { $0.workspaces[parts[1]] != nil }) {
+                            boardWorkspace = WorkspaceRef(serverId: h.id, workspaceId: parts[1])
+                            destination = .board
+                            return
+                        }
+                        if let (h, a) = hosts.lazy.compactMap({ h in h.agents.values.first { $0.id.hasPrefix(parts[1]) }.map { (h, $0) } }).first {
+                            if let ws = a.workspaceId { boardWorkspace = WorkspaceRef(serverId: h.id, workspaceId: ws); boardAgent = nil }
+                            else { boardAgent = AgentRef(serverId: h.id, agentId: a.id); boardWorkspace = nil }
+                            destination = .board
+                            return
+                        }
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                }
+                return
+            }
             // home: the session list itself (iPhone's root), e.g. with PASEO_SWIPE_DEMO=1.
             if parts[0] == "home" { destination = nil; return }
             if let page = pages[parts[0]] {

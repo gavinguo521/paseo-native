@@ -3,6 +3,7 @@
 import PaseoKit
 import SwiftUI
 import WebKit
+import os
 
 /// Context a plugin row needs: which host/agent it belongs to.
 struct PluginRowContext {
@@ -596,12 +597,19 @@ struct AgentQuotaSection: View {
 struct BoardView: View {
     @Environment(AppModel.self) private var model
     let workspace: WorkspaceRef?
+    var agent: AgentRef? = nil
     @State private var url: URL?
     @State private var problem: String?
     @State private var loading = true
 
+    /// 看板服务只监听那台机器的 127.0.0.1，所以在 Mac 上优先用本机 daemon 的看板插件（这台 Mac 能打开的只有本机看板，
+    /// 本机令牌也只交给它）；本机没装看板插件时才用当前工作区所在机器、或第一台装了插件的机器。
     private var host: HostStore? {
-        workspace.flatMap { model.host($0.serverId) } ?? model.hosts.first { $0.isPluginRunning("agent-taskboard") }
+        #if os(macOS)
+        if let local = LocalDaemon.shared.status?.serverId, let h = model.host(local), h.isPluginRunning("agent-taskboard") { return h }
+        #endif
+        return workspace.flatMap { model.host($0.serverId) }.flatMap { $0.isPluginRunning("agent-taskboard") ? $0 : nil }
+            ?? model.hosts.first { $0.isPluginRunning("agent-taskboard") }
     }
 
     var body: some View {
@@ -626,28 +634,39 @@ struct BoardView: View {
     }
 
     private func locate() async {
+        #if os(macOS)
+        // 选哪台机器的看板插件、能不能注入本机令牌，都要用到本机 daemon 的 serverId，先取到再往下走
+        if LocalDaemon.shared.status == nil { await LocalDaemon.shared.refresh() }
+        #endif
         guard let host else { problem = String(localized: "没有机器启用了看板插件"); return }
         problem = nil
         url = nil
-        #if os(macOS)
-        // 判断看板插件是不是在本机 daemon 上（决定能不能注入本机令牌）要用到本机 daemon 的 serverId
-        if LocalDaemon.shared.status == nil { await LocalDaemon.shared.refresh() }
-        #endif
         var paths: [JSONValue] = []
         if let ref = workspace, let w = model.workspace(ref) {
             paths = [.string(w.directory), .string(w.projectRootPath)]
+        } else if let r = agent, let a = model.agent(r), !a.cwd.isEmpty {
+            paths = [.string(a.cwd)]
         }
+        #if DEBUG
+        boardDebug("host=\(host.id) workspace=\(workspace.map { $0.workspaceId } ?? "-") agent=\(agent?.agentId ?? "-") cwd=\(agent.flatMap { model.agent($0)?.cwd } ?? "-") paths=\(paths.compactMap(\.stringValue))")
+        #endif
         do {
             let out = try await host.invokePlugin("agent-taskboard", "board.locate", ["paths": .array(paths)])
+            #if DEBUG
+            boardDebug("locate -> \(out)")
+            #endif
             guard out["reachable"]?.boolValue == true, let base = out["url"]?.stringValue else {
                 problem = String(localized: "看板服务没有响应：\(out["error"]?.stringValue ?? String(localized: "未知原因"))")
                 return
             }
             var s = base
-            if let project = out["project"]?.stringValue {
+            let project = out["project"]?.stringValue
+            Logger(subsystem: "paseo-native", category: "board").notice("board.locate host=\(host.id, privacy: .public) paths=\(paths.compactMap(\.stringValue), privacy: .public) project=\(project ?? "-", privacy: .public)")
+            if let project {
                 s += "/p/" + project.split(separator: "/").map { String($0).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? String($0) }.joined(separator: "/")
+                // 只有定位到项目时才收起看板侧栏；首页要靠侧栏选项目，收起就是一片空白
+                s += "?sidebar=collapsed"
             }
-            s += "?sidebar=collapsed"
             guard let u = URL(string: s) else { problem = String(localized: "看板地址无效：\(s)"); return }
             // 127.0.0.1 is the daemon's machine: only reachable when this app runs there.
             if await reachable(u) { url = u } else { problem = String(localized: "看板在 \(host.label) 上（\(base)），只能在那台电脑上打开。") }
@@ -687,6 +706,16 @@ struct BoardView: View {
     }
 }
 
+#if DEBUG
+/// PASEO_BOARD_LOG=<文件>：把看板定位过程追加写进文件（排查用）。
+func boardDebug(_ s: String) {
+    guard let path = ProcessInfo.processInfo.environment["PASEO_BOARD_LOG"],
+          let data = (s + "\n").data(using: .utf8) else { return }
+    if let h = FileHandle(forWritingAtPath: path) { h.seekToEndOfFile(); h.write(data); try? h.close() }
+    else { try? data.write(to: URL(fileURLWithPath: path)) }
+}
+#endif
+
 /// WKWebView, optionally seeding localStorage for the page's origin before its scripts run
 /// (only on that origin: the script is skipped if the page navigates elsewhere).
 func makeWebView(url: URL, localStorage: [String: String]) -> WKWebView {
@@ -703,6 +732,21 @@ func makeWebView(url: URL, localStorage: [String: String]) -> WKWebView {
     }
     let v = WKWebView(frame: .zero, configuration: config)
     v.load(URLRequest(url: url))
+    #if DEBUG && os(macOS)
+    // PASEO_WEB_SNAPSHOT=<png 路径>：加载 8 秒后把网页实际渲染的画面、页面文字和 localStorage 存下来（排查网页空白）
+    if let out = ProcessInfo.processInfo.environment["PASEO_WEB_SNAPSHOT"] {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+            v.takeSnapshot(with: nil) { image, _ in
+                if let tiff = image?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: out))
+                }
+            }
+            v.evaluateJavaScript("JSON.stringify({url: location.href, size: [innerWidth, innerHeight], text: document.body.innerText.slice(0, 800), token: !!localStorage.getItem('board-token')})") { r, e in
+                try? "\(r ?? "")\n\(e.map { "\($0)" } ?? "")".write(toFile: out + ".txt", atomically: true, encoding: .utf8)
+            }
+        }
+    }
+    #endif
     return v
 }
 

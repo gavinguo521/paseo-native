@@ -20,11 +20,9 @@ struct AddHostView: View {
         NavigationStack {
             Form {
                 Picker("方式", selection: $method) {
-                    #if os(iOS)
+                    // 分段控件不会截断文字，每段等宽取最长那段；标签太长（英文版尤其）会把整个表单撑出窗口，
+                    // 两侧被裁掉。中继/加密说明放在下面的 footer 里。
                     Text("配对链接").tag("link")
-                    #else
-                    Text("配对链接（中继，端到端加密）").tag("link")
-                    #endif
                     Text("直连地址").tag("direct")
                 }
                 .pickerStyle(.segmented).labelsHidden()

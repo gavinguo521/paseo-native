@@ -226,8 +226,10 @@ struct SidebarView: View {
     private func navIcon(_ icon: String, _ title: String, _ destination: Destination) -> some View {
         let selected = model.destination == destination
         return Button {
-            if destination == .board, case .agent(let r) = model.destination, let w = model.workspace(of: r) {
-                model.boardWorkspace = WorkspaceRef(serverId: r.serverId, workspaceId: w.id)
+            // 打开看板时记下当前所在的工作区（会话页和工作区里的终端 / 改动等标签页都算），看板直接定位到那个项目
+            if destination == .board {
+                if let ws = model.currentWorkspace { model.boardWorkspace = ws; model.boardAgent = nil }
+                else if case .agent(let r) = model.destination { model.boardAgent = r; model.boardWorkspace = nil }
             }
             model.destination = destination
         } label: {
