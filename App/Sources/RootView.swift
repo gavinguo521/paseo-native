@@ -269,11 +269,11 @@ struct RootView: View {
             Text(model.hosts.isEmpty ? "先添加一台机器" : "从左侧选一个会话，或者开始新的").font(.system(size: 17, weight: .medium))
             HStack(spacing: 10) {
                 if model.hosts.isEmpty {
-                    Button("添加机器…") { showAddHost = true }.buttonStyle(.glassProminent).tint(Theme.accent)
+                    Button("添加机器…") { showAddHost = true }.compatibleGlassButtonStyle(prominent: true).tint(Theme.accent)
                 } else {
-                    Button("新聊天") { model.destination = .newChat }.buttonStyle(.glassProminent).tint(Theme.accent)
-                    Button("导入外部会话…") { NotificationCenter.default.post(name: .importSessions, object: nil) }.buttonStyle(.glass)
-                    Button("项目") { model.destination = .projects }.buttonStyle(.glass)
+                    Button("新聊天") { model.destination = .newChat }.compatibleGlassButtonStyle(prominent: true).tint(Theme.accent)
+                    Button("导入外部会话…") { NotificationCenter.default.post(name: .importSessions, object: nil) }.compatibleGlassButtonStyle()
+                    Button("项目") { model.destination = .projects }.compatibleGlassButtonStyle()
                 }
             }
             Text("⌘K 命令面板 · ⌘/ 快捷键").font(.system(size: 12)).foregroundStyle(Theme.extraMuted)

@@ -41,6 +41,8 @@ struct AgentDetailView: View {
             .navigationSubtitle([agent.map { model.projectName(of: $0, in: host) }, host.label].compactMap { $0 }.joined(separator: " · "))
             #else
             .navigationBarTitleDisplayMode(.inline)
+            // Sessions opened without a workspace tab container: opaque bar on iOS 18, unchanged on iOS 26+.
+            .compatibleNavigationBarBackground(hiddenOnNewer: false)
             #endif
             .toolbar {
                 if !narrow {
@@ -182,7 +184,7 @@ struct WorkspacePicker: View {
             .foregroundStyle(Theme.muted)
             .padding(.horizontal, 14)
             .frame(height: 32)
-            .glassEffect(.regular.interactive(), in: Capsule())
+            .compatibleGlassEffect(in: Capsule(), interactive: true)
         }
         // Height only: a long workspace name truncates instead of widening the page past a phone screen.
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)

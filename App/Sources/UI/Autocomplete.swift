@@ -138,6 +138,6 @@ struct SuggestionList: View {
             .fixedSize(horizontal: false, vertical: true)
             .onChange(of: model.index) { _, i in proxy.scrollTo(i) }
         }
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
+        .compatibleGlassEffect(in: RoundedRectangle(cornerRadius: 16))
     }
 }
