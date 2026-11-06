@@ -35,7 +35,7 @@ struct AgentDetailView: View {
     }
 
     var body: some View {
-        AgentView(host: host, agentId: ref.agentId, workspace: model.workspace(of: ref))
+        AgentView(host: host, agentId: ref.agentId, workspace: model.workspace(of: ref), reading: model.readingState(for: ref))
             .navigationTitle(agent?.displayTitle ?? "会话")
             #if os(macOS)
             .navigationSubtitle([agent.map { model.projectName(of: $0, in: host) }, host.label].compactMap { $0 }.joined(separator: " · "))

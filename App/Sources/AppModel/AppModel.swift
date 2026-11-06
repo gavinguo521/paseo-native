@@ -589,6 +589,8 @@ final class AppModel {
 
     /// Opens a sidebar row: a workspace opens on its last selected tab (official), a session without one opens directly.
     func openRow(_ ref: AgentRef) {
+        SessionSwitchTrace.begin(ref.agentId, cachedRows: host(ref.serverId)?.timelines[ref.agentId]?.rows.count ?? 0)
+        defer { SessionSwitchTrace.mark(ref.agentId, "navigationSet") }
         // iPhone: the sidebar is its own page, so tapping the row already shown must still go back to it.
         revealDetail += 1
         guard let w = workspace(of: ref) else { open(ref); return }

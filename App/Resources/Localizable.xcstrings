@@ -12629,6 +12629,96 @@
           }
         }
       }
+    },
+    "应用内打开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open in App"
+          }
+        }
+      }
+    },
+    "默认浏览器打开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open in Default Browser"
+          }
+        }
+      }
+    },
+    "用默认浏览器打开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open in Default Browser"
+          }
+        }
+      }
+    },
+    "用默认浏览器打开当前网页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open this page in your default browser"
+          }
+        }
+      }
+    },
+    "网页未能在应用内打开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't open the page in the app"
+          }
+        }
+      }
+    },
+    "此内容需要使用浏览器或其他应用打开。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This content must be opened in a browser or another app."
+          }
+        }
+      }
+    },
+    "应用内打开：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open in App: %@"
+          }
+        }
+      }
+    },
+    "默认浏览器打开：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open in Default Browser: %@"
+          }
+        }
+      }
+    },
+    "复制链接：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Link: %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

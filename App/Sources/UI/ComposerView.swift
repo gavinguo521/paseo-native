@@ -866,7 +866,10 @@ struct DraftComposerView: View {
                 RoundButton(systemImage: "arrow.up", busy: sending, help: String(localized: "开始")) { create() }
             }
         } onSubmit: { create() }
-        .task { await host.loadProviders(cwd: workspace.directory) }
+        .task {
+            await host.loadProviders(cwd: workspace.directory)
+            await host.recheckUnavailableProviders()
+        }
         .onAppear {
             #if os(macOS)
             focused = true

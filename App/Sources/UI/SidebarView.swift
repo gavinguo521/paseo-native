@@ -49,7 +49,7 @@ struct SidebarView: View {
 
     /// 和官方 Paseo 区分开：整体作为产品名，同字号同粗细。
     private func appTitle(size: CGFloat) -> some View {
-        Text("Paseo Native").font(.system(size: size, weight: .bold)).lineLimit(1)
+        Text(AppBuild.isDevelopment ? "Paseo Native DEV" : "Paseo Native").font(.system(size: size, weight: .bold)).lineLimit(1)
     }
 
     var body: some View {

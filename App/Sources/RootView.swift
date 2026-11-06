@@ -96,6 +96,9 @@ struct RootView: View {
         .sheet(isPresented: $showShortcuts) { ShortcutsHelpView() }
         .modifier(CompanionPromptModifier(prompt: $companionPrompt, key: companionKey, check: checkCompanions))
         .task {
+            #if DEBUG && os(macOS)
+            await runSwitchBenchmarkIfRequested(model)
+            #endif
             #if DEBUG && os(iOS)
             // PASEO_QR_IMAGE=<png>: run the photo QR reader on that file and log whether it is a pairing link.
             if let path = ProcessInfo.processInfo.environment["PASEO_QR_IMAGE"], let data = FileManager.default.contents(atPath: path) {
@@ -356,3 +359,43 @@ struct UndoArchiveToast: View {
         .animation(.snappy(duration: 0.25), value: model.undoArchive)
     }
 }
+
+#if DEBUG && os(macOS)
+/// Runs the same sidebar action without AX tree traversal in the timed interval.
+@MainActor private func runSwitchBenchmarkIfRequested(_ model: AppModel) async {
+    guard ProcessInfo.processInfo.environment["PASEO_SWITCH_BENCH"] == "1" else { return }
+    let original = model.destination
+    let targets = (ProcessInfo.processInfo.environment["PASEO_SWITCH_TARGETS"] ?? "")
+        .split(separator: ",").map(String.init)
+    guard targets.count >= 2 else { print("SWITCH BENCH needs at least two target ID prefixes"); return }
+    var refs: [AgentRef] = []
+    for _ in 0..<60 {
+        refs = targets.compactMap { prefix in
+            for h in model.hosts {
+                if let a = h.agents.values.first(where: { $0.id.hasPrefix(prefix) }) {
+                    return AgentRef(serverId: h.id, agentId: a.id)
+                }
+            }
+            return nil
+        }
+        if refs.count == targets.count { break }
+        try? await Task.sleep(for: .seconds(1))
+    }
+    guard refs.count == targets.count else { print("SWITCH BENCH missing targets"); return }
+    try? await Task.sleep(for: .seconds(3))
+    for round in 0..<3 {
+        if round == 1, let pages = Int(ProcessInfo.processInfo.environment["PASEO_SWITCH_HISTORY_PAGES"] ?? "0"), pages > 0 {
+            for ref in refs {
+                for _ in 0..<min(pages, 20) { await model.host(ref.serverId)?.loadOlder(ref.agentId) }
+            }
+            try? await Task.sleep(for: .seconds(2))
+        }
+        for ref in refs {
+            model.openRow(ref)
+            try? await Task.sleep(for: .seconds(5))
+        }
+    }
+    model.destination = original
+    FileHandle.standardError.write(Data("SWITCH BENCH DONE\n".utf8))
+}
+#endif

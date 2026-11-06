@@ -14,6 +14,10 @@ REPO=$(sed -nE 's/^PASEO_RELEASES_REPO *= *([^ ]+).*/\1/p' Config/Local.xcconfig
 [[ -n "$REPO" ]] || REPO=$(sed -nE 's/^PASEO_RELEASES_REPO *= *([^ ]+).*/\1/p' Config/Paseo.xcconfig | tail -1)
 [[ -n "$REPO" ]] || { echo "没配置 PASEO_RELEASES_REPO"; exit 1; }
 
+# 公开源码必须先同步到这个版本，否则 Release 会指向旧代码。
+PUBLIC_VERSION=$(gh api "repos/$REPO/contents/project.yml" -H 'Accept: application/vnd.github.raw' | sed -nE 's/^    MARKETING_VERSION: "(.*)"/\1/p' | head -1)
+[[ "$PUBLIC_VERSION" == "$VERSION" ]] || { echo "✗ 公开仓库的版本是 $PUBLIC_VERSION，不是 $VERSION，先跑 scripts/publish-oss.sh"; exit 1; }
+
 # 再确认一次包里是公证过的、版本号对得上
 M=$(hdiutil attach -nobrowse -readonly "$DMG" | tail -1 | awk -F'\t' '{print $NF}')
 trap 'hdiutil detach -quiet "$M" 2>/dev/null || true' EXIT

@@ -63,21 +63,207 @@ struct MarkdownView: View {
         }
     }
 
-    private func inline(_ s: String) -> Text {
-        Text(renderCache.inline(s, query: findQuery) {
+    private func inline(_ s: String) -> some View {
+        HoverableMarkdownText(attributed: renderCache.inline(s, query: findQuery) {
             var attributed = InlineMarkdown.parse(s)
             FileLink.annotate(&attributed)
+            // Keep links recognizable without relying on color alone.
+            for run in attributed.runs where run.link != nil {
+                attributed[run.range].underlineStyle = .single
+            }
             highlight(&attributed, findQuery)
             return attributed
         })
     }
 }
 
+/// Text stays native and selectable; the renderer only records the actual web-link hit areas.
+private struct WebLinkAttribute: TextAttribute { let url: URL }
+
+private final class WebLinkHitAreas {
+    var areas: [(CGRect, URL)] = []
+}
+
+private struct WebLinkRenderer: TextRenderer {
+    let hitAreas: WebLinkHitAreas
+    func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+        var areas: [(CGRect, URL)] = []
+        for line in layout {
+            for run in line {
+                if let link = run[WebLinkAttribute.self] {
+                    areas.append((run.typographicBounds.rect, link.url))
+                }
+                context.draw(run)
+            }
+        }
+        hitAreas.areas = areas
+    }
+}
+
+private struct HoverableMarkdownText: View {
+    let attributed: AttributedString
+    @Environment(\.openWebLinkInApp) private var openInApp
+    @State private var hitAreas = WebLinkHitAreas()
+    @State private var hoveredURL: URL?
+    @State private var anchor = CGRect.zero
+    @State private var presented = false
+    @State private var pending: Task<Void, Never>?
+    @State private var closing: Task<Void, Never>?
+    @State private var pointerInPopover = false
+    @State private var keyboardPresentation = false
+
+    private var text: Text {
+        attributed.runs.reduce(Text("")) { result, run in
+            let part = Text(AttributedString(attributed[run.range]))
+            if let url = run.link, ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+                return result + part.customAttribute(WebLinkAttribute(url: url))
+            }
+            return result + part
+        }
+    }
+
+    private var webURLs: [URL] {
+        var seen = Set<URL>()
+        return attributed.runs.compactMap { run in
+            guard let url = run.link, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+                  seen.insert(url).inserted else { return nil }
+            return url
+        }
+    }
+
+    private func closeLater() {
+        pending?.cancel()
+        closing?.cancel()
+        guard !keyboardPresentation else { return }
+        closing = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled, !pointerInPopover else { return }
+            presented = false
+            hoveredURL = nil
+        }
+    }
+
+    @ViewBuilder private func actions(for url: URL) -> some View {
+        Button("应用内打开", systemImage: "globe") {
+            presented = false
+            openInApp?(url)
+        }.disabled(openInApp == nil)
+        Button("默认浏览器打开", systemImage: "arrow.up.right.square") {
+            presented = false
+            #if os(macOS)
+            NSWorkspace.shared.open(url)
+            #endif
+        }
+        Button("复制链接", systemImage: "doc.on.doc") {
+            Pasteboard.copy(url.absoluteString)
+            presented = false
+        }
+    }
+
+    var body: some View {
+        #if os(macOS)
+        text.textRenderer(WebLinkRenderer(hitAreas: hitAreas))
+            .focusable(!webURLs.isEmpty)
+            .onKeyPress(.space) { showFromKeyboard() }
+            .onKeyPress(.return) { showFromKeyboard() }
+            .contextMenu {
+                ForEach(webURLs, id: \.self) { url in
+                    if webURLs.count == 1 { actions(for: url) }
+                    else { Menu(url.absoluteString) { actions(for: url) } }
+                }
+            }
+            .accessibilityActions {
+                ForEach(webURLs, id: \.self) { url in
+                    Button(String(localized: "应用内打开：\(url.absoluteString)")) { openInApp?(url) }
+                    Button(String(localized: "默认浏览器打开：\(url.absoluteString)")) { NSWorkspace.shared.open(url) }
+                    Button(String(localized: "复制链接：\(url.absoluteString)")) { Pasteboard.copy(url.absoluteString) }
+                }
+            }
+            .onContinuousHover { phase in
+                guard !keyboardPresentation else { return }
+                switch phase {
+                case .active(let point):
+                    guard let hit = hitAreas.areas.first(where: { $0.0.contains(point) }) else {
+                        closeLater()
+                        return
+                    }
+                    closing?.cancel()
+                    guard hit.1 != hoveredURL || !presented else { return }
+                    pending?.cancel()
+                    presented = false
+                    hoveredURL = hit.1
+                    anchor = hit.0
+                    pending = Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(450))
+                        guard !Task.isCancelled else { return }
+                        presented = true
+                    }
+                case .ended: closeLater()
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                Color.clear.frame(width: max(1, anchor.width), height: max(1, anchor.height))
+                    .allowsHitTesting(false)
+                    .popover(isPresented: $presented, arrowEdge: .bottom) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(hoveredURL.map { [$0] } ?? webURLs, id: \.self) { url in
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text(url.host() ?? url.absoluteString)
+                                        .font(.caption).foregroundStyle(.secondary)
+                                        .lineLimit(1).truncationMode(.middle)
+                                        .help(url.absoluteString)
+                                        .accessibilityLabel(url.absoluteString)
+                                    actions(for: url)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain).padding(12).frame(maxWidth: 320, alignment: .leading)
+                        .onHover { inside in
+                            pointerInPopover = inside
+                            if inside { closing?.cancel() } else { closeLater() }
+                        }
+                    }
+                    .offset(x: anchor.minX, y: anchor.minY)
+            }
+            .onChange(of: presented) { _, visible in
+                if !visible {
+                    keyboardPresentation = false
+                    pointerInPopover = false
+                    closing?.cancel()
+                }
+            }
+            .onDisappear { pending?.cancel(); closing?.cancel(); presented = false }
+        #else
+        Text(attributed)
+        #endif
+    }
+
+    private func showFromKeyboard() -> KeyPress.Result {
+        guard !webURLs.isEmpty else { return .ignored }
+        pending?.cancel()
+        closing?.cancel()
+        hoveredURL = nil
+        keyboardPresentation = true
+        presented = true
+        return .handled
+    }
+}
+
+private struct OpenWebLinkInAppKey: EnvironmentKey {
+    static let defaultValue: (@MainActor (URL) -> Void)? = nil
+}
+extension EnvironmentValues {
+    var openWebLinkInApp: (@MainActor (URL) -> Void)? {
+        get { self[OpenWebLinkInAppKey.self] }
+        set { self[OpenWebLinkInAppKey.self] = newValue }
+    }
+}
+
 /// Bordered table like the official app: short columns keep their natural width, long ones wrap.
-struct MarkdownTable: View {
+struct MarkdownTable<Cell: View>: View {
     let rows: [[String]]
     let aligns: [TextAlignment]
-    let cell: (String) -> Text
+    let cell: (String) -> Cell
 
     private var columns: Int { rows.map(\.count).max() ?? 0 }
     @State private var selection: TableCellRange?

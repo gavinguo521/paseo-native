@@ -10,6 +10,7 @@ import SwiftUI
     @ObservationIgnored var hasPosition = false
     @ObservationIgnored var firstRowID: String?
     @ObservationIgnored var anchorID: String?
+    @ObservationIgnored var renderStartID: String?
 }
 
 @MainActor final class TimelineHistoryCache {
@@ -24,4 +25,27 @@ import SwiftUI
 
 extension EnvironmentValues {
     @Entry var timelineReadingState: TimelineReadingState? = nil
+}
+
+/// Bounds initial layout without estimated lazy-stack heights. The stable first ID keeps
+/// the reading window fixed as live messages arrive; older items are revealed explicitly.
+struct TimelineRenderWindow {
+    static let pageSize = 16
+    var startID: String?
+
+    func start(in items: [DisplayItem]) -> Int {
+        if let startID, let i = items.firstIndex(where: { $0.id == startID }) { return i }
+        return max(0, items.count - Self.pageSize)
+    }
+
+    func visible(_ items: [DisplayItem]) -> ArraySlice<DisplayItem> { items[start(in: items)...] }
+
+    mutating func pin(_ items: [DisplayItem]) {
+        startID = visible(items).first?.id
+    }
+
+    mutating func revealOlder(_ items: [DisplayItem]) {
+        guard !items.isEmpty else { return }
+        startID = items[max(0, start(in: items) - Self.pageSize)].id
+    }
 }

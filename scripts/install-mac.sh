@@ -1,12 +1,15 @@
 #!/bin/zsh
-# 编译 Release 版并装到 ~/Applications/Paseo Native.app（/Applications/Paseo.app 是官方 App，不要覆盖）。
+# 编译 Release 版并装到 /Applications/Paseo Native.app（/Applications/Paseo.app 是官方 App，不要覆盖）。
+# 必须和 dmg 里「应用程序」快捷方式指向的位置一致：以前装在 ~/Applications，同事/自己再从 dmg 拖进「应用程序」时
+# 落到了 /Applications，旧版不会被替换，变成两份同 Bundle ID 的 App 并存。
 # 旧版先从 LaunchServices 取消登记再直接删除：放进废纸篓的话，启动台和程序坞会把它当成又一个 Paseo。
 # 编译目录用 build.noindex：带 .noindex 后缀 Spotlight 不收录，编译出的 Paseo.app 不会出现在启动台里。
 # 用法：scripts/install-mac.sh [--no-build]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP="$HOME/Applications/Paseo Native.app"
+APP="/Applications/Paseo Native.app"
+LEGACY="$HOME/Applications/Paseo Native.app"
 BUILT="build.noindex/rel/Build/Products/Release/Paseo.app"
 LS=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
@@ -25,7 +28,11 @@ osascript -e 'quit app "Paseo Native"' 2>/dev/null || true
 sleep 2
 pkill -f "Paseo Native.app/Contents/MacOS" 2>/dev/null || true
 
-mkdir -p "$HOME/Applications"
+# 旧位置（~/Applications）的那份撤销登记后移进废纸篓，改名成下面会清理的 Paseo Native-*.app 形式。
+if [[ -e "$LEGACY" ]]; then
+  "$LS" -u "$LEGACY" 2>/dev/null || true
+  mv "$LEGACY" "$HOME/.Trash/Paseo Native-legacy-$(date +%Y%m%d%H%M%S).app"
+fi
 if [[ -e "$APP" ]]; then
   "$LS" -u "$APP" 2>/dev/null || true
   rm -rf "$APP"

@@ -14,6 +14,7 @@ struct PaseoApp: App {
     static let mainWindowId = "main"
 
     init() {
+        AppBuild.prepareDevelopmentPreferences()
         let model = AppModel()
         _model = State(initialValue: model)
         #if os(iOS)
@@ -26,9 +27,20 @@ struct PaseoApp: App {
 
     var body: some Scene {
         WindowGroup(id: Self.mainWindowId) {
-            RootView()
+            Group {
+                #if DEBUG && os(macOS)
+                if ProcessInfo.processInfo.environment["PASEO_PREVIEW_LINKS"] == "1" {
+                    WebLinkPreview()
+                } else { RootView() }
+                #else
+                RootView()
+                #endif
+            }
                 .environment(model)
                 .task {
+                    #if DEBUG && os(macOS)
+                    if ProcessInfo.processInfo.environment["PASEO_PREVIEW_LINKS"] == "1" { return }
+                    #endif
                     #if os(macOS)
                     appDelegate.model = model
                     UpdateChecker.shared.startAutomaticChecks()

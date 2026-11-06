@@ -24,7 +24,9 @@ struct AgentView: View {
     @State private var historyCache = TimelineHistoryCache()
     @State private var historyTask: Task<Void, Never>?
     @State private var matches: [String] = []
-    @State private var reading = TimelineReadingState()
+    @State private var reading: TimelineReadingState
+    @State private var renderWindow: TimelineRenderWindow
+    @State private var userScrolled = false
     @State private var restoreOffset: CGFloat?
     @State private var pendingJump: String?
     @State private var prependGeometry: (offset: CGFloat, height: CGFloat)?
@@ -33,6 +35,42 @@ struct AgentView: View {
     @State private var displayCache = DisplayItemCache()
     /// One older page at a time.
     @State private var loadingOlder = false
+
+    init(host: HostStore, agentId: String, workspace: Workspace?, reading: TimelineReadingState = TimelineReadingState()) {
+        self.host = host; self.agentId = agentId; self.workspace = workspace
+        _reading = State(initialValue: reading)
+        let restore = reading.hasPosition && !reading.atBottom &&
+            (reading.historyWindow != nil || reading.firstRowID == host.timelines[agentId]?.rows.first?.id)
+        _atBottom = State(initialValue: !restore)
+        _restoreOffset = State(initialValue: restore ? max(0, reading.offset) : nil)
+        _renderWindow = State(initialValue: TimelineRenderWindow(startID: restore ? reading.renderStartID : nil))
+    }
+
+    private var allDisplayItems: [DisplayItem] {
+        displayCache.items(displayedTimeline, lastTurnActive: agent?.status == .running,
+                           collapse: collapseTurns && reading.historyWindow == nil, separateReasoning: autoExpandReasoning)
+    }
+
+    private var visibleDisplayItems: ArraySlice<DisplayItem> {
+        let items = allDisplayItems
+        return reading.historyWindow == nil ? renderWindow.visible(items) : items[...]
+    }
+
+    private func loadEarlier() {
+        guard reading.historyWindow == nil, !loadingOlder, restoreOffset == nil else { return }
+        let items = allDisplayItems
+        prependGeometry = (reading.offset, contentHeight)
+        if renderWindow.start(in: items) > 0 {
+            renderWindow.revealOlder(items)
+        } else if timeline?.hasOlder == true {
+            loadingOlder = true
+            Task {
+                await host.loadOlder(agentId)
+                renderWindow.startID = allDisplayItems.first?.id
+                loadingOlder = false
+            }
+        } else { prependGeometry = nil }
+    }
 
     @Environment(AppModel.self) private var model
     @State private var actionError: String?
@@ -196,6 +234,8 @@ struct AgentView: View {
 
     private func returnToLatest() {
         reading.historyWindow = nil
+        renderWindow = TimelineRenderWindow()
+        renderWindow.pin(allDisplayItems)
         atBottom = true
         pendingJump = nil
         scrollPosition.scrollTo(edge: .bottom)
@@ -395,10 +435,9 @@ struct AgentView: View {
                         ContentUnavailableView("还没有消息", systemImage: "bubble.left", description: Text("在下面输入要做的事"))
                             .frame(maxWidth: .infinity).padding(.top, 60)
                     }
-                    if reading.historyWindow == nil, timeline?.hasOlder == true {
-                        // Loading starts when this comes near the viewport (onScrollGeometryChange below), not onAppear:
-                        // the timeline is a plain VStack, so every row appears at once and onAppear would load all history.
-                        ProgressView().frame(maxWidth: .infinity)
+                    if reading.historyWindow == nil, renderWindow.start(in: allDisplayItems) > 0 || timeline?.hasOlder == true {
+                        if loadingOlder { ProgressView().frame(maxWidth: .infinity) }
+                        else { Button("加载更早", action: loadEarlier).frame(maxWidth: .infinity) }
                     }
                     if let window = reading.historyWindow {
                         HStack {
@@ -411,9 +450,7 @@ struct AgentView: View {
                             Button("返回最新消息") { returnToLatest() }
                         }
                     }
-                    ForEach(displayCache.items(displayedTimeline, lastTurnActive: agent?.status == .running,
-                                               collapse: collapseTurns && reading.historyWindow == nil,
-                                               separateReasoning: autoExpandReasoning)) { item in
+                    ForEach(visibleDisplayItems) { item in
                         TimelineItemView(item: item)
                             .modifier(LayoutProbe(label: "item " + item.id))
                             .padding(4)
@@ -460,6 +497,10 @@ struct AgentView: View {
             // Newer systems soften the top edge and hide the bottom effect; iOS 18 uses standard edges.
             .compatibleScrollEdgeEffects()
             .environment(\.openURL, OpenURLAction { url in openLink(url) })
+            .environment(\.openWebLinkInApp, { url in
+                guard let workspace else { return }
+                model.select(.browser(url.absoluteString), in: WorkspaceRef(serverId: host.id, workspaceId: workspace.id))
+            })
             .overlay(alignment: .top) { if finding { findBar } }
             .popover(isPresented: $showOutline, arrowEdge: .top) { outline.compactPopover() }
             .alert("操作失败", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
@@ -487,21 +528,27 @@ struct AgentView: View {
             // 不能用 onScrollGeometryChange 的 containerSize − contentInsets：内容不满一屏时 SwiftUI 为贴底把上方空白算进
             // 顶部内边距，和这里的 minHeight 互相影响会来回跳。
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
-            // Older history: one page when the reader scrolls within 400pt of the top of a timeline taller than the screen.
+            .onScrollPhaseChange { _, phase in
+                if phase == .interacting { userScrolled = true }
+            }
+            .onChange(of: displayedTimeline?.revision) { _, _ in
+                if !loadingOlder { renderWindow.pin(allDisplayItems) }
+            }
+            // Initial bottom-anchor layout can briefly report offset zero. Only user scrolling loads older pages.
             .onScrollGeometryChange(for: Bool.self) { g in
                 g.contentSize.height > g.containerSize.height && g.contentOffset.y + g.contentInsets.top < 400
             } action: { _, nearTop in
-                guard nearTop, reading.historyWindow == nil, timeline?.hasOlder == true, !loadingOlder, restoreOffset == nil else { return }
-                prependGeometry = (reading.offset, contentHeight)
-                loadingOlder = true
-                Task {
-                    await host.loadOlder(agentId)
-                    loadingOlder = false
-                }
+                guard nearTop, userScrolled else { return }
+                loadEarlier()
             }
             .onScrollGeometryChange(for: TimelineGeometry.self) { g in
                 TimelineGeometry(offset: g.contentOffset.y, height: g.contentSize.height, viewport: g.containerSize.height)
             } action: { _, geometry in
+                if SessionSwitchTrace.enabled, displayedTimeline?.isLoaded == true, geometry.viewport > 0 {
+                    SessionSwitchTrace.mark(agentId, "contentGeometry", detail: "rows=\(displayedTimeline?.rows.count ?? 0) rendered=\(visibleDisplayItems.count)")
+                    let generation = SessionSwitchTrace.generation(for: agentId)
+                    DispatchQueue.main.async { SessionSwitchTrace.mark(agentId, "layoutYield", generation: generation) }
+                }
                 contentHeight = geometry.height
                 if LayoutProbe.on { print("[layout] \(agentId.prefix(7)) height \(geometry.height) offset \(geometry.offset) viewport \(geometry.viewport)") }
                 if let offset = restoreOffset, geometry.viewport > 0, displayedTimeline?.isLoaded == true {
@@ -554,14 +601,8 @@ struct AgentView: View {
         .modifier(ToolDetailsPresenter(rows: displayedTimeline?.rows ?? [], selectedID: $toolDetailID))
         .environment(\.hostFileReader, env?.fileReader)
         .onAppear {
-            reading = model.readingState(for: AgentRef(serverId: host.id, agentId: agentId))
-            atBottom = reading.atBottom
-            if reading.hasPosition, !reading.atBottom {
-                // 未发生缓存淘汰/历史重置时恢复精确偏移；内容基准变了就回最新，避免越界空白。
-                if reading.historyWindow != nil || reading.firstRowID == timeline?.rows.first?.id {
-                    restoreOffset = max(0, reading.offset)
-                }
-            }
+            SessionSwitchTrace.mark(agentId, "appear")
+            renderWindow.pin(allDisplayItems)
             if env == nil { env = makeEnvironment() }
             host.openTimeline(agentId)
             host.clearAttention(agentId)
@@ -573,6 +614,7 @@ struct AgentView: View {
         .onDisappear {
             reading.atBottom = atBottom && reading.historyWindow == nil
             reading.hasPosition = true
+            reading.renderStartID = renderWindow.startID
             reading.firstRowID = timeline?.rows.first?.id
             historyTask?.cancel()
             host.closeTimeline(agentId)

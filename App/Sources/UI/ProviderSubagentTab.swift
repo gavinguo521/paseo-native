@@ -101,6 +101,10 @@ struct ProviderSubagentTab: View {
         }
         .defaultScrollAnchor(.bottom)
         .environment(\.openURL, OpenURLAction { openLink($0) })
+            .environment(\.openWebLinkInApp, { url in
+                guard let workspace else { return }
+                model.select(.browser(url.absoluteString), in: WorkspaceRef(serverId: host.id, workspaceId: workspace.id))
+            })
         .overlay { if timeline == nil && host.providerSubagentTimelineErrors[key] == nil { ProgressView() } }
     }
 

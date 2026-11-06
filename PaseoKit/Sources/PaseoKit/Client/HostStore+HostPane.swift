@@ -2,6 +2,24 @@
 
 import Foundation
 
+enum ProviderRecheck {
+    /// Hosts usually keep a few uninstalled providers, and app switching on a Mac fires often.
+    static let minimumInterval: Duration = .seconds(30)
+
+    /// Disabled providers also report `unavailable`, but probing them cannot change anything.
+    static func candidates(in entries: [JSONValue]) -> [String] {
+        entries.compactMap { entry in
+            guard entry["status"]?.stringValue == "unavailable", entry["enabled"]?.boolValue != false else { return nil }
+            return entry["provider"]?.stringValue
+        }
+    }
+
+    static func isDue(last: ContinuousClock.Instant?, now: ContinuousClock.Instant) -> Bool {
+        guard let last else { return true }
+        return last.duration(to: now) >= minimumInterval
+    }
+}
+
 struct FileTransfer {
     var mime = ""
     var size = 0
@@ -280,12 +298,23 @@ extension HostStore {
         try await conn().request("provider_diagnostic_request", ["provider": .string(provider)], timeout: .seconds(60))["payload"]?["diagnostic"]?.stringValue ?? ""
     }
 
-    public func refreshProviders(cwd: String?) async {
+    public func refreshProviders(cwd: String?, only providerIds: [String]? = nil) async {
         var p: [String: JSONValue] = [:]
         if let cwd { p["cwd"] = .string(cwd) }
+        if let providerIds { p["providers"] = .array(providerIds.map(JSONValue.string)) }
         _ = try? await connection?.request("refresh_providers_snapshot_request", p)
         try? await Task.sleep(for: .seconds(1))
         await loadProviders(cwd: cwd)
+    }
+
+    /// The daemon caches an `unavailable` result with no expiry, so a CLI installed afterwards stays
+    /// invisible until something forces a probe. Only those providers are re-probed; ready ones keep their catalog.
+    public func recheckUnavailableProviders() async {
+        let now = ContinuousClock.now
+        let ids = ProviderRecheck.candidates(in: providers)
+        guard connection != nil, !ids.isEmpty, ProviderRecheck.isDue(last: lastProviderRecheck, now: now) else { return }
+        lastProviderRecheck = now
+        await refreshProviders(cwd: providersCwd, only: ids)
     }
 
     // MARK: Pull requests and history

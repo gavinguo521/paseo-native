@@ -26,6 +26,28 @@ import PaseoKit
         return timeline
     }
 
+    @Test func renderWindowBoundsFirstLayoutAndPreservesReadingAcrossLiveAppend() {
+        let items = DisplayItem.build(history(turns: 100).rows, lastTurnActive: false)
+        var window = TimelineRenderWindow()
+        #expect(window.visible(items).count == TimelineRenderWindow.pageSize)
+        #expect(window.visible(items).last?.id == items.last?.id)
+        window.pin(items)
+        let first = window.visible(items).first?.id
+        let more = DisplayItem.build(history(turns: 101).rows, lastTurnActive: false)
+        #expect(window.visible(more).first?.id == first)
+        #expect(window.visible(more).last?.id == more.last?.id)
+        window.revealOlder(more)
+        #expect(window.visible(more).contains { $0.id == first })
+        #expect(window.visible(more).first?.id != first)
+        for _ in 0..<100 { window.revealOlder(more) }
+        #expect(window.visible(more).count == more.count)
+        // Persisted reading starts can be restored; a replaced timeline safely falls back to its tail.
+        let restored = TimelineRenderWindow(startID: first)
+        #expect(restored.visible(more).first?.id == first)
+        #expect(restored.visible([]).isEmpty)
+        #expect(TimelineRenderWindow(startID: "missing").visible(more).count == TimelineRenderWindow.pageSize)
+    }
+
     private func describe(_ items: [DisplayItem]) -> [String] {
         items.flatMap { item -> [String] in
             switch item {

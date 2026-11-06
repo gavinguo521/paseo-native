@@ -188,9 +188,7 @@ struct WorkspaceTabsView: View {
                     .navigationTitle("文件").modifier(WorkspaceSubtitle(host: host, workspace: workspace))
             }
         case .browser(let url):
-            BrowserTab(initialURL: url) { newURL in
-                if let i = tabs.firstIndex(of: .browser(url)), newURL != url { model.removeTab(.browser(url), in: ref, replacement: .browser(newURL)); _ = i }
-            }
+            BrowserTab(initialURL: url)
             .id(url)
             .navigationTitle(URL(string: url)?.host() ?? String(localized: "浏览器")).modifier(WorkspaceSubtitle(host: host, workspace: workspace))
         case .file(let path):
@@ -878,9 +876,9 @@ private struct OutlineColumn: View {
 /// Web page tab: address bar, back/forward/reload. Official browser tab (without element picking).
 private struct BrowserTab: View {
     let initialURL: String
-    let onNavigate: (String) -> Void
     @State private var address = ""
     @State private var web = WebController()
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(spacing: 0) {
@@ -895,23 +893,94 @@ private struct BrowserTab: View {
                     .onSubmit {
                         var u = address.trimmingCharacters(in: .whitespaces)
                         if !u.contains("://") { u = "http://" + u }
-                        if let url = URL(string: u) { web.view.load(URLRequest(url: url)); onNavigate(u) }
+                        if let url = URL(string: u) { web.load(url) }
                     }
+                Button("默认浏览器打开", systemImage: "arrow.up.right.square") {
+                    if let url = web.externalURL { openURL(url) }
+                }.labelStyle(.iconOnly).help("用默认浏览器打开当前网页")
             }
             .padding(8)
             Divider()
+            if let failure = web.failure {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("网页未能在应用内打开", systemImage: "exclamationmark.triangle")
+                    Text(failure).font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        Button("重试") { if let url = web.externalURL { web.load(url) } }
+                        Button("用默认浏览器打开") { if let url = web.externalURL { openURL(url) } }
+                    }
+                }.padding().frame(maxWidth: .infinity, alignment: .leading)
+                Divider()
+            }
             WebContainer(controller: web)
+        }
+        .onChange(of: web.currentURL) { _, url in
+            if let url { address = url.absoluteString }
         }
         .onAppear {
             address = initialURL
-            if web.view.url == nil, let u = URL(string: initialURL) { web.view.load(URLRequest(url: u)) }
+            if web.view.url == nil, let u = URL(string: initialURL) { web.load(u) }
         }
     }
 }
 
 @MainActor @Observable
-private final class WebController {
+private final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate {
     let view = WKWebView()
+    var failure: String?
+    var currentURL: URL?
+    private var requestedURL: URL?
+    var externalURL: URL? { failure == nil ? (currentURL ?? requestedURL) : (requestedURL ?? currentURL) }
+
+    override init() {
+        super.init()
+        view.navigationDelegate = self
+        view.uiDelegate = self
+    }
+
+    func load(_ url: URL) {
+        requestedURL = url
+        failure = nil
+        view.load(URLRequest(url: url))
+    }
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        failure = nil
+    }
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        currentURL = webView.url
+    }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        currentURL = webView.url
+    }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        report(error)
+    }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        report(error)
+    }
+    private func report(_ error: Error) {
+        guard (error as NSError).code != NSURLErrorCancelled else { return }
+        failure = error.localizedDescription
+    }
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if action.targetFrame?.isMainFrame != false { requestedURL = action.request.url }
+        decisionHandler(.allow)
+    }
+    func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        if response.isForMainFrame, !response.canShowMIMEType {
+            requestedURL = response.response.url
+            failure = String(localized: "此内容需要使用浏览器或其他应用打开。")
+            decisionHandler(.cancel)
+        } else { decisionHandler(.allow) }
+    }
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if action.targetFrame == nil, let url = action.request.url { load(url) }
+        return nil
+    }
 }
 
 #if os(macOS)
@@ -1100,3 +1169,23 @@ private struct DraftTabView: View {
         }
     }
 }
+
+#if DEBUG && os(macOS)
+/// Isolated interactive acceptance surface; never connects to a host or changes a conversation.
+struct WebLinkPreview: View {
+    @State private var url: String?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            if let url {
+                Button("返回链接预览") { self.url = nil }
+                BrowserTab(initialURL: url).id(url)
+            } else {
+                MarkdownView(text: "这些基础能力在其[官方仓库](https://github.com)和[插件接口](https://example.com)里已有对应入口。\n\n[测试加载失败](http://127.0.0.1:1)\n\n普通正文和 `Sources/App.swift` 不应弹出网页选项。")
+                    .environment(\.openWebLinkInApp, { self.url = $0.absoluteString })
+                Spacer()
+            }
+        }.padding(30).tint(Theme.accent)
+            .frame(minWidth: 800, minHeight: 500)
+    }
+}
+#endif

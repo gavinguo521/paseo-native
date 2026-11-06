@@ -54,6 +54,9 @@ public final class HostStore: Identifiable {
     /// Last history-load failure per agent, cleared on the next successful load.
     public private(set) var timelineErrors: [String: String] = [:]
     public private(set) var providers: [JSONValue] = []
+    /// The cwd `providers` was loaded for, so a background recheck reloads the same snapshot.
+    @ObservationIgnored var providersCwd: String?
+    @ObservationIgnored var lastProviderRecheck: ContinuousClock.Instant?
     /// Host pane state, keyed by cwd or workspace id.
     public internal(set) var checkoutStatus: [String: CheckoutStatus] = [:]
     public internal(set) var diffs: [String: CheckoutDiff] = [:]
@@ -309,7 +312,10 @@ public final class HostStore: Identifiable {
         track(events)
         // Model names for every session: the composer's model picker used to load these, but on an iPhone the picker
         // only exists inside the settings sheet, so labels fell back to raw ids ("claude-opus-5-5").
-        Task { await loadProviders(cwd: nil) }
+        Task {
+            await loadProviders(cwd: nil)
+            await recheckUnavailableProviders()
+        }
 
         let ws = try await c.request("fetch_workspaces_request", [
             "includeBackground": false,
@@ -444,7 +450,9 @@ public final class HostStore: Identifiable {
                 let ids = openAgents
                 for id in ids { timelineErrors[id] = nil }
                 do {
+                    for id in ids { SessionSwitchTrace.mark(id, "subscribeStart") }
                     try await resubscribeTimelines(c, agentIds: ids)
+                    for id in ids { SessionSwitchTrace.mark(id, "subscribeEnd") }
                     for id in ids where timelineWatchers[id] != nil {
                         guard connection === c, !Task.isCancelled else { return }
                         timelineLoading.insert(id)
@@ -474,8 +482,11 @@ public final class HostStore: Identifiable {
         let r = try await c.request("agent.timeline.set_subscription.request", ["agentIds": .array(agentIds.map { .string($0) })])
         guard connection === c, !Task.isCancelled else { return }
         timelineSubscriptionId = r["payload"]?["subscriptionId"]?.stringValue
+        for id in agentIds { SessionSwitchTrace.mark(id, "subscriptionAcknowledged") }
         if let old, old != timelineSubscriptionId {
-            _ = try? await c.request("subscription.release.request", ["subscriptionId": .string(old)])
+            // The replacement subscription is already active. Releasing the old ID must not
+            // add another network round trip before the selected session can fetch its tail.
+            Task { _ = try? await c.request("subscription.release.request", ["subscriptionId": .string(old)]) }
         }
     }
 
@@ -504,7 +515,9 @@ public final class HostStore: Identifiable {
         }
         do {
             for _ in 0..<50 {
+                SessionSwitchTrace.mark(agentId, "fetchStart")
                 let r = try await c.request("fetch_agent_timeline_request", params)
+                SessionSwitchTrace.mark(agentId, "fetchReturned")
                 guard connection === c, !Task.isCancelled else { return }
                 guard let p = r["payload"] else { break }
                 if let e = p["error"], e != .null {
@@ -527,6 +540,7 @@ public final class HostStore: Identifiable {
         }
         timelineErrors[agentId] = nil
         timelines[agentId] = timeline
+        SessionSwitchTrace.mark(agentId, "historyPublished", detail: "rows=\(timeline.rows.count) pages=\(pages)")
         let buffered = streamBuffer.removeValue(forKey: agentId) ?? []
         // 回放已进入同步后的时间线；否则 applyStream 会把它们再次放回缓冲区。
         catchingUp[agentId] = nil
@@ -1087,6 +1101,7 @@ public final class HostStore: Identifiable {
         if let cwd { params["cwd"] = .string(cwd) }
         guard let r = try? await connection?.request("get_providers_snapshot_request", params) else { return }
         providers = r["payload"]?["entries"]?.arrayValue ?? []
+        providersCwd = cwd
     }
 
     public func fetchHistory(search: String?) async throws -> [Agent] {
@@ -1141,6 +1156,7 @@ public final class HostStore: Identifiable {
             } else {
                 reconnectNow()
             }
+            Task { await recheckUnavailableProviders() }
         }
     }
 
