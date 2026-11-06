@@ -52,6 +52,16 @@ struct AgentView: View {
         historyCache.snapshot(history, live: timeline)
     }
     private var displayedTimeline: AgentTimeline? { reading.historyWindow ?? timeline }
+    private var hasEarlierHistoryRows: Bool {
+        guard let first = reading.historyWindow?.rows.first?.id,
+              let sourceFirst = searchableTimeline?.rows.first?.id else { return false }
+        return first != sourceFirst
+    }
+    private var hasNewerHistoryRows: Bool {
+        guard let last = reading.historyWindow?.rows.last?.id,
+              let sourceLast = searchableTimeline?.rows.last?.id else { return false }
+        return last != sourceLast
+    }
 
     private var currentMatch: String? {
         guard finding, !matches.isEmpty else { return nil }
@@ -168,9 +178,18 @@ struct AgentView: View {
         }
     }
 
-    private func showMessage(_ id: String, snapshot: AgentTimeline? = nil) {
-        guard let window = (snapshot ?? searchableTimeline)?.window(around: id) else { return }
-        reading.historyWindow = window
+    private func showMessage(_ id: String, snapshot: AgentTimeline? = nil, preferLatest: Bool = false) {
+        guard let source = snapshot ?? searchableTimeline, let window = source.window(around: id) else { return }
+        if preferLatest, window.rows.last?.id == source.rows.last?.id {
+            returnToLatest()
+            return
+        }
+        // Once paging reaches the live tail, keep receiving updates instead of leaving
+        // a frozen history window with a permanently visible "load more" button.
+        // Preserve the history view for targets hidden inside a collapsed live turn.
+        let liveContainsTarget = displayCache.items(timeline, lastTurnActive: agent?.status == .running,
+            collapse: collapseTurns, separateReasoning: autoExpandReasoning).contains { $0.id == id }
+        reading.historyWindow = window.rows.last?.id == source.rows.last?.id && liveContainsTarget ? nil : window
         atBottom = false
         pendingJump = id
     }
@@ -210,7 +229,7 @@ struct AgentView: View {
             }
         })
         let cwd = agent?.cwd ?? workspace?.directory ?? "/"
-        let reader = HostFileReader(cacheScope: host.id + "|" + cwd) { raw in
+        let reader = HostFileReader(cacheScope: host.id + "|" + cwd, messageImages: { try await host.messageImages($0) }) { raw in
             let path = (raw.hasPrefix("/") ? raw : cwd + "/" + raw)
             let dir = (path as NSString).deletingLastPathComponent, name = (path as NSString).lastPathComponent
             return try? await host.readFile(cwd: dir, path: name, maxBytes: 20 * 1024 * 1024).data
@@ -383,8 +402,10 @@ struct AgentView: View {
                     }
                     if let window = reading.historyWindow {
                         HStack {
-                            Button("加载更早") {
-                                if let id = window.rows.first?.id { showMessage(id) }
+                            if hasEarlierHistoryRows {
+                                Button("加载更早") {
+                                    if let id = window.rows.first?.id { showMessage(id) }
+                                }
                             }
                             Spacer()
                             Button("返回最新消息") { returnToLatest() }
@@ -400,13 +421,14 @@ struct AgentView: View {
                     }
                     .environment(\.timelineReadingState, reading)
                     .environment(\.sentImages, host.sentImages)
+                    .environment(\.messageImagesConnected, host.state == .connected)
                     .environment(\.timelineActions, env?.actions ?? TimelineActions())
                     .environment(\.hostFileReader, env?.fileReader)
                     .environment(\.findQuery, finding ? findQuery : "")
                     .environment(\.agentTitle, env?.agentTitle)
                     .environment(\.pluginContext, pluginContext)
-                    if let window = reading.historyWindow, let id = window.rows.last?.id {
-                        Button("加载更多") { showMessage(id) }.frame(maxWidth: .infinity)
+                    if hasNewerHistoryRows, let id = reading.historyWindow?.rows.last?.id {
+                        Button("加载更多") { showMessage(id, preferLatest: true) }.frame(maxWidth: .infinity)
                     }
                     if reading.historyWindow == nil, let agent {
                         ForEach(agent.pendingPermissions) { PermissionCard(host: host, agentId: agentId, request: $0) }
@@ -419,10 +441,22 @@ struct AgentView: View {
                 // 内容不满一屏时撑满可视区、贴底：上方空白归内容所有。否则那块是滚动区里没有内容的空白，
                 // macOS 26 上鼠标悬停在那里（或工具栏）时整块变亮（用户报告「新会话上面一截悬停变色」）
                 .frame(minHeight: viewportHeight, alignment: .bottom)
+                #if os(iOS)
+                // Handle empty space behind the rows without taking taps from their
+                // links, image previews, permission controls or selectable text.
+                .background {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { PhoneKeyboard.dismiss() }
+                }
+                #endif
                 .scrollTargetLayout()
                 .modifier(LayoutProbe(label: "column"))
             }
             .scrollPosition($scrollPosition)
+            #if os(iOS)
+            .scrollDismissesKeyboard(.interactively)
+            #endif
             // Newer systems soften the top edge and hide the bottom effect; iOS 18 uses standard edges.
             .compatibleScrollEdgeEffects()
             .environment(\.openURL, OpenURLAction { url in openLink(url) })

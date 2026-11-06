@@ -746,6 +746,16 @@
           }
         }
       }
+    },
+    "图片同步失败，请重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image sync failed. Please try again."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

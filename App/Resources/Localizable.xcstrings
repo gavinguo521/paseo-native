@@ -8388,6 +8388,16 @@
         }
       }
     },
+    "此设备没有可用的相机，可以从相册或文件添加图片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This device has no available camera. You can add images from Photos or Files."
+          }
+        }
+      }
+    },
     "每 %@ 分钟": {
       "localizations": {
         "en": {
@@ -9468,6 +9478,26 @@
         }
       }
     },
+    "相机不可用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera Unavailable"
+          }
+        }
+      }
+    },
+    "相机拍照": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Take Photo"
+          }
+        }
+      }
+    },
     "看板": {
       "localizations": {
         "en": {
@@ -10484,6 +10514,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "View this question on your iPhone"
+          }
+        }
+      }
+    },
+    "请在系统设置中允许 Paseo 使用相机拍照": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow Paseo to use the camera in Settings to take photos"
           }
         }
       }
@@ -11945,6 +11985,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Preview"
+          }
+        }
+      }
+    },
+    "预览图片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview Image"
           }
         }
       }

@@ -14,6 +14,24 @@ enum ImageTools {
     /// Long edge cap before sending: keeps base64 well under the relay's 32 MiB frame limit.
     static let maxEdge: CGFloat = 2048
 
+    #if os(iOS)
+    /// Drawing applies the camera image's orientation before encoding and caps the
+    /// rendered size, so portrait captures stay upright without a full-size bitmap copy.
+    static func cameraAttachment(from image: UIImage) -> ImageAttachment? {
+        guard image.size.width > 0, image.size.height > 0 else { return nil }
+        let scale = min(1, maxEdge / max(image.size.width, image.size.height))
+        let size = CGSize(width: max(1, (image.size.width * scale).rounded()),
+                          height: max(1, (image.size.height * scale).rounded()))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let data = UIGraphicsImageRenderer(size: size, format: format).jpegData(withCompressionQuality: 0.85) { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return ImageAttachment(data: data, mimeType: "image/jpeg")
+    }
+    #endif
+
     static func attachment(from data: Data) -> ImageAttachment? {
         #if os(macOS)
         guard let image = NSImage(data: data), let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
@@ -102,27 +120,44 @@ enum ImageTools {
 
 struct AttachmentTray: View {
     @Binding var images: [ImageAttachment]
+    @State private var preview: ImageAttachment?
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(images) { a in
                     ZStack(alignment: .topTrailing) {
-                        (ImageTools.image(a, maxPixel: 240) ?? Image(systemName: "photo"))
-                            .resizable().scaledToFill()
-                            .frame(width: 56, height: 56)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        Button { preview = a } label: {
+                            (ImageTools.image(a, maxPixel: 240) ?? Image(systemName: "photo"))
+                                .resizable().scaledToFill()
+                                .frame(width: 56, height: 56)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                // Clipping only affects drawing. Bound hit testing too,
+                                // so a filled image cannot cover its neighbor's controls.
+                                .contentShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("预览图片")
+                        .accessibilityIdentifier("preview-image-\(a.id)")
+                        .padding(.top, 6).padding(.trailing, 6)
                         Button { images.removeAll { $0.id == a.id } } label: {
                             Image(systemName: "xmark.circle.fill").font(.system(size: 16))
                                 .symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.6))
+                                .frame(width: 24, height: 24)
+                                .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
-                        .offset(x: 5, y: -5)
                         .accessibilityLabel("移除图片")
+                        .accessibilityIdentifier("remove-image-\(a.id)")
                     }
                 }
             }
-            .padding(.top, 6).padding(.horizontal, 4)
+            .padding(.vertical, 2).padding(.horizontal, 4)
+        }
+        .sheet(item: $preview) { attachment in
+            if let image = ImageTools.image(attachment) {
+                ImageLightbox(image: image)
+            }
         }
     }
 }
