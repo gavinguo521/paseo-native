@@ -54,6 +54,7 @@ struct SidebarView: View {
 
     var body: some View {
         @Bindable var model = model
+        let groups = model.groups
         #if DEBUG
         let _ = SidebarBench.bodyCount += 1
         #endif
@@ -75,7 +76,6 @@ struct SidebarView: View {
                 if model.hosts.isEmpty {
                     emptyState
                 }
-                let groups = model.groups
                 // 自动合并表算一次给整个侧栏用：每个分组的菜单都要按它找项目，现算的话滚动时悬停一次就重算几十遍（掉帧）
                 let auto = model.autoProjectAliases
                 // 工作区子会话索引同理：整个侧栏算一次，每行查表
@@ -101,6 +101,10 @@ struct SidebarView: View {
                 Color.clear.frame(height: 96)
             }
         }
+        .onChange(of: groups.map { [$0.id] + $0.rows.map { AppModel.rowKey(serverId: $0.serverId, agent: $0.agent) } }, initial: true) { _, _ in
+            model.rememberManualOrder(groups)
+        }
+        .onChange(of: model.sort) { _, _ in model.rememberManualOrder(groups) }
         .scrollIndicators(.never)
         .overlay(alignment: .bottom) { bottomBar }
         #if os(iOS)
@@ -208,7 +212,7 @@ struct SidebarView: View {
                     ForEach(SidebarGrouping.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.inline)
-                Picker("排序", selection: Binding(get: { model.sort }, set: { model.sort = $0 })) {
+                Picker("排序", selection: Binding(get: { model.sort }, set: { model.selectSort($0) })) {
                     ForEach(SidebarSort.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.inline)

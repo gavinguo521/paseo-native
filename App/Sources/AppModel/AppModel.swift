@@ -400,13 +400,31 @@ final class AppModel {
         return out
     }
 
-    /// 手动排序：还没排过的（新项目 / 新工作区）保持原来的相对顺序放在最上面，方便看到；排过的按记下的顺序跟在后面。
+    /// 手动排序保留已记录的位置，新增项目 / 工作区追加到末尾。
     static func manualOrder<T>(_ items: [T], order: [String], key: (T) -> String) -> [T] {
         guard !order.isEmpty else { return items }
         let rank = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
         let fresh = items.filter { rank[key($0)] == nil }
         let placed = items.filter { rank[key($0)] != nil }.sorted { rank[key($0)]! < rank[key($1)]! }
-        return fresh + placed
+        return placed + fresh
+    }
+
+    /// 记住新出现的行，避免下一次新建会话又按创建时间重排这些行。
+    /// 由侧栏结构变化触发，不在 groups 的求值过程中写入可观察状态。
+    func rememberManualOrder(_ groups: [SessionGroup]) {
+        guard sort == .manual, grouping == .project else { return }
+        let projects = groups.filter { if case .project = $0.kind { true } else { false } }
+        let knownProjects = Set(projectOrder)
+        let addedProjects = projects.map(\.id).filter { !knownProjects.contains($0) }
+        if !addedProjects.isEmpty { projectOrder += addedProjects }
+        var orders = workspaceOrder
+        for group in projects {
+            let knownRows = Set(orders[group.id] ?? [])
+            let addedRows = group.rows.map { Self.rowKey(serverId: $0.serverId, agent: $0.agent) }
+                .filter { !knownRows.contains($0) }
+            if !addedRows.isEmpty { orders[group.id, default: []] += addedRows }
+        }
+        if orders != workspaceOrder { workspaceOrder = orders }
     }
 
     /// 把 id 移到 target 的位置（往下拖放在 target 后面，往上拖放在前面），返回新顺序。
@@ -422,6 +440,10 @@ final class AppModel {
     private var projectGroups: [SessionGroup] { groups.filter { if case .project = $0.kind { true } else { false } } }
 
     /// 第一次切到手动排序前，把眼前的顺序（项目和每个项目里的工作区）原样记下来，切换后除了被拖的那个，其他都不动。
+    func selectSort(_ value: SidebarSort) {
+        if value == .manual { freezeOrderForManual() } else { sort = value }
+    }
+
     private func freezeOrderForManual() {
         guard sort != .manual else { return }
         let current = projectGroups

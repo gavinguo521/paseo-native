@@ -60,4 +60,51 @@ import Testing
         host.agents["a"] = try agent("a", project: "A", time: 40)
         #expect(model.groups[0].rows.map(\.agent.id) == ["b", "a"])
     }
+    @Test func newWorkspaceStaysAfterManuallyPlacedRows() throws {
+        let host = HostStore(offer: .direct(serverId: "ordering-test", endpoint: "localhost:1", useTls: false, password: nil),
+                             label: "排序测试", clientId: "test", appVersion: "test")
+        host.agents["a"] = try agent("a", project: "A", time: 20)
+        host.agents["b"] = try agent("b", project: "B", time: 10)
+        let model = AppModel(testHosts: [host])
+        model.hostFilter = nil; model.grouping = .project; model.projectAliases = [:]
+        model.projectOrder = []; model.workspaceOrder = [:]; model.sort = .updated
+        model.moveProject("project:B", to: "project:A")
+        host.agents["a2"] = try agent("a2", project: "A", time: 40)
+        host.agents["c"] = try agent("c", project: "C", time: 50)
+        #expect(model.groups.map(\.id) == ["project:B", "project:A", "project:C"])
+        #expect(model.groups.first { $0.id == "project:A" }?.rows.map(\.agent.id) == ["a", "a2"])
+        model.rememberManualOrder(model.groups)
+        host.agents["a3"] = try agent("a3", project: "A", time: 55)
+        host.agents["d"] = try agent("d", project: "D", time: 56)
+        #expect(model.groups.map(\.id) == ["project:B", "project:A", "project:C", "project:D"])
+        #expect(model.groups.first { $0.id == "project:A" }?.rows.map(\.agent.id) == ["a", "a2", "a3"])
+        model.rememberManualOrder(model.groups)
+        // 新出现的位置也保存下来，重建模型后不退回创建时间排序。
+        let restored = AppModel(testHosts: [host])
+        restored.hostFilter = nil; restored.grouping = .project; restored.projectAliases = [:]; restored.sort = .manual
+        #expect(restored.groups.map(\.id) == model.groups.map(\.id))
+        #expect(restored.groups.first { $0.id == "project:A" }?.rows.map(\.agent.id) == ["a", "a2", "a3"])
+    }
+
+    @Test func selectingManualFromMenuFreezesCurrentOrder() throws {
+        let host = HostStore(offer: .direct(serverId: "ordering-test", endpoint: "localhost:1", useTls: false, password: nil),
+                             label: "排序测试", clientId: "test", appVersion: "test")
+        host.agents["a"] = try agent("a", project: "A", time: 20)
+        host.agents["b"] = try agent("b", project: "B", time: 10)
+        let model = AppModel(testHosts: [host])
+        model.hostFilter = nil; model.grouping = .project; model.projectAliases = [:]
+        model.projectOrder = []; model.workspaceOrder = [:]; model.sort = .updated
+        let original = model.groups.map(\.id)
+        model.selectSort(.manual)
+        #expect(model.projectOrder == original)
+        host.agents["b2"] = try agent("b2", project: "B", time: 50)
+        #expect(model.groups.map(\.id) == original)
+        #expect(model.groups.first { $0.id == "project:B" }?.rows.map(\.agent.id) == ["b", "b2"])
+        model.search = "b2"
+        model.rememberManualOrder(model.groups)
+        model.search = ""
+        #expect(model.groups.map(\.id) == original)
+        #expect(model.groups.first { $0.id == "project:B" }?.rows.map(\.agent.id) == ["b", "b2"])
+    }
+
 }
