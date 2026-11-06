@@ -1,5 +1,7 @@
 # Paseo Native
 
+An **Apple Watch companion (watchOS 11+)** is included: view sessions and schedules, dictate replies, answer question forms, and review permission requests through the paired iPhone. It uses Liquid Glass on watchOS 26+ and standard controls on older systems. See [building and testing the watch companion](docs/watch-companion.md).
+
 An unofficial native client for [Paseo](https://paseo.sh) on Mac, iPhone and iPad, from one SwiftUI codebase.
 
 > **Not affiliated with the Paseo project.** Like the official apps, it connects to the Paseo daemon on your own
@@ -35,6 +37,7 @@ with the Claude Code / Codex accounts logged in there.
 |---|---|
 | **Mac** | Download `Paseo-Native-x.y.z.dmg` from [Releases](https://github.com/gavinguo521/paseo-native/releases/latest) and drag "Paseo Native" into Applications. Signed and notarized by Apple. It installs as `Paseo Native.app` and does not replace the official `Paseo.app` |
 | **iPhone / iPad** | No prebuilt package; build it with Xcode, see [iPhone / iPad](#iphone--ipad) |
+| **Apple Watch** | Build with the iPhone app; communication requires its paired iPhone. See [watch setup](docs/watch-companion.md#build-and-test) |
 | **Android** | Use the official app; both can connect to the same machine |
 
 Requires macOS 26 / iOS 18 / iPadOS 18. iOS / iPadOS 18 uses compatible styling while 26 and later retains Liquid Glass, with the same feature logic. Also requires a computer running a Paseo daemon (bundled with the official desktop app;

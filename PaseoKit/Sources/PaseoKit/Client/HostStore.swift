@@ -108,6 +108,7 @@ public final class HostStore: Identifiable {
     @ObservationIgnored var connection: DaemonConnection?
     @ObservationIgnored private var runTask: Task<Void, Never>?
     @ObservationIgnored private var heartbeatTask: Task<Void, Never>?
+    @ObservationIgnored private var companionConnectionTask: Task<Void, Error>?
     /// Round trip of a session `ping` RPC to this daemon (relay included), measured every heartbeat (15 s).
     /// nil while not connected or before the first answer.
     public private(set) var latencyMs: Int?
@@ -150,6 +151,9 @@ public final class HostStore: Identifiable {
         latencyMs = nil
         let c = connection
         connection = nil
+        subscriptionIds.removeAll()
+        timelineSubscriptionId = nil
+        providerSubagentSubscriptionId = nil
         Task { await c?.close() }
         state = .idle
     }
@@ -167,6 +171,51 @@ public final class HostStore: Identifiable {
         start()
     }
 
+    /// A suspended iPhone can retain `.connected` after its socket has died. Probe the socket
+    /// before serving the watch, and share recovery between simultaneous companion reads.
+    public func prepareForCompanionRequest() async throws {
+        if let task = companionConnectionTask { return try await task.value }
+        let task = Task { try await recoverCompanionConnection() }
+        companionConnectionTask = task
+        defer { companionConnectionTask = nil }
+        try await task.value
+    }
+
+    private func recoverCompanionConnection() async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        if state == .connected, let c = connection {
+            do {
+                _ = try await c.request("ping", ["clientSentAt": .number((Date().timeIntervalSince1970 * 1000).rounded())], timeout: .seconds(2))
+                if connection === c, !(await c.isClosed) { return }
+            } catch {
+                if error is CancellationError { throw error }
+            }
+            // Closing this exact socket lets its existing run loop rebuild subscriptions.
+            // Do not tear down a replacement that another task has already established.
+            if connection === c { await c.close() }
+        }
+        start()
+        switch state {
+        case .idle, .waiting: reconnectNow()
+        default: break
+        }
+        while ContinuousClock.now < deadline {
+            try Task.checkCancellation()
+            if state == .connected, let c = connection, !(await c.isClosed) { return }
+            if case .failed(let message, _) = state { throw ActionError.rejected(message) }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        throw DaemonConnectionError.timeout("companion connection")
+    }
+
+    /// Retrying a read is safe after a transport loss; RPC/auth failures are not transport losses.
+    public nonisolated static func isConnectionLoss(_ error: any Error) -> Bool {
+        if case DaemonConnectionError.closed = error { return true }
+        if case ActionError.notConnected = error { return true }
+        let value = error as NSError
+        return value.domain == NSURLErrorDomain || value.domain == NSPOSIXErrorDomain
+    }
+
     private func runLoop() async {
         var attempt = 0
         while !Task.isCancelled {
@@ -179,10 +228,12 @@ public final class HostStore: Identifiable {
                 serverInfo = await c.serverInfo
                 attempt = 0
                 try await bootstrap(c)
+                guard !Task.isCancelled, connection === c else { await c.close(); return }
                 state = .connected
                 scheduleTimelineSync()
                 startHeartbeat()
                 for await message in c.events { handle(message) }
+                guard !Task.isCancelled, connection === c else { return }
                 // Stream ended: connection closed.
                 heartbeatTask?.cancel()
                 timelineSyncTask?.cancel()
@@ -566,9 +617,9 @@ public final class HostStore: Identifiable {
     /// Images aren't echoed back by the daemon, so the app keeps what it sent, keyed by message id.
     public private(set) var sentImages: [String: [ImageAttachment]] = [:]
 
-    public func send(_ text: String, to agentId: String, steer: Bool, images: [ImageAttachment] = [], attachments: [JSONValue] = []) async throws {
+    public func send(_ text: String, to agentId: String, steer: Bool, images: [ImageAttachment] = [], attachments: [JSONValue] = [], messageID: String? = nil, timeout: Duration = .seconds(60)) async throws {
         let c = try conn()
-        let messageId = "msg_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let messageId = messageID ?? "msg_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         if !images.isEmpty { sentImages[messageId] = images }
         timelines[agentId, default: AgentTimeline()].appendPendingUserMessage(text: text, messageId: messageId)
         var params: [String: JSONValue] = [
@@ -580,7 +631,7 @@ public final class HostStore: Identifiable {
         }
         if !attachments.isEmpty { params["attachments"] = .array(attachments) }
         do {
-            try check(try await c.request("send_agent_message_request", params))
+            try check(try await c.request("send_agent_message_request", params, timeout: timeout))
         } catch {
             timelines[agentId]?.dropPendingUserMessage(messageId)
             throw error
@@ -589,6 +640,36 @@ public final class HostStore: Identifiable {
 
     public func cancel(_ agentId: String) async throws {
         try check(try await conn().request("cancel_agent_request", ["agentId": .string(agentId)]))
+    }
+
+    /// Bounded reads for companion clients; these do not change the phone's focused session,
+    /// timeline subscriptions, sidebar filter, or pagination.
+    public func fetchRecentAgents(limit: Int = 60, timeout: Duration = .seconds(10)) async throws -> [Agent] {
+        let r = try await conn().request("fetch_agents_request", [
+            "scope": "active", "sort": [["key": "updated_at", "direction": "desc"]],
+            "page": ["limit": .number(Double(limit))],
+        ], timeout: timeout)
+        try check(r)
+        return (r["payload"]?["entries"]?.arrayValue ?? []).compactMap { Agent($0["agent"] ?? $0) }
+    }
+
+    public func fetchAgentSnapshot(_ agentId: String, timeout: Duration = .seconds(8)) async throws -> Agent {
+        let r = try await conn().request("fetch_agent_request", ["agentId": .string(agentId)], timeout: timeout)
+        try check(r)
+        guard let agent = r["payload"]?["agent"].flatMap(Agent.init) else { throw ActionError.rejected(String(localized: "会话已不存在", bundle: .module)) }
+        if agent.archivedAt == nil { agents[agent.id] = agent }
+        return agent
+    }
+
+    public func fetchRecentTimeline(_ agentId: String, limit: Int = 30, timeout: Duration = .seconds(8)) async throws -> AgentTimeline {
+        let r = try await conn().request("fetch_agent_timeline_request", [
+            "agentId": .string(agentId), "projection": "projected", "direction": "tail", "limit": .number(Double(limit)),
+        ], timeout: timeout)
+        try check(r)
+        guard let payload = r["payload"] else { throw ActionError.rejected(String(localized: "未收到会话消息", bundle: .module)) }
+        var timeline = AgentTimeline()
+        timeline.applyPage(payload)
+        return timeline
     }
 
     /// `response` is e.g. `["behavior": "allow"]` or `["behavior": "deny", "message": "Denied by user"]`.
@@ -897,13 +978,15 @@ public final class HostStore: Identifiable {
 
     // MARK: Schedules (no push: callers refetch)
 
-    public func listSchedules() async throws -> [Schedule] {
-        let r = try await conn().request("schedule/list")
+    public func listSchedules(timeout: Duration = .seconds(60)) async throws -> [Schedule] {
+        let r = try await conn().request("schedule/list", timeout: timeout)
+        try check(r)
         return (r["payload"]?["schedules"]?.arrayValue ?? []).compactMap(Schedule.init)
     }
 
-    public func inspectSchedule(_ id: String) async throws -> Schedule? {
-        let r = try await conn().request("schedule/inspect", ["scheduleId": .string(id)])
+    public func inspectSchedule(_ id: String, timeout: Duration = .seconds(60)) async throws -> Schedule? {
+        let r = try await conn().request("schedule/inspect", ["scheduleId": .string(id)], timeout: timeout)
+        try check(r)
         return r["payload"]?["schedule"].flatMap(Schedule.init)
     }
 
