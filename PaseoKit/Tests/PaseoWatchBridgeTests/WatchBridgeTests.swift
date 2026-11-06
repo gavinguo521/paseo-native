@@ -34,6 +34,28 @@ private func summary(_ host: String, status: WatchSessionStatus = .running) -> W
     #expect(cache.pages == [newer])
 }
 
+@Test func sameSnapshotPreviewCannotDiscardFullPageInEitherArrivalOrder() {
+    let rows = (0..<12).map { index in
+        WatchSessionSummary(ref: .init(hostID: "mini", agentID: "agent-\(index)"), title: "会话 \(index)",
+                            hostName: "Mini", status: .done, updatedAt: nil, startedAt: nil)
+    }
+    let full = WatchSessionPage(hostID: "mini", refreshedAt: .init(timeIntervalSince1970: 200), sessions: rows)
+    let preview = WatchSessionPage(hostID: "mini", refreshedAt: full.refreshedAt, sessions: Array(rows.prefix(8)), hasMore: true)
+    let hosts = [WatchHost(id: "mini", name: "Mini")]
+    var cache = WatchOverview(hosts: hosts, pages: [full])
+    cache.merge(.init(hosts: hosts, pages: [preview]))
+    #expect(cache.pages == [full])
+
+    cache = WatchOverview(hosts: hosts, pages: [preview])
+    cache.merge(full)
+    #expect(cache.pages == [full])
+
+    // 更新后的完整空页仍应清掉已归档的会话。
+    let empty = WatchSessionPage(hostID: "mini", refreshedAt: .init(timeIntervalSince1970: 201), sessions: [])
+    cache.merge(empty)
+    #expect(cache.pages == [empty])
+}
+
 @Test func hostFilterAndSessionIDsKeepMachinesSeparate() {
     let cache = WatchOverview(hosts: [.init(id: "mini", name: "Mini"), .init(id: "air", name: "Air")],
                               pages: [.init(hostID: "mini", sessions: [summary("mini")]), .init(hostID: "air", sessions: [summary("air", status: .waiting)])])
@@ -78,6 +100,24 @@ private actor Counter {
     let result = await restarted.execute(request) { await counter.increment() }
     #expect(result == .init(.confirmed, "handled"))
     #expect(await counter.count == 0)
+}
+
+@Test func rejectedReceiptSurvivesRetryAndAllowsANewEditedMessage() async {
+    let file = location()
+    defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+    let ledger = WatchActionLedger(file: file)
+    let ref = WatchSessionRef(hostID: "mini", agentID: "agent")
+    let original = WatchRequest(command: .reply(ref, text: "原消息"))
+    let rejected = WatchActionResult(.notSent, "会话暂不接受消息")
+    #expect(await ledger.execute(original) { rejected } == rejected)
+
+    let restarted = WatchActionLedger(file: file)
+    let counter = Counter()
+    #expect(await restarted.execute(original) { await counter.increment() } == rejected)
+    #expect(await counter.count == 0)
+    let edited = WatchRequest(command: .reply(ref, text: "修改后的消息"))
+    #expect(await restarted.execute(edited) { await counter.increment() }.state == .confirmed)
+    #expect(await counter.count == 1)
 }
 
 @Test func reusingIDForDifferentActionCannotChangePermissionDecision() async {

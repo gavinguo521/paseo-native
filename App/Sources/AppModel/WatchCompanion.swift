@@ -191,7 +191,12 @@ final class WatchCompanion: NSObject, WCSessionDelegate {
                 let agent = try await host.fetchAgentSnapshot(ref.agentID)
                 guard agent.archivedAt == nil, agent.status != .closed else { return .init(.notSent, String(localized: "会话已关闭，消息未发送")) }
                 dispatched = true
-                try await host.send(text, to: ref.agentID, steer: true, messageID: request.messageID, timeout: .seconds(8))
+                do {
+                    try await host.send(text, to: ref.agentID, steer: true, messageID: request.messageID, timeout: .seconds(8))
+                } catch HostStore.ActionError.rejected(let message) {
+                    // 主机明确拒绝了这条消息；保留错误，让手表解除待确认状态后可编辑重发。
+                    return .init(.notSent, message)
+                }
                 return .init(.confirmed, String(localized: "消息已发送"))
             case .permission(let ref, let requestID, let revision, let actionID):
                 let host = try await readyHost(ref.hostID)

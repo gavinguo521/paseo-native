@@ -60,6 +60,9 @@ public struct WatchOverview: Codable, Equatable, Sendable {
     public mutating func merge(_ page: WatchSessionPage) {
         if let index = pages.firstIndex(where: { $0.hostID == page.hostID }) {
             guard pages[index].refreshedAt <= page.refreshedAt else { return }
+            // 同一快照的后台预览只有前几条，不能覆盖前台已取得的完整页面。
+            if pages[index].refreshedAt == page.refreshedAt,
+               pages[index].sessions.count > page.sessions.count { return }
             pages[index] = page
         } else { pages.append(page) }
     }
