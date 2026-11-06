@@ -120,7 +120,7 @@ public final class HostStore: Identifiable {
     @ObservationIgnored private var timelineSubscriptionId: String?
     @ObservationIgnored var subscriptionIds: Set<String> = []
     @ObservationIgnored private var streamBuffer: [String: [JSONValue]] = [:]
-    @ObservationIgnored private var catchingUp: Set<String> = []
+    @ObservationIgnored private var catchingUp: [String: DaemonConnection] = [:]
     @ObservationIgnored private var focusedAgentId: String?
     @ObservationIgnored var focusedTerminalId: String?
     @ObservationIgnored private var appVisible = true
@@ -440,13 +440,16 @@ public final class HostStore: Identifiable {
             while !Task.isCancelled, connection === c {
                 let revision = timelineInterestRevision
                 let ids = openAgents
+                for id in ids { timelineErrors[id] = nil }
                 do {
                     try await resubscribeTimelines(c, agentIds: ids)
                     for id in ids where timelineWatchers[id] != nil {
+                        guard connection === c, !Task.isCancelled else { return }
                         timelineLoading.insert(id)
                         await catchUp(id, c)
                     }
                 } catch {
+                    guard !(await c.isClosed), connection === c, !Task.isCancelled else { return }
                     for id in openAgents { timelineErrors[id] = String(localized: "加载历史失败：\(error)", bundle: .module) }
                 }
                 if revision == timelineInterestRevision { break }
@@ -455,7 +458,7 @@ public final class HostStore: Identifiable {
     }
 
     private func trimTimelineCache() {
-        let inactive = recentTimelines.filter { timelineWatchers[$0] == nil && !catchingUp.contains($0) }
+        let inactive = recentTimelines.filter { timelineWatchers[$0] == nil && catchingUp[$0] == nil }
         for id in inactive.dropLast(8) {
             timelines[id] = nil
             timelineErrors[id] = nil
@@ -475,12 +478,14 @@ public final class HostStore: Identifiable {
     }
 
     /// Fetch the tail (first open / epoch change) or forward from endCursor until caught up, then replay buffered stream events.
-    private func catchUp(_ agentId: String, _ c: DaemonConnection) async {
-        guard !catchingUp.contains(agentId) else { return }
-        catchingUp.insert(agentId)
+    func catchUp(_ agentId: String, _ c: DaemonConnection) async {
+        guard connection === c, !Task.isCancelled, catchingUp[agentId] !== c else { return }
+        catchingUp[agentId] = c
         defer {
-            catchingUp.remove(agentId)
-            timelineLoading.remove(agentId)
+            if catchingUp[agentId] === c {
+                catchingUp[agentId] = nil
+                timelineLoading.remove(agentId)
+            }
             trimTimelineCache()
         }
         var timeline = timelines[agentId] ?? AgentTimeline()
@@ -514,6 +519,7 @@ public final class HostStore: Identifiable {
                 params["wholeTurns"] = nil
             }
         } catch {
+            guard !(await c.isClosed), connection === c, !Task.isCancelled else { return }
             timelineErrors[agentId] = String(localized: "加载历史失败：\(error)", bundle: .module)
             return
         }
@@ -521,7 +527,8 @@ public final class HostStore: Identifiable {
         timelines[agentId] = timeline
         let buffered = streamBuffer.removeValue(forKey: agentId) ?? []
         // 回放已进入同步后的时间线；否则 applyStream 会把它们再次放回缓冲区。
-        catchingUp.remove(agentId)
+        catchingUp[agentId] = nil
+        timelineLoading.remove(agentId)
         // 诊断（实时推送时文字偶尔停在第一块）：只记补拉，不记正常推送。
         AppLog.shared.record("时间线", "\(agentId.prefix(8)) 补拉 endSeq \(startEnd.map(String.init) ?? "空")→\(timeline.endSeq.map(String.init) ?? "空")，\(pages) 页，回放缓冲 \(buffered.count) 条：\(buffered.compactMap { $0["seq"]?.doubleValue.map { String(Int($0)) } }.joined(separator: ","))")
         for p in buffered { applyStream(agentId, p) }
@@ -533,7 +540,7 @@ public final class HostStore: Identifiable {
            item["detail"]?["type"]?.stringValue == "sub_agent" {
             noteProviderSubagentLaunch(agentId)
         }
-        if catchingUp.contains(agentId) || timelines[agentId] == nil {
+        if catchingUp[agentId] != nil || timelines[agentId] == nil {
             streamBuffer[agentId, default: []].append(payload)
             return
         }
@@ -1118,7 +1125,13 @@ public final class HostStore: Identifiable {
         visibilityChangedAt = Date()
         if visible { lastActivityAt = Date() }
         sendHeartbeat()
-        if visible { reconnectNow() }
+        if visible {
+            if state == .connected, let c = connection {
+                Task { await c.validateOnForeground() }
+            } else {
+                reconnectNow()
+            }
+        }
     }
 
     public func noteActivity() { lastActivityAt = Date() }

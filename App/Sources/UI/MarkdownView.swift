@@ -57,6 +57,9 @@ struct MarkdownView: View {
         case .image(let alt, let url):
             if renderMedia { MarkdownImage(alt: alt, url: url) }
             else { Text("![\(alt)](\(url))").font(.system(size: Theme.content)) }
+        case .visualization(let reference):
+            if renderMedia { VisualizationPreview(reference: reference) }
+            else { Text(reference.marker).font(.system(size: Theme.content)) }
         }
     }
 
@@ -385,6 +388,7 @@ enum MarkdownBlock {
     case table([[String]], [TextAlignment])
     case rule
     case image(alt: String, url: String)
+    case visualization(VisualizationReference)
 
     static func parse(_ text: String) -> [MarkdownBlock] {
         var blocks: [MarkdownBlock] = []
@@ -420,6 +424,11 @@ enum MarkdownBlock {
                 continue
             }
             if trimmed.isEmpty { flush(); i += 1; continue }
+            if let reference = VisualizationReference(marker: trimmed) {
+                flush()
+                blocks.append(.visualization(reference))
+                i += 1; continue
+            }
             // A line that is only an image: ![alt](url)
             if let m = trimmed.firstMatch(of: /^!\[([^\]]*)\]\(([^)\s]+)[^)]*\)$/) {
                 flush()
@@ -826,6 +835,7 @@ extension MarkdownBlock {
             case .table(let rows, _): rows.map { $0.map(inline).joined(separator: "\t") }.joined(separator: "\n")
             case .rule: nil
             case .image(let alt, let url): alt.isEmpty ? url : alt
+            case .visualization(let reference): reference.path
             }
         }
         .joined(separator: "\n\n")

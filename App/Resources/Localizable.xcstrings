@@ -12539,6 +12539,46 @@
           }
         }
       }
+    },
+    "全屏查看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View full screen"
+          }
+        }
+      }
+    },
+    "返回会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back to conversation"
+          }
+        }
+      }
+    },
+    "无法加载预览，请确认文件仍在会话主机上且连接正常。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to load preview. Check that the file still exists on the conversation host and the connection is working."
+          }
+        }
+      }
+    },
+    "正在加载预览…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading preview…"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

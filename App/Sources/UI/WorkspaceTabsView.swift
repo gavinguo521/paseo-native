@@ -194,10 +194,22 @@ struct WorkspaceTabsView: View {
             .id(url)
             .navigationTitle(URL(string: url)?.host() ?? String(localized: "浏览器")).modifier(WorkspaceSubtitle(host: host, workspace: workspace))
         case .file(let path):
-            FileViewer(host: host, cwd: (path as NSString).deletingLastPathComponent, path: (path as NSString).lastPathComponent,
-                       line: model.fileLines[path])
-                .id(path + ":" + String(model.fileLines[path] ?? 0))
+            VStack(spacing: 0) {
+                if let origin = model.returnTabForFile(path, in: ref) {
+                    HStack {
+                        Button("返回会话", systemImage: "chevron.left") { model.select(origin, in: ref) }
+                        Spacer()
+                    }.padding(.horizontal, 14).padding(.vertical, 10)
+                    Divider()
+                }
+                FileViewer(host: host, cwd: (path as NSString).deletingLastPathComponent, path: (path as NSString).lastPathComponent,
+                           line: model.fileLines[path])
+                    .id(path + ":" + String(model.fileLines[path] ?? 0))
+            }
                 .navigationTitle((path as NSString).lastPathComponent).modifier(WorkspaceSubtitle(host: host, workspace: workspace))
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
         case .subagent(let parent, let id):
             ProviderSubagentTab(host: host, workspace: workspace, parentAgentId: parent, subagentId: id)
                 .id(parent + "/" + id)

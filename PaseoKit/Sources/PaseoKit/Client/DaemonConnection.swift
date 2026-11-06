@@ -74,12 +74,13 @@ public actor DaemonConnection {
         if let closedReason { throw DaemonConnectionError.closed(closedReason) }
         try await channel.send(.binary(data))
     }
-    private var pongWaiters: [CheckedContinuation<Void, Never>] = []
+    private var pongWaiters: [UUID: CheckedContinuation<Bool, Never>] = [:]
+    private var inboundRevision = 0
     private var closedReason: String?
     private var readLoop: Task<Void, Never>?
     private var pingLoop: Task<Void, Never>?
 
-    private init(channel: any FrameTransport, binaryCiphertext: Bool = false) {
+    init(channel: any FrameTransport, binaryCiphertext: Bool = false) {
         self.binaryCiphertext = binaryCiphertext
         // Reassembles `binary_chunking_v1` messages; plain frames pass straight through.
         self.channel = ChunkedReceiver(channel)
@@ -120,7 +121,7 @@ public actor DaemonConnection {
         }
     }
 
-    private func handshake(hello: HelloOptions, expectedServerId: String) async throws {
+    func handshake(hello: HelloOptions, expectedServerId: String) async throws {
         var msg: [String: JSONValue] = [
             "type": "hello",
             "clientId": .string(hello.clientId),
@@ -218,7 +219,8 @@ public actor DaemonConnection {
                 return
             }
             // Any valid inbound message proves liveness.
-            pongWaiters.forEach { $0.resume() }
+            inboundRevision += 1
+            pongWaiters.values.forEach { $0.resume(returning: true) }
             pongWaiters.removeAll()
             if case .binary(let data) = frame {
                 binaryHandler?(data)
@@ -257,14 +259,7 @@ public actor DaemonConnection {
         while !Task.isCancelled, closedReason == nil {
             try? await Task.sleep(for: .seconds(10))
             guard !Task.isCancelled, closedReason == nil else { return }
-            try? await channel.send(.text(#"{"type":"ping"}"#))
-            let alive = await withTaskGroup(of: Bool.self) { group in
-                group.addTask { await self.waitForInbound(); return true }
-                group.addTask { try? await Task.sleep(for: .seconds(15)); return false }
-                let first = await group.next() ?? false
-                group.cancelAll()
-                return first
-            }
+            let alive = await probeLiveness()
             failures = alive ? 0 : failures + 1
             if failures >= 2 {
                 await channel.close(code: 1001, reason: "Liveness check timed out")
@@ -274,8 +269,46 @@ public actor DaemonConnection {
         }
     }
 
-    private func waitForInbound() async {
-        await withCheckedContinuation { pongWaiters.append($0) }
+    /// 超时取消必须唤醒 continuation，否则 task group 无法退出，自动重连也不会发生。
+    func probeLiveness(timeout: Duration = .seconds(15)) async -> Bool {
+        let revision = inboundRevision
+        do { try await channel.send(.text(#"{"type":"ping"}"#)) }
+        catch { return false }
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask { await self.waitForInbound(since: revision) }
+            group.addTask { try? await Task.sleep(for: timeout); return false }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+    }
+
+    private func waitForInbound(since revision: Int) async -> Bool {
+        let id = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled || closedReason != nil { continuation.resume(returning: false) }
+                else if inboundRevision != revision { continuation.resume(returning: true) }
+                else { pongWaiters[id] = continuation }
+            }
+        } onCancel: {
+            Task { await self.cancelPongWaiter(id) }
+        }
+    }
+
+    private func cancelPongWaiter(_ id: UUID) {
+        pongWaiters.removeValue(forKey: id)?.resume(returning: false)
+    }
+
+    /// 前台恢复用带 requestId 的往返确认旧连接仍可用；失败后交给 HostStore 原有循环重连。
+    func validateOnForeground(timeout: Duration = .seconds(3)) async {
+        do {
+            let sent = (Date().timeIntervalSince1970 * 1000).rounded()
+            _ = try await request("ping", ["clientSentAt": .number(sent)], timeout: timeout)
+        } catch {
+            guard !Task.isCancelled else { return }
+            await close()
+        }
     }
 
     private func shutdown(_ reason: String) async {
@@ -285,7 +318,7 @@ public actor DaemonConnection {
         let waiting = pending
         pending.removeAll()
         waiting.values.forEach { $0.resume(throwing: DaemonConnectionError.closed(reason)) }
-        pongWaiters.forEach { $0.resume() }
+        pongWaiters.values.forEach { $0.resume(returning: false) }
         pongWaiters.removeAll()
         eventSink.finish()
     }

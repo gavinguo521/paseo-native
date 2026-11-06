@@ -660,11 +660,28 @@ final class AppModel {
 
     /// Line to jump to per open file tab (absolute path), from links like `Foo.swift:42`.
     var fileLines: [String: Int] = [:]
+    private var fileReturnTabs: [String: [String: WorkspaceTab]] = [:]
 
     /// Opens a file from a reply link in its own tab.
     func openFile(_ absolutePath: String, line: Int?, in ws: WorkspaceRef) {
+        if let selected = selectedTab(ws) {
+            switch selected {
+            case .agent, .subagent: fileReturnTabs[key(ws), default: [:]][absolutePath] = selected
+            default: break
+            }
+        }
         fileLines[absolutePath] = line
         select(.file(absolutePath), in: ws)
+    }
+
+    func returnTabForFile(_ path: String, in ws: WorkspaceRef) -> WorkspaceTab? {
+        let available = tabs(ws)
+        if let origin = fileReturnTabs[key(ws)]?[path] {
+            // 历史中的已归档会话切到文件后不在标签列表里，但仍可回到它的历史页面。
+            if case .agent(let id) = origin, host(ws.serverId)?.agents[id] != nil { return origin }
+            if available.contains(origin) { return origin }
+        }
+        return available.first { if case .agent = $0 { true } else { false } }
     }
 
     /// Agents being archived and terminals being killed, hidden until the host confirms.
