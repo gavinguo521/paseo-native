@@ -10,6 +10,7 @@ struct AgentView: View {
     let workspace: Workspace?
     @AppStorage("timelineDetail") private var timelineDetail = TimelineDetail.collapseTurns.rawValue
     @AppStorage("autoExpandReasoning") private var autoExpandReasoning = true
+    @AppStorage("restoreSessionReadingPosition") private var restoreSessionReadingPosition = false
     private var collapseTurns: Bool { timelineDetail == TimelineDetail.collapseTurns.rawValue }
     @State private var toolDetailID: String?
     @State private var atBottom = true
@@ -32,15 +33,17 @@ struct AgentView: View {
     @State private var prependGeometry: (offset: CGFloat, height: CGFloat)?
     @State private var contentHeight: CGFloat = 0
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
-    @State private var displayCache = DisplayItemCache()
+    @State private var displayCache: DisplayItemCache
     /// One older page at a time.
     @State private var loadingOlder = false
 
-    init(host: HostStore, agentId: String, workspace: Workspace?, reading: TimelineReadingState = TimelineReadingState()) {
+    init(host: HostStore, agentId: String, workspace: Workspace?, reading: TimelineReadingState = TimelineReadingState(), displayCache: DisplayItemCache = DisplayItemCache()) {
         self.host = host; self.agentId = agentId; self.workspace = workspace
         _reading = State(initialValue: reading)
-        let restore = reading.hasPosition && !reading.atBottom &&
-            (reading.historyWindow != nil || reading.firstRowID == host.timelines[agentId]?.rows.first?.id)
+        _displayCache = State(initialValue: displayCache)
+        let restore = reading.shouldRestorePosition(
+            enabled: UserDefaults.standard.bool(forKey: "restoreSessionReadingPosition"),
+            liveFirstRowID: host.timelines[agentId]?.rows.first?.id)
         _atBottom = State(initialValue: !restore)
         _restoreOffset = State(initialValue: restore ? max(0, reading.offset) : nil)
         _renderWindow = State(initialValue: TimelineRenderWindow(startID: restore ? reading.renderStartID : nil))
@@ -519,10 +522,8 @@ struct AgentView: View {
             } action: { _, bottom in atBottom = bottom }
             .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.1) { ids in
                 guard restoreOffset == nil else { return }
-                let visible = Set(ids)
-                reading.anchorID = displayCache.items(displayedTimeline, lastTurnActive: agent?.status == .running,
-                    collapse: collapseTurns && reading.historyWindow == nil, separateReasoning: autoExpandReasoning)
-                    .first(where: { visible.contains($0.id) })?.id
+                _ = allDisplayItems
+                reading.anchorID = displayCache.firstVisibleID(in: ids)
             }
             // 可视高度：布局给滚动区的尺寸本身已不含工具栏和底部输入框，直接用，不再扣边距。
             // 不能用 onScrollGeometryChange 的 containerSize − contentInsets：内容不满一屏时 SwiftUI 为贴底把上方空白算进
@@ -602,7 +603,12 @@ struct AgentView: View {
         .environment(\.hostFileReader, env?.fileReader)
         .onAppear {
             SessionSwitchTrace.mark(agentId, "appear")
-            renderWindow.pin(allDisplayItems)
+            if !restoreSessionReadingPosition {
+                restoreOffset = nil
+                prependGeometry = nil
+                userScrolled = false
+                returnToLatest()
+            } else { renderWindow.pin(allDisplayItems) }
             if env == nil { env = makeEnvironment() }
             host.openTimeline(agentId)
             host.clearAttention(agentId)

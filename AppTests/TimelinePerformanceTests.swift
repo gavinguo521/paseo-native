@@ -26,6 +26,22 @@ import PaseoKit
         return timeline
     }
 
+    @Test func sessionReturnPreferenceDefaultsToLatestAndCanRestoreHistory() {
+        let reading = TimelineReadingState()
+        reading.hasPosition = true; reading.atBottom = false
+        reading.firstRowID = "first"; reading.offset = 420
+        #expect(!reading.shouldRestorePosition(enabled: false, liveFirstRowID: "first"))
+        #expect(reading.shouldRestorePosition(enabled: true, liveFirstRowID: "first"))
+        #expect(!reading.shouldRestorePosition(enabled: true, liveFirstRowID: "replaced"))
+        reading.historyWindow = history(turns: 5)
+        #expect(reading.shouldRestorePosition(enabled: true, liveFirstRowID: "replaced"))
+        #expect(!reading.shouldRestorePosition(enabled: false, liveFirstRowID: "replaced"))
+        reading.atBottom = true
+        #expect(!reading.shouldRestorePosition(enabled: true, liveFirstRowID: "first"))
+        reading.hasPosition = false; reading.atBottom = false
+        #expect(!reading.shouldRestorePosition(enabled: true, liveFirstRowID: "first"))
+    }
+
     @Test func renderWindowBoundsFirstLayoutAndPreservesReadingAcrossLiveAppend() {
         let items = DisplayItem.build(history(turns: 100).rows, lastTurnActive: false)
         var window = TimelineRenderWindow()

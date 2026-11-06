@@ -11,6 +11,11 @@ import SwiftUI
     @ObservationIgnored var firstRowID: String?
     @ObservationIgnored var anchorID: String?
     @ObservationIgnored var renderStartID: String?
+
+    func shouldRestorePosition(enabled: Bool, liveFirstRowID: String?) -> Bool {
+        enabled && hasPosition && !atBottom &&
+            (historyWindow != nil || firstRowID == liveFirstRowID)
+    }
 }
 
 @MainActor final class TimelineHistoryCache {
@@ -47,5 +52,19 @@ struct TimelineRenderWindow {
     mutating func revealOlder(_ items: [DisplayItem]) {
         guard !items.isEmpty else { return }
         startID = items[max(0, start(in: items) - Self.pageSize)].id
+    }
+}
+
+/// 跨会话复用展示派生结果，最多保留最近八个；不改变网络订阅或阅读位置。
+@MainActor final class SessionDisplayCaches {
+    private var caches: [AgentRef: DisplayItemCache] = [:]
+    private var recent: [AgentRef] = []
+    func cache(for ref: AgentRef) -> DisplayItemCache {
+        recent.removeAll { $0 == ref }
+        recent.append(ref)
+        let cache = caches[ref] ?? DisplayItemCache()
+        caches[ref] = cache
+        if recent.count > 8 { caches[recent.removeFirst()] = nil }
+        return cache
     }
 }

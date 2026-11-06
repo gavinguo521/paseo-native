@@ -35,7 +35,7 @@ struct AgentDetailView: View {
     }
 
     var body: some View {
-        AgentView(host: host, agentId: ref.agentId, workspace: model.workspace(of: ref), reading: model.readingState(for: ref))
+        AgentView(host: host, agentId: ref.agentId, workspace: model.workspace(of: ref), reading: model.readingState(for: ref), displayCache: model.sessionDisplayCaches.cache(for: ref))
             .navigationTitle(agent?.displayTitle ?? "会话")
             #if os(macOS)
             .navigationSubtitle([agent.map { model.projectName(of: $0, in: host) }, host.label].compactMap { $0 }.joined(separator: " · "))
@@ -581,6 +581,7 @@ struct PreferencesView: View {
     @AppStorage("timelineDetail") private var timelineDetail = TimelineDetail.collapseTurns.rawValue
     @AppStorage("sendKey") private var sendKey = "enter"
     @AppStorage("selectionAutoCopy") private var selectionAutoCopy = true
+    @AppStorage("restoreSessionReadingPosition") private var restoreSessionReadingPosition = false
 
     /// Official defaultSend descriptions / commandEnterDescriptions (zh-CN).
     private var sendHint: String {
@@ -663,6 +664,10 @@ struct PreferencesView: View {
                 Section {
                     Picker("聊天显示", selection: $timelineDetail) {
                         ForEach(TimelineDetail.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
+                    }
+                    Picker("切回会话时", selection: $restoreSessionReadingPosition) {
+                        Text("最新消息").tag(false)
+                        Text("上次阅读位置").tag(true)
                     }
                     Toggle("自动展开思考过程", isOn: $autoExpandReasoning)
                     #if os(macOS)

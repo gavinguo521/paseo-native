@@ -266,6 +266,11 @@ struct MarkdownTable<Cell: View>: View {
     let cell: (String) -> Cell
 
     private var columns: Int { rows.map(\.count).max() ?? 0 }
+    #if os(macOS)
+    @State private var selectingCells = false
+    #else
+    private let selectingCells = true
+    #endif
     @State private var selection: TableCellRange?
     @State private var frames: [TableCellPosition: CGRect] = [:]
     @State private var coordinateSpace = UUID()
@@ -279,6 +284,12 @@ struct MarkdownTable<Cell: View>: View {
                         copyActions(TableCellRange(anchor: .init(row: 0, column: 0), end: .init(row: rows.count - 1, column: columns - 1)))
                     }
                 }
+                #if os(macOS)
+                Button(selectingCells ? "完成区域选择" : "选择单元格区域") {
+                    selectingCells.toggle()
+                    selection = nil
+                }
+                #endif
                 if let selection {
                     Menu("复制所选区域") { copyActions(selection) }
                     Button("取消选择") { self.selection = nil }
@@ -315,12 +326,15 @@ struct MarkdownTable<Cell: View>: View {
                             Color.clear.preference(key: TableCellFrames.self, value: [.init(row: r, column: c): geometry.frame(in: .named(coordinateSpace))])
                         })
                         .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
+                        .modifier(TableCellSelectionGesture(enabled: selectingCells) {
                             let position = TableCellPosition(row: r, column: c)
                             selection = TableCellRange(anchor: position, end: position)
                             copied = false
-                        }
+                        })
                         .accessibilityAction(named: "选择单元格") {
+                            #if os(macOS)
+                            selectingCells = true
+                            #endif
                             let position = TableCellPosition(row: r, column: c)
                             selection = TableCellRange(anchor: position, end: position)
                             copied = false
@@ -337,23 +351,44 @@ struct MarkdownTable<Cell: View>: View {
         .font(.system(size: Theme.content - 1))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.border))
-        // 表格使用区域选择，避免系统文本选择抢走双击和长按。
-        .textSelection(.disabled)
         .coordinateSpace(name: coordinateSpace)
         .onPreferenceChange(TableCellFrames.self) { frames = $0 }
-        .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(coordinateSpace)))
-            .onChanged { value in
-                if case .second(true, let drag?) = value,
-                   let start = cellAt(drag.startLocation), let end = cellAt(drag.location) {
-                    selection = TableCellRange(anchor: start, end: end)
-                    copied = false
-                }
-            })
-        .help("双击选择单元格，长按拖动选择区域")
+        .modifier(TableRegionSelectionGesture(enabled: selectingCells, coordinateSpace: coordinateSpace) { start, end in
+            if let start = cellAt(start), let end = cellAt(end) {
+                selection = TableCellRange(anchor: start, end: end)
+                copied = false
+            }
+        })
+        .help(selectingCells ? "双击选择单元格，长按拖动选择区域" : "拖动选择文字；选择单元格区域可复制多格内容")
     }
 
     private func frameAlignment(_ a: TextAlignment) -> Alignment {
         switch a { case .center: .center; case .trailing: .trailing; default: .leading }
+    }
+}
+
+/// 普通模式不安装单元格手势，让原生文本选择处理双击和拖动。
+private struct TableCellSelectionGesture: ViewModifier {
+    let enabled: Bool
+    let select: () -> Void
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled { content.onTapGesture(count: 2, perform: select) }
+        else { content }
+    }
+}
+
+private struct TableRegionSelectionGesture: ViewModifier {
+    let enabled: Bool
+    let coordinateSpace: UUID
+    let select: (CGPoint, CGPoint) -> Void
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled {
+            content.textSelection(.disabled)
+                .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(coordinateSpace)))
+                    .onChanged { value in
+                        if case .second(true, let drag?) = value { select(drag.startLocation, drag.location) }
+                    })
+        } else { content.textSelection(.enabled) }
     }
 }
 
@@ -445,8 +480,8 @@ struct CodeBlock: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 Group {
-                    if let lang = SyntaxHighlight.language(for: language) {
-                        Text(renderCache.code(code, language: language ?? "") { SyntaxHighlight.highlight(code, lang) })
+                    if SyntaxHighlight.language(for: language) != nil {
+                        Text(renderCache.code(code, language: language ?? ""))
                     }
                     else { Text(code) }
                 }
@@ -489,9 +524,30 @@ struct CodeBlock: View {
     private var stableBlocks: [MarkdownBlock] = []
     private var value: [MarkdownBlock] = []
     private var inlines: [String: (query: String, value: AttributedString)] = [:]
+    private struct OpenCode {
+        var fence: String
+        var language: String?
+        var code: String
+        var partialLine: String
+        var prefix: [MarkdownBlock]
+    }
+    private var openCode: OpenCode?
 
     func blocks(_ next: String) -> [MarkdownBlock] {
         if text == next { return value }
+        if let previous = text, var open = openCode, next.utf8.starts(with: previous.utf8) {
+            let added = String(decoding: next.utf8.dropFirst(previous.utf8.count), as: UTF8.self)
+            let newLines = (open.partialLine + added).components(separatedBy: "\n")
+            // 结束围栏即使尚未换行也要交回完整解析；其余代码内容不再逐行扫描。
+            if !newLines.contains(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix(open.fence) }) {
+                open.code += added
+                open.partialLine = newLines.last ?? ""
+                value = open.prefix + [.code(open.language, open.code)]
+                openCode = open; text = next
+                return value
+            }
+        }
+        openCode = nil
         if !next.hasPrefix(stablePrefix) { stablePrefix = ""; stableBlocks = [] }
         let tail = String(next.dropFirst(stablePrefix.count))
         // 只有完整空行且不在代码围栏内才是稳定边界；表格、列表、未闭合围栏都留在尾部。
@@ -515,6 +571,13 @@ struct CodeBlock: View {
         }
         value = stableBlocks + MarkdownBlock.parse(String(tail[boundary...]))
         text = next
+        // CRLF 与 Character 换行扫描的边界不同，含 CR 的尾部沿用完整解析。
+        if let fence, !tail.utf8.contains(13), !tail[cursor...].trimmingCharacters(in: .whitespaces).hasPrefix(fence),
+           case .code(let language, let code) = value.last {
+            openCode = OpenCode(fence: fence, language: language, code: code,
+                                partialLine: code.components(separatedBy: "\n").last ?? "",
+                                prefix: Array(value.dropLast()))
+        }
         let strings = Set(value.flatMap(\.inlineStrings))
         inlines = inlines.filter { strings.contains($0.key) }
         return value
@@ -529,12 +592,9 @@ struct CodeBlock: View {
 }
 
 @MainActor final class CodeRenderCache {
-    private var key: String?
-    private var value = AttributedString()
-    func code(_ code: String, language: String, _ make: () -> AttributedString) -> AttributedString {
-        let next = language + "\u{0}" + code
-        if key != next { value = make(); key = next }
-        return value
+    private var cache = CodeHighlightCache()
+    func code(_ code: String, language: String) -> AttributedString {
+        cache.highlight(code, language: language)
     }
 }
 

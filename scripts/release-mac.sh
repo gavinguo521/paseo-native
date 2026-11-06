@@ -64,5 +64,6 @@ for a in "$PWD/$DIST"/**/*.app(N/); do
   [[ "$a" == *.app/*.app ]] || "$LS" -u "$a" 2>/dev/null || true
 done
 rm -rf "$STAGE" "$DIST/notarized" "$DIST/upload"
+scripts/clean-launchservices.sh
 cp "$DMG" "$HOME/Desktop/"
 echo "✓ $DMG（$(du -h "$DMG" | cut -f1)），已复制到桌面"

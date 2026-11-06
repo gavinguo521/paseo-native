@@ -173,6 +173,8 @@ extension DisplayItem {
 @MainActor final class DisplayItemCache {
     private var key: (revision: Int, lastTurnActive: Bool, collapse: Bool, separateReasoning: Bool)?
     private var items: [DisplayItem] = []
+    private var positions: [String: Int]?
+    private var visibilityReads = 0
     private struct TurnKey: Equatable {
         var revisions: [Int]
         var active: Bool
@@ -209,9 +211,28 @@ extension DisplayItem {
             items += built
         }
         turns = next
+        positions = nil
+        visibilityReads = 0
         key = k
         return items
     }
+    /// 可见 ID 通常只有一屏；按已有显示顺序找锚点，不在每次滚动时扫描整段历史。
+    func firstVisibleID(in ids: [String]) -> String? {
+        guard !ids.isEmpty else { return nil }
+        visibilityReads += 1
+        // 流式输出通常每版只查询一次；此时不额外建立整份索引。
+        if positions == nil, visibilityReads < 3 {
+            let visible = Set(ids)
+            return items.first { visible.contains($0.id) }?.id
+        }
+        if positions == nil {
+            var indexed: [String: Int] = [:]
+            for (index, item) in items.enumerated() where indexed[item.id] == nil { indexed[item.id] = index }
+            positions = indexed
+        }
+        return ids.compactMap { id in positions?[id].map { (id, $0) } }.min { $0.1 < $1.1 }?.0
+    }
+
 }
 
 private func zip(_ a: Date?, _ b: Date?) -> (Date, Date)? {

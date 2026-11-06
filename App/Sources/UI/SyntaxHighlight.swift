@@ -11,7 +11,7 @@ enum SyntaxHighlight {
         return aliases[key]
     }
 
-    struct Language {
+    struct Language: Sendable {
         let keywords: Set<String>
         /// Line comment starters, e.g. "//" or "#".
         let lineComments: [String]

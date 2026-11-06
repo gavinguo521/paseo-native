@@ -177,6 +177,17 @@ extension HostStore {
         return (r["payload"]?["directory"]?["entries"]?.arrayValue ?? []).compactMap(FileEntry.init)
     }
 
+    /// 复用服务端独占创建（wx）；并发出现同名文件时失败，不覆盖内容。
+    public func createEmptyFile(cwd: String, path: String) async throws {
+        let request = try EmptyFileCreation.request(cwd: cwd, path: path)
+        let c = try conn()
+        guard await c.serverInfo?.hasFeature("fsEntryOps") == true else {
+            throw ActionError.rejected(String(localized: "当前服务端不支持创建文件，请先升级服务端", bundle: .module))
+        }
+        let response = try await c.request("fs.entry.create.request", request)
+        try EmptyFileCreation.validate(response)
+    }
+
     /// Reads a file over binary frames (0x10/0x11/0x12); a JSON reply only arrives on error.
     public func readFile(cwd: String, path: String, maxBytes: Int = 64 * 1024 * 1024) async throws -> FileContent {
         let c = try conn()

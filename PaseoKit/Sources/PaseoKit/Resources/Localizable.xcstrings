@@ -756,6 +756,46 @@
           }
         }
       }
+    },
+    "创建文件失败，请重新加载后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not create the file. Reload and try again."
+          }
+        }
+      }
+    },
+    "当前服务端不支持创建文件，请先升级服务端": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This server does not support creating files. Update the server first."
+          }
+        }
+      }
+    },
+    "文件名无效，无法在此路径创建文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid file name. Cannot create a file at this path."
+          }
+        }
+      }
+    },
+    "文件路径无效，无法创建文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid file path. Cannot create the file."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

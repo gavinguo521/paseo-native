@@ -3,6 +3,8 @@ import Observation
 import PaseoKit
 #if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
 #endif
 
 /// Ids are only unique within one host, so everything cross-machine is keyed by serverId too.
@@ -150,6 +152,7 @@ final class AppModel {
     @ObservationIgnored private(set) var composerDrafts: [String: String] = UserDefaults.standard.dictionary(forKey: "composerDrafts") as? [String: String] ?? [:]
     @ObservationIgnored private var draftSaveTask: Task<Void, Never>?
     @ObservationIgnored private var draftsDirty = false
+    @ObservationIgnored let sessionDisplayCaches = SessionDisplayCaches()
     @ObservationIgnored private var readingStates: [AgentRef: TimelineReadingState] = [:]
 
     func readingState(for ref: AgentRef) -> TimelineReadingState {
@@ -818,6 +821,14 @@ final class AppModel {
     }
 
     private(set) var appActive = true
+    /// A Mac scene stays active while its window sits behind another app, so notifications ask AppKit instead.
+    private var isFrontmost: Bool {
+        #if os(macOS)
+        NSApp.isActive
+        #else
+        appActive
+        #endif
+    }
 
     private var started = false
 
@@ -1102,8 +1113,8 @@ final class AppModel {
         let store = HostStore(offer: offer, label: label, clientId: clientId, appVersion: appVersion)
         store.onAttention = { [weak self, weak store] e in
             guard let self, let store else { return }
-            let viewing = self.appActive && self.destination == .agent(AgentRef(serverId: e.serverId, agentId: e.agentId))
-            guard !viewing, e.shouldNotify || !self.appActive else { return }
+            let viewing = self.isFrontmost && self.destination == .agent(AgentRef(serverId: e.serverId, agentId: e.agentId))
+            guard !viewing, e.shouldNotify || !self.isFrontmost else { return }
             #if os(iOS)
             // 切到后台还连着机器的那几秒：插件会推远程通知，这里不再弹本地的，免得重复。
             if LiveActivityController.shared.remoteAlertsReady, !LiveActivityController.isForeground { return }

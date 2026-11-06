@@ -249,18 +249,21 @@ struct FileViewer: View {
     var line: Int? = nil
     @State private var content: FileContent?
     @State private var error: String?
+    @State private var creationError: String?
+    @State private var creating = false
     /// Markdown and HTML: rendered (true) or source.
     @State private var preview = true
     @State private var finding = false
     @State private var query = ""
     @State private var matchIndex = 0
 
-    /// 1-based lines containing the query.
-    private var matchLines: [Int] {
-        let q = query.lowercased()
-        guard !q.isEmpty, let t = content?.text else { return [] }
-        return t.split(separator: "\n", omittingEmptySubsequences: false).enumerated().compactMap { $1.lowercased().contains(q) ? $0 + 1 : nil }
-    }
+    @State private var searchIndex = FileSearchIndex()
+    @State private var foundLines: [Int] = []
+    @State private var completedQuery = ""
+    @State private var fileRevision = UUID()
+    @State private var lineCount = 0
+    private struct SearchRequest: Equatable { let file: UUID; let query: String }
+    private var matchLines: [Int] { completedQuery == query ? foundLines : [] }
     private var currentMatch: Int? { matchLines.isEmpty ? nil : matchLines[min(matchIndex, matchLines.count - 1)] }
 
     private var name: String { (path as NSString).lastPathComponent }
@@ -272,8 +275,8 @@ struct FileViewer: View {
             HStack {
                 Text(name).font(.system(size: 13, weight: .semibold))
                 if let line { Text("第 \(line) 行").font(.system(size: 12)).foregroundStyle(Theme.muted) }
-                if let c = content, c.kind == .text, let t = c.text {
-                    Text(String(localized: "\(t.split(separator: "\n", omittingEmptySubsequences: false).count) 行 · \(ByteCountFormatter.string(fromByteCount: Int64(c.size), countStyle: .file))"))
+                if let c = content, c.kind == .text, c.text != nil {
+                    Text(String(localized: "\(lineCount) 行 · \(ByteCountFormatter.string(fromByteCount: Int64(c.size), countStyle: .file))"))
                         .font(.system(size: 11)).foregroundStyle(Theme.extraMuted)
                 }
                 Spacer()
@@ -296,7 +299,7 @@ struct FileViewer: View {
                 HStack(spacing: 8) {
                     TextField("查找", text: $query).textFieldStyle(.roundedBorder).frame(maxWidth: 260)
                         .onSubmit { matchIndex = matchLines.isEmpty ? 0 : (matchIndex + 1) % matchLines.count }
-                    Text(matchLines.isEmpty ? (query.isEmpty ? "" : "无结果") : "\(min(matchIndex, matchLines.count - 1) + 1)/\(matchLines.count) 行")
+                    Text(matchLines.isEmpty ? (query.isEmpty ? "" : completedQuery != query ? "查找中…" : "无结果") : "\(min(matchIndex, matchLines.count - 1) + 1)/\(matchLines.count) 行")
                         .font(.system(size: 12)).foregroundStyle(Theme.muted).monospacedDigit()
                     Button { matchIndex = (matchIndex - 1 + max(matchLines.count, 1)) % max(matchLines.count, 1) } label: { Image(systemName: "chevron.up") }
                         .buttonStyle(.plain).disabled(matchLines.isEmpty)
@@ -310,7 +313,21 @@ struct FileViewer: View {
             Divider()
             Group {
                 if let error {
-                    Text(error).foregroundStyle(Theme.destructive).padding()
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(error).foregroundStyle(Theme.destructive).textSelection(.enabled)
+                        if EmptyFileCreation.isMissing(error) {
+                            Text("将在 \(host.label) 创建空文件：\(cwd)/\(path)")
+                                .font(.caption).foregroundStyle(Theme.muted).textSelection(.enabled)
+                            if host.serverInfo?.hasFeature("fsEntryOps") == true {
+                                Button(creating ? "正在创建…" : "创建此文件") { Task { await createFile() } }
+                                    .disabled(creating)
+                            } else {
+                                Text("当前服务端不支持创建文件").font(.caption).foregroundStyle(Theme.muted)
+                            }
+                        }
+                        if let creationError { Text(creationError).foregroundStyle(Theme.destructive).textSelection(.enabled) }
+                        Button("重新加载") { Task { await loadFile() } }.disabled(creating)
+                    }.padding()
                 } else if let c = content {
                     switch c.kind {
                     case .text:
@@ -318,13 +335,8 @@ struct FileViewer: View {
                             ScrollView { MarkdownView(text: c.text ?? "").padding(20) }
                         } else if ["html", "htm"].contains(ext) && line == nil && preview {
                             HTMLPreview(html: c.text ?? "")
-                        } else if let target = currentMatch ?? line {
-                            LinesView(text: c.text ?? "", target: target, language: SyntaxHighlight.language(for: name)).id(target)
                         } else {
-                            ScrollView([.vertical, .horizontal]) {
-                                Text(numbered(c.text ?? "")).font(.system(size: Theme.code, design: .monospaced)).textSelection(.enabled)
-                                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                            }
+                            FileSourceView(text: c.text ?? "", language: name, target: currentMatch ?? line)
                         }
                     case .image:
                         ScrollView {
@@ -343,10 +355,40 @@ struct FileViewer: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .task {
-            do { content = try await host.readFile(cwd: cwd, path: path, maxBytes: 16 * 1024 * 1024) }
-            catch { self.error = "\(error)" }
+        .task(id: SearchRequest(file: fileRevision, query: query)) {
+            let requested = query
+            guard let text = content?.text else { return }
+            do {
+                let found = try await searchIndex.matches(in: text, query: requested)
+                guard !Task.isCancelled else { return }
+                foundLines = found; completedQuery = requested; matchIndex = 0
+            } catch is CancellationError { }
+            catch { assertionFailure("文件搜索失败：\(error)") }
         }
+        .task { await loadFile() }
+    }
+
+    private func loadFile() async {
+        do {
+            let loaded = try await host.readFile(cwd: cwd, path: path, maxBytes: 16 * 1024 * 1024)
+            let count = await Task.detached { loaded.text?.split(separator: "\n", omittingEmptySubsequences: false).count ?? 0 }.value
+            guard !Task.isCancelled else { return }
+            lineCount = count; content = loaded; fileRevision = UUID()
+            error = nil; creationError = nil
+        } catch {
+            guard !Task.isCancelled else { return }
+            self.error = "\(error)"
+        }
+    }
+
+    private func createFile() async {
+        guard !creating, let error, EmptyFileCreation.isMissing(error) else { return }
+        creating = true; creationError = nil
+        defer { creating = false }
+        do {
+            try await host.createEmptyFile(cwd: cwd, path: path)
+            await loadFile()
+        } catch { creationError = "\(error)" }
     }
 
     #if os(macOS)
@@ -358,22 +400,7 @@ struct FileViewer: View {
     }
     #endif
 
-    /// Line numbers in a muted colour plus syntax colours when the extension is known.
-    private func numbered(_ text: String) -> AttributedString {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).prefix(20000)
-        let width = String(lines.count).count
-        let lang = SyntaxHighlight.language(for: name)
-        var inBlock = false
-        var out = AttributedString()
-        for (i, l) in lines.enumerated() {
-            var num = AttributedString(String(repeating: " ", count: width - String(i + 1).count) + "\(i + 1)  ")
-            num.foregroundColor = Theme.extraMuted
-            out += num
-            if let lang, i < 5000 { out += SyntaxHighlight.line(String(l), lang, inBlock: &inBlock) } else { out += AttributedString(String(l)) }
-            if i < lines.count - 1 { out += AttributedString("\n") }
-        }
-        return out
-    }
+
 }
 
 /// Static HTML file preview (no network base, so relative assets will not load).
@@ -390,45 +417,6 @@ private struct HTMLPreview: UIViewRepresentable {
     func updateUIView(_ v: WKWebView, context: Context) {}
 }
 #endif
-
-/// Numbered lines with one highlighted and scrolled into view.
-private struct LinesView: View {
-    let text: String
-    let target: Int
-    var language: SyntaxHighlight.Language? = nil
-
-    var body: some View {
-        let lines = highlighted
-        let width = String(lines.count).count
-        ScrollViewReader { proxy in
-            ScrollView([.vertical, .horizontal]) {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { i, l in
-                        HStack(spacing: 12) {
-                            Text(String(i + 1)).foregroundStyle(Theme.extraMuted).frame(width: CGFloat(width) * 8, alignment: .trailing)
-                            Text(l.characters.isEmpty ? AttributedString(" ") : l).fixedSize()
-                        }
-                        .font(.system(size: Theme.code, design: .monospaced))
-                        .padding(.horizontal, 14).padding(.vertical, 1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(i + 1 == target ? Theme.dotWarning.opacity(0.2) : .clear)
-                        .id(i + 1)
-                    }
-                }
-                .textSelection(.enabled)
-                .padding(.vertical, 10)
-            }
-            .task { try? await Task.sleep(for: .milliseconds(150)); proxy.scrollTo(target, anchor: .center) }
-        }
-    }
-
-    private var highlighted: [AttributedString] {
-        let raw = text.split(separator: "\n", omittingEmptySubsequences: false).prefix(20000).map(String.init)
-        guard let language else { return raw.map { AttributedString($0) } }
-        var inBlock = false
-        return raw.enumerated().map { i, l in i < 5000 ? SyntaxHighlight.line(l, language, inBlock: &inBlock) : AttributedString(l) }
-    }
-}
 
 // MARK: Changes
 
