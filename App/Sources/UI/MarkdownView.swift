@@ -9,11 +9,14 @@ struct MarkdownView: View {
     /// Extra leading between wrapped lines; the system default is tight for Chinese body text.
     static let lineSpacing: CGFloat = 5
     let text: String
+    // 用户粘贴的表格只做本地排版，不因同条消息含图片或图表而加载外部资源。
+    var renderMedia = true
+    @State private var renderCache = MarkdownRenderCache()
     @Environment(\.findQuery) private var findQuery
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ForEach(Array(MarkdownBlock.cached(text).enumerated()), id: \.offset) { _, block in
+            ForEach(Array(renderCache.blocks(text).enumerated()), id: \.offset) { _, block in
                 view(for: block)
             }
         }
@@ -46,18 +49,19 @@ struct MarkdownView: View {
                 .padding(.leading, 10)
                 .overlay(alignment: .leading) { Rectangle().fill(Theme.border).frame(width: 3) }
         case .code(let lang, let code):
-            if lang?.lowercased() == "mermaid" { MermaidView(source: code) } else { CodeBlock(code: code, language: lang) }
+            if renderMedia && lang?.lowercased() == "mermaid" { MermaidView(source: code) } else { CodeBlock(code: code, language: lang) }
         case .table(let rows, let aligns):
-            MarkdownTable(rows: rows, aligns: aligns, cell: inline)
+            MarkdownTable(rows: rows, aligns: aligns, cell: { inline($0.replacingOccurrences(of: "<br>", with: "\n")) })
         case .rule:
             Divider()
         case .image(let alt, let url):
-            MarkdownImage(alt: alt, url: url)
+            if renderMedia { MarkdownImage(alt: alt, url: url) }
+            else { Text("![\(alt)](\(url))").font(.system(size: Theme.content)) }
         }
     }
 
     private func inline(_ s: String) -> Text {
-        Text(RenderCache.inline(s, query: findQuery) {
+        Text(renderCache.inline(s, query: findQuery) {
             var attributed = InlineMarkdown.parse(s)
             FileLink.annotate(&attributed)
             highlight(&attributed, findQuery)
@@ -73,8 +77,40 @@ struct MarkdownTable: View {
     let cell: (String) -> Text
 
     private var columns: Int { rows.map(\.count).max() ?? 0 }
+    @State private var selection: TableCellRange?
+    @State private var frames: [TableCellPosition: CGRect] = [:]
+    @State private var coordinateSpace = UUID()
+    @State private var copied = false
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Menu(copied ? "已复制" : "复制表格") {
+                    if !rows.isEmpty, columns > 0 {
+                        copyActions(TableCellRange(anchor: .init(row: 0, column: 0), end: .init(row: rows.count - 1, column: columns - 1)))
+                    }
+                }
+                if let selection {
+                    Menu("复制所选区域") { copyActions(selection) }
+                    Button("取消选择") { self.selection = nil }
+                }
+                Spacer(minLength: 0)
+            }.font(.caption).buttonStyle(.borderless)
+            grid
+        }
+        .onChange(of: rows) { selection = nil; copied = false }
+    }
+
+    @ViewBuilder private func copyActions(_ range: TableCellRange) -> some View {
+        Button("复制为 Markdown") { Pasteboard.copy(range.markdown(from: rows)); copied = true }
+        Button("复制为表格") { TableClipboard.copyTSV(range.text(from: rows)); copied = true }
+    }
+
+    private func cellAt(_ point: CGPoint) -> TableCellPosition? {
+        frames.first { $0.value.contains(point) }?.key
+    }
+
+    private var grid: some View {
         TableLayout(columns: columns) {
             ForEach(Array(rows.enumerated()), id: \.offset) { r, row in
                 ForEach(0..<columns, id: \.self) { c in
@@ -85,7 +121,21 @@ struct MarkdownTable: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: frameAlignment(align))
-                        .background(r == 0 ? Theme.surface2 : .clear)
+                        .background(selection?.contains(.init(row: r, column: c)) == true ? Theme.accent.opacity(0.22) : (r == 0 ? Theme.surface2 : .clear))
+                        .background(GeometryReader { geometry in
+                            Color.clear.preference(key: TableCellFrames.self, value: [.init(row: r, column: c): geometry.frame(in: .named(coordinateSpace))])
+                        })
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            let position = TableCellPosition(row: r, column: c)
+                            selection = TableCellRange(anchor: position, end: position)
+                            copied = false
+                        }
+                        .accessibilityAction(named: "选择单元格") {
+                            let position = TableCellPosition(row: r, column: c)
+                            selection = TableCellRange(anchor: position, end: position)
+                            copied = false
+                        }
                         .overlay(alignment: .trailing) {
                             if c < columns - 1 { Rectangle().fill(Theme.border).frame(width: 1) }
                         }
@@ -98,6 +148,19 @@ struct MarkdownTable: View {
         .font(.system(size: Theme.content - 1))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.border))
+        // 表格使用区域选择，避免系统文本选择抢走双击和长按。
+        .textSelection(.disabled)
+        .coordinateSpace(name: coordinateSpace)
+        .onPreferenceChange(TableCellFrames.self) { frames = $0 }
+        .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(coordinateSpace)))
+            .onChanged { value in
+                if case .second(true, let drag?) = value,
+                   let start = cellAt(drag.startLocation), let end = cellAt(drag.location) {
+                    selection = TableCellRange(anchor: start, end: end)
+                    copied = false
+                }
+            })
+        .help("双击选择单元格，长按拖动选择区域")
     }
 
     private func frameAlignment(_ a: TextAlignment) -> Alignment {
@@ -111,13 +174,26 @@ struct TableLayout: Layout {
     let columns: Int
     var minColumn: CGFloat = 64
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let (widths, heights) = measure(proposal.width, subviews)
+    struct Cache {
+        var width: CGFloat?
+        var sizes: ([CGFloat], [CGFloat])?
+    }
+    func makeCache(subviews: Subviews) -> Cache { Cache() }
+    func updateCache(_ cache: inout Cache, subviews: Subviews) { cache = Cache() }
+    private func measured(_ width: CGFloat?, _ subviews: Subviews, _ cache: inout Cache) -> ([CGFloat], [CGFloat]) {
+        if cache.width == width, let sizes = cache.sizes { return sizes }
+        let sizes = measure(width, subviews)
+        cache.width = width
+        cache.sizes = sizes
+        return sizes
+    }
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+        let (widths, heights) = measured(proposal.width, subviews, &cache)
         return CGSize(width: widths.reduce(0, +), height: heights.reduce(0, +))
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let (widths, heights) = measure(bounds.width, subviews)
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
+        let (widths, heights) = measured(bounds.width, subviews, &cache)
         var y = bounds.minY
         for r in heights.indices {
             var x = bounds.minX
@@ -170,6 +246,7 @@ struct CodeBlock: View {
     var language: String? = nil
     @State private var hovering = false
     @State private var copied = false
+    @State private var renderCache = CodeRenderCache()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -180,7 +257,7 @@ struct CodeBlock: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 Group {
                     if let lang = SyntaxHighlight.language(for: language) {
-                        Text(RenderCache.code(code, language: language ?? "") { SyntaxHighlight.highlight(code, lang) })
+                        Text(renderCache.code(code, language: language ?? "") { SyntaxHighlight.highlight(code, lang) })
                     }
                     else { Text(code) }
                 }
@@ -216,41 +293,88 @@ struct CodeBlock: View {
     }
 }
 
-/// Parsed Markdown and coloured code keyed by their text: rows redraw often (streaming, scrolling) while
-/// their text rarely changes, and parsing was the bulk of each redraw.
-enum RenderCache {
-    private final class Box<T>: NSObject { let value: T; init(_ v: T) { value = v } }
-    nonisolated(unsafe) private static let blocks = { let c = NSCache<NSString, Box<[MarkdownBlock]>>(); c.countLimit = 2000; return c }()
-    nonisolated(unsafe) private static let inlines = { let c = NSCache<NSString, Box<AttributedString>>(); c.countLimit = 8000; return c }()
-    nonisolated(unsafe) private static let codes = { let c = NSCache<NSString, Box<AttributedString>>(); c.countLimit = 500; return c }()
+/// 每条消息只保留当前版本；已闭合的段落不随尾部 token 重新解析。
+@MainActor final class MarkdownRenderCache {
+    private var text: String?
+    private var stablePrefix = ""
+    private var stableBlocks: [MarkdownBlock] = []
+    private var value: [MarkdownBlock] = []
+    private var inlines: [String: (query: String, value: AttributedString)] = [:]
 
-    static func blocks(_ text: String, _ make: () -> [MarkdownBlock]) -> [MarkdownBlock] {
-        let key = text as NSString
-        if let hit = blocks.object(forKey: key) { return hit.value }
-        let v = make()
-        blocks.setObject(Box(v), forKey: key)
-        return v
+    func blocks(_ next: String) -> [MarkdownBlock] {
+        if text == next { return value }
+        if !next.hasPrefix(stablePrefix) { stablePrefix = ""; stableBlocks = [] }
+        let tail = String(next.dropFirst(stablePrefix.count))
+        // 只有完整空行且不在代码围栏内才是稳定边界；表格、列表、未闭合围栏都留在尾部。
+        var fence: String?
+        var boundary = tail.startIndex
+        var cursor = tail.startIndex
+        while let newline = tail[cursor...].firstIndex(of: "\n") {
+            let line = tail[cursor..<newline].trimmingCharacters(in: .whitespaces)
+            let end = tail.index(after: newline)
+            if let active = fence {
+                if line.hasPrefix(active) { fence = nil }
+            } else if line.hasPrefix("```") || line.hasPrefix("~~~") {
+                fence = String(line.prefix(3))
+            } else if line.isEmpty { boundary = end }
+            cursor = end
+        }
+        if boundary > tail.startIndex {
+            let committed = String(tail[..<boundary])
+            stableBlocks += MarkdownBlock.parse(committed)
+            stablePrefix += committed
+        }
+        value = stableBlocks + MarkdownBlock.parse(String(tail[boundary...]))
+        text = next
+        let strings = Set(value.flatMap(\.inlineStrings))
+        inlines = inlines.filter { strings.contains($0.key) }
+        return value
     }
 
-    static func inline(_ text: String, query: String, _ make: () -> AttributedString) -> AttributedString {
-        let key = (query + "\u{0}" + text) as NSString
-        if let hit = inlines.object(forKey: key) { return hit.value }
-        let v = make()
-        inlines.setObject(Box(v), forKey: key)
-        return v
+    func inline(_ text: String, query: String, _ make: () -> AttributedString) -> AttributedString {
+        if let hit = inlines[text], hit.query == query { return hit.value }
+        let value = make()
+        inlines[text] = (query, value)
+        return value
     }
+}
 
-    static func code(_ code: String, language: String, _ make: () -> AttributedString) -> AttributedString {
-        let key = (language + "\u{0}" + code) as NSString
-        if let hit = codes.object(forKey: key) { return hit.value }
-        let v = make()
-        codes.setObject(Box(v), forKey: key)
-        return v
+@MainActor final class CodeRenderCache {
+    private var key: String?
+    private var value = AttributedString()
+    func code(_ code: String, language: String, _ make: () -> AttributedString) -> AttributedString {
+        let next = language + "\u{0}" + code
+        if key != next { value = make(); key = next }
+        return value
     }
 }
 
 enum MarkdownBlock {
-    static func cached(_ text: String) -> [MarkdownBlock] { RenderCache.blocks(text) { parse(text) } }
+    /// 转义的竖线属于单元格内容，不能把它拆成新列。
+    static func tableCells(_ line: String) -> [String] {
+        var cells: [String] = [], cell = "", escaped = false
+        var source = line.trimmingCharacters(in: .whitespaces)
+        if source.hasPrefix("|") { source.removeFirst() }
+        if source.hasSuffix("|") {
+            let slashes = source.dropLast().reversed().prefix { $0 == "\\" }.count
+            if slashes % 2 == 0 { source.removeLast() }
+        }
+        for c in source {
+            if c == "|", !escaped { cells.append(cell.trimmingCharacters(in: .whitespaces)); cell = "" }
+            else { cell.append(c) }
+            if c == "\\" { escaped.toggle() } else { escaped = false }
+        }
+        cells.append(cell.trimmingCharacters(in: .whitespaces))
+        return cells
+    }
+    var inlineStrings: [String] {
+        switch self {
+        case .heading(_, let text), .paragraph(let text), .quote(let text): [text]
+        case .list(let items): items.map(\.text)
+        case .table(let rows, _): rows.flatMap { $0 }
+        default: []
+        }
+    }
 
     struct ListItem { let marker: String; let text: String; let indent: Int }
     case heading(Int, String)
@@ -311,10 +435,13 @@ enum MarkdownBlock {
             if trimmed.range(of: #"^([-*_])(\s*\1){2,}$"#, options: .regularExpression) != nil {
                 flush(); blocks.append(.rule); i += 1; continue
             }
-            if trimmed.hasPrefix("|"), trimmed.hasSuffix("|") {
+            let nextCells = i + 1 < lines.count ? tableCells(lines[i + 1]) : []
+            let startsTable = trimmed.contains("|") && !nextCells.isEmpty && nextCells.allSatisfy {
+                $0.range(of: #"^:?-{3,}:?$"#, options: .regularExpression) != nil
+            }
+            if (trimmed.hasPrefix("|") && trimmed.hasSuffix("|")) || startsTable || (!table.isEmpty && trimmed.contains("|")) {
                 if !paragraph.isEmpty || !list.isEmpty || !quote.isEmpty { flush() }
-                let cells = trimmed.dropFirst().dropLast().split(separator: "|", omittingEmptySubsequences: false)
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                let cells = tableCells(trimmed)
                 if cells.allSatisfy({ $0.range(of: #"^:?-+:?$"#, options: .regularExpression) != nil }) {
                     aligns = cells.map { c in
                         c.hasPrefix(":") && c.hasSuffix(":") ? .center : c.hasSuffix(":") ? .trailing : .leading
@@ -393,30 +520,37 @@ struct MarkdownImage: View {
     /// Keep the first copy fetched under this key, so a file overwritten later still shows what was there.
     var cacheKey: String?
     @State private var zoomed: Image?
-    @State private var remote: Image?
-    @State private var remoteTried = false
+    @State private var thumbnail: Image?
+    @State private var tried = false
     @Environment(\.hostFileReader) private var reader
+    @Environment(\.displayScale) private var displayScale
+
+    private var sourceKey: String { (reader?.cacheScope ?? "local") + "|" + (cacheKey ?? url) }
+    private var pixels: Int { Int(max(maxSize.width, maxSize.height) * displayScale) }
 
     var body: some View {
         Group {
-            if let u = URL(string: url), u.scheme == "http" || u.scheme == "https" {
-                AsyncImage(url: u) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFit().onTapGesture { zoomed = image }
-                    } else { placeholder(loading: phase.error == nil) }
-                }
-                .frame(maxWidth: maxSize.width, maxHeight: maxSize.height, alignment: .leading)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            } else if let local = localImage ?? remote {
-                local.resizable().scaledToFit()
+            if let thumbnail {
+                thumbnail.resizable().scaledToFit()
                     .frame(maxWidth: maxSize.width, maxHeight: maxSize.height, alignment: .leading)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .onTapGesture { zoomed = local }
-            } else {
-                placeholder(loading: reader != nil && !remoteTried)
-                    // 读文件通道在会话视图 onAppear 后才注入，第一帧拿不到；通道到位后要重新加载。
-                    .task(id: "\(url)|\(reader != nil)") { await loadRemote() }
-            }
+                    .onTapGesture {
+                        zoomed = thumbnail
+                        Task {
+                            if let cg = await loadImage(maxPixel: nil), !Task.isCancelled, zoomed != nil {
+                                zoomed = Image(decorative: cg, scale: 1)
+                            }
+                        }
+                    }
+            } else { placeholder(loading: !tried) }
+        }
+        .task(id: "\(sourceKey)|\(pixels)") {
+            thumbnail = nil
+            tried = false
+            let cg = await loadImage(maxPixel: pixels)
+            guard !Task.isCancelled else { return }
+            thumbnail = cg.map { Image(decorative: $0, scale: displayScale) }
+            tried = true
         }
         .help(alt.isEmpty ? String(localized: "点击放大") : String(localized: "\(alt)（点击放大）"))
         .sheet(isPresented: Binding(get: { zoomed != nil }, set: { if !$0 { zoomed = nil } })) {
@@ -424,33 +558,9 @@ struct MarkdownImage: View {
         }
     }
 
-    /// Not on this Mac: ask the agent's host for the file (file:// or a plain path).
-    private func loadRemote() async {
-        let cached = cacheKey.flatMap(ImageSnapshotCache.load)
-        // 还没有读文件通道时不算试过，等通道注入后 task 会再跑一次。
-        if cached == nil && reader == nil { return }
-        defer { remoteTried = true }
-        var data = cached
-        if data == nil, let reader {
-            let path = URL(string: url).flatMap { $0.isFileURL ? $0.path : ($0.scheme == nil ? url : nil) } ?? url
-            data = await reader.read(path)
-        }
-        guard let data else { return }
-        if cached == nil, let cacheKey { ImageSnapshotCache.save(data, key: cacheKey) }
-        #if os(macOS)
-        if let ns = NSImage(data: data) { remote = Image(nsImage: ns) }
-        #else
-        if let ui = UIImage(data: data) { remote = Image(uiImage: ui) }
-        #endif
-    }
-
-    private var localImage: Image? {
-        guard let u = URL(string: url), u.isFileURL else { return nil }
-        #if os(macOS)
-        return NSImage(contentsOf: u).map { Image(nsImage: $0) }
-        #else
-        return nil
-        #endif
+    private func loadImage(maxPixel: Int?) async -> CGImage? {
+        await TimelineImageLoader.shared.image(key: sourceKey, url: url, snapshotKey: cacheKey,
+                                               maxPixel: maxPixel, reader: reader)
     }
 
     private func placeholder(loading: Bool) -> some View {
@@ -707,7 +817,7 @@ extension MarkdownBlock {
             let a = InlineMarkdown.parse(s)
             return String(a.characters)
         }
-        return cached(markdown).compactMap { block -> String? in
+        return parse(markdown).compactMap { block -> String? in
             switch block {
             case .heading(_, let s), .paragraph(let s), .quote(let s): inline(s)
             case .list(let items):

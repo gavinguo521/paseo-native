@@ -127,16 +127,19 @@ The key is stored only on that machine (`~/.paseo/live-activity/`), which sends 
 
 ## Updating
 
-- **Mac**: from 1.0.7 the app checks GitHub once a day and offers new versions (download / skip / later; never
-  installs on its own); you can also check from the app menu or Settings → About, and turn automatic checks off
-  there. Install by dragging the new version into Applications; settings and machines are kept.
+- **Mac**: checks GitHub at launch, on returning to the foreground, and periodically while running, with automatic
+  requests at least 30 minutes apart. Each version is announced once; Later reminds you after 24 hours, while Skip
+  suppresses that version. Check manually or download from the app menu / Settings → About, where automatic checks
+  can also be disabled. Discovered downloads remain available. Nothing installs automatically; quit apps do not
+  check, and older versions retain their original schedule. Drag the new app into Applications to install it;
+  settings and machines are kept.
 - **Daemon**: updated by the official app, or with "更新到 x.y.z" in Settings → Machines → This Mac when Paseo Native runs it.
 - **iPhone / iPad**: `git pull`, `xcodegen generate`, run again from Xcode.
 
 ## Privacy and network
 
 No analytics and no servers of our own. The app connects only to your daemons (through the Paseo relay, end-to-end
-encrypted, or a direct address), `api.github.com` for the daily update check (Mac, can be turned off), jsDelivr to
+encrypted, or a direct address), `api.github.com` for update checks at least 30 minutes apart (Mac, can be turned off), jsDelivr to
 render Mermaid diagrams, and nodejs.org / npm only when installing or updating the daemon. Pairing links and passwords
 stay in the Keychain. The Mac app is not sandboxed so it can show local files referenced in replies and manage the
 local daemon.

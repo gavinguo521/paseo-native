@@ -14,7 +14,7 @@ struct UpdatePromptModifier: ViewModifier {
                    presenting: updates.prompt) { release in
                 Button("下载新版本") { updates.download(release) }
                 Button("跳过这个版本") { updates.skip(release) }
-                Button("以后再说", role: .cancel) { updates.prompt = nil }
+                Button("以后再说", role: .cancel) { updates.remindLater(release) }
             } message: { release in
                 Text(Self.message(release, current: updates.currentVersion))
             }
@@ -30,7 +30,8 @@ struct UpdatePromptModifier: ViewModifier {
         notes = notes.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
         if notes.count > 500 { notes = String(notes.prefix(500)) + "…" }
         let tail = String(localized: "你现在用的是 \(current)。下载 dmg 后打开，把 Paseo Native 拖进「应用程序」替换旧版即可，设置和机器列表都会保留。")
-        return notes.isEmpty ? tail : notes + "\n\n" + tail
+        let reminder = String(localized: "选择「以后再说」将在 24 小时后再次提醒；也可以随时到「设置 → 关于」下载。")
+        return (notes.isEmpty ? tail : notes + "\n\n" + tail) + "\n\n" + reminder
     }
 }
 
@@ -48,16 +49,23 @@ struct UpdateSettingsRows: View {
                 case .checking: ProgressView().controlSize(.small)
                 case .upToDate: Text("已是最新版本").foregroundStyle(Theme.muted)
                 case .failed(let e): Text("检查失败：\(e)").foregroundStyle(Theme.destructive).lineLimit(2)
-                case .available(let r):
+                case .available: EmptyView()
+                case .idle: EmptyView()
+                }
+            }
+            if let r = updates.availableRelease {
+                HStack {
                     Text("发现新版本 \(r.version)").foregroundStyle(Theme.accent)
                     Spacer()
                     Button("查看说明") { NSWorkspace.shared.open(r.page) }
                     Button("下载") { updates.download(r) }.buttonStyle(.borderedProminent)
-                case .idle: EmptyView()
                 }
             }
             Toggle("自动检查更新", isOn: $auto)
-                .onChange(of: auto) { _, on in updates.autoCheck = on }
+                .onChange(of: auto) { _, on in
+                    updates.autoCheck = on
+                    if on { updates.checkOnActivation() }
+                }
         }
     }
 }

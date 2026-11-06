@@ -1,12 +1,18 @@
 // 仅开发用（Mac）：PASEO_SIDEBAR_BENCH=<点/秒> 启动后把鼠标移到侧栏上，用合成的滚轮事件把侧栏上下滚两遍，
 // 打印掉帧数、侧栏 body 重算次数和悬停切换次数。用 Release 优化 + DEBUG 编译才接近日常安装版的手感（见 docs/STATUS.md）。
 
-#if DEBUG && os(macOS)
+#if DEBUG
+import Foundation
+#if os(macOS)
 import AppKit
+#endif
 
 @MainActor final class SidebarBench: NSObject {
     static var bodyCount = 0
     static var hoverCount = 0
+    static var groupCount = 0
+    static var rowCount = 0
+    #if os(macOS)
     private static var running: SidebarBench?
 
     static func startIfRequested() {
@@ -32,6 +38,8 @@ import AppKit
     private var hitchTime: CFTimeInterval = 0
     private var elapsed: CFTimeInterval = 0
     private var worst: CFTimeInterval = 0
+    private var intervals: [Double] = []
+    private var targets: [Int: Int] = [:]
     private var bodyAtStart = 0
     private var hoverAtStart = 0
 
@@ -63,7 +71,9 @@ import AppKit
         bodyAtStart = Self.bodyCount
         hoverAtStart = Self.hoverCount
         let link = s.displayLink(target: self, selector: #selector(tick))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        let maximum = Float(window.screen?.maximumFramesPerSecond ?? 60)
+        log("SBENCH displayMax=\(Int(maximum))Hz")
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, maximum), maximum: maximum, preferred: maximum)
         link.add(to: .main, forMode: .common)
         self.link = link
     }
@@ -76,6 +86,8 @@ import AppKit
             frames += 1
             elapsed += dt
             worst = max(worst, dt)
+            intervals.append(dt * 1000)
+            if budget > 0 { targets[Int((1 / budget).rounded()), default: 0] += 1 }
             if budget > 0, dt > budget * 1.5 {
                 dropped += Int((dt / budget).rounded()) - 1
                 hitchTime += dt - budget
@@ -100,10 +112,13 @@ import AppKit
     private func finish() {
         link?.invalidate()
         let ms = elapsed > 0 ? hitchTime * 1000 / elapsed : 0
+        let sorted = intervals.sorted()
+        log("SBENCH callbackFPS=\(elapsed > 0 ? Double(frames) / elapsed : 0) p95ms=\(sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]) targetHz=\(targets)")
         log(String(format: "SBENCH done frames=%d dropped=%d hitch=%.1fms/s worst=%.1fms seconds=%.1f body=%d hover=%d",
                      frames, dropped, ms, worst * 1000, elapsed, Self.bodyCount - bodyAtStart, Self.hoverCount - hoverAtStart))
         Self.running = nil
         if ProcessInfo.processInfo.environment["PASEO_SIDEBAR_BENCH_QUIT"] == "1" { NSApp.terminate(nil) }
     }
+    #endif
 }
 #endif

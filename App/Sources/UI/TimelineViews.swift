@@ -173,13 +173,42 @@ extension DisplayItem {
 @MainActor final class DisplayItemCache {
     private var key: (revision: Int, lastTurnActive: Bool, collapse: Bool, separateReasoning: Bool)?
     private var items: [DisplayItem] = []
+    private struct TurnKey: Equatable {
+        var revisions: [Int]
+        var active: Bool
+        var collapse: Bool
+        var reasoning: Bool
+    }
+    private var turns: [String: (TurnKey, [DisplayItem])] = [:]
 
     func items(_ timeline: AgentTimeline?, lastTurnActive: Bool, collapse: Bool, separateReasoning: Bool) -> [DisplayItem] {
         let k = (revision: timeline?.revision ?? -1, lastTurnActive: lastTurnActive, collapse: collapse,
                  separateReasoning: separateReasoning)
         if let key, key == k { return items }
-        items = DisplayItem.build(timeline?.rows ?? [], lastTurnActive: lastTurnActive, collapse: collapse,
-                                  separateReasoning: separateReasoning)
+        var ranges: [Range<Int>] = []
+        let rows = timeline?.rows ?? []
+        var start = 0
+        for i in rows.indices where i > 0 && rows[i].item.startsTurn {
+            ranges.append(start..<i)
+            start = i
+        }
+        if start < rows.count { ranges.append(start..<rows.count) }
+        var next: [String: (TurnKey, [DisplayItem])] = [:]
+        items = []
+        for (index, range) in ranges.enumerated() {
+            let id = rows[range.lowerBound].id
+            let turnKey = TurnKey(revisions: rows[range].map(\.revision), active: index == ranges.count - 1 && lastTurnActive,
+                                  collapse: collapse, reasoning: separateReasoning)
+            let built: [DisplayItem]
+            if let cached = turns[id], cached.0 == turnKey { built = cached.1 }
+            else {
+                built = DisplayItem.build(Array(rows[range]), lastTurnActive: turnKey.active, collapse: collapse,
+                                          separateReasoning: separateReasoning)
+            }
+            next[id] = (turnKey, built)
+            items += built
+        }
+        turns = next
         key = k
         return items
     }
@@ -197,20 +226,27 @@ struct TimelineItemView: View {
         switch item {
         case .row(let r, let footer, let turn): RowView(row: r, footer: footer, turn: turn)
         case .group(_, let rows): ToolGroupView(rows: rows)
-        case .turnSummary(_, let label, let hidden): TurnSummaryView(label: label, hidden: hidden)
+        case .turnSummary(let id, let label, let hidden): TurnSummaryView(id: id, label: label, hidden: hidden)
         }
     }
 }
 
 private struct TurnSummaryView: View {
+    let id: String
     /// What the turn did; how long it took is under the reply.
     let label: String
     let hidden: [DisplayItem]
-    @State private var expanded = false
+    @State private var localExpanded = false
+    @Environment(\.timelineReadingState) private var reading
+    private var expanded: Bool { reading?.expanded[id] ?? localExpanded }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Button { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } } label: {
+            Button { withAnimation(.snappy(duration: 0.2)) {
+                let next = !expanded
+                localExpanded = next
+                reading?.expanded[id] = next
+            } } label: {
                 HStack(spacing: 4) {
                     Text(label).lineLimit(1).truncationMode(.middle)
                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
@@ -313,8 +349,12 @@ final class TimelineActions {
 
 /// Reads a file on the agent's machine; stable identity for the same reason as TimelineActions.
 final class HostFileReader: Sendable {
+    let cacheScope: String
     let read: @Sendable (String) async -> Data?
-    init(_ read: @escaping @Sendable (String) async -> Data?) { self.read = read }
+    init(cacheScope: String = UUID().uuidString, _ read: @escaping @Sendable (String) async -> Data?) {
+        self.cacheScope = cacheScope
+        self.read = read
+    }
 }
 
 final class AgentTitleLookup {
@@ -372,15 +412,17 @@ private struct MessageMenu: View {
 }
 
 /// The user's (or another agent's) message, folded when long. Official: user-message.tsx "Show more".
-private struct UserBubble: View {
+struct UserBubble: View {
     let text: String
     var pending = false
     /// Another session sent this (official "Sent by …").
     var sender: String? = nil
     @State private var expanded = false
+    @State private var markdownCache = MarkdownRenderCache()
     @Environment(\.findQuery) private var findQuery
 
     private static let foldLines = 14
+    private var hasTable: Bool { markdownCache.blocks(text).contains { if case .table = $0 { true } else { false } } }
     private var long: Bool { text.count > 900 || text.split(separator: "\n", omittingEmptySubsequences: false).count > Self.foldLines }
 
     var body: some View {
@@ -392,12 +434,16 @@ private struct UserBubble: View {
             HStack {
                 Spacer(minLength: 64)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text({ var a = AttributedString(text); highlight(&a, findQuery); return a }())
+                    if hasTable {
+                        MarkdownView(text: text, renderMedia: false)
+                    } else {
+                        Text({ var a = AttributedString(text); highlight(&a, findQuery); return a }())
                         .font(.system(size: Theme.content))
                         .lineSpacing(MarkdownView.lineSpacing)
                         .textSelection(.enabled)
                         .lineLimit(long && !expanded && findQuery.isEmpty ? Self.foldLines : nil)
-                    if long {
+                    }
+                    if long && !hasTable {
                         Button(expanded ? "收起" : "显示全部") { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } }
                             .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent)
                     }
@@ -572,19 +618,34 @@ private struct RowView: View {
 
 struct ToolGroupView: View {
     let rows: [TimelineRow]
+    @Environment(\.toolDetailsAction) private var details
     @AppStorage("autoExpandReasoning") private var autoExpandReasoning = true
     @AppStorage("timelineDetail") private var timelineDetail = TimelineDetail.collapseTurns.rawValue
     @State private var userExpanded: Bool?
+    @Environment(\.timelineReadingState) private var reading
+    private var expansionKey: String { "tools-" + (rows.first?.id ?? "") }
     private var expanded: Bool {
-        userExpanded ?? (timelineDetail == TimelineDetail.full.rawValue
+        reading?.expanded[expansionKey] ?? userExpanded ?? (timelineDetail == TimelineDetail.full.rawValue
             || (autoExpandReasoning && rows.allSatisfy { if case .reasoning = $0.item { true } else { false } }))
     }
 
+    private func toggleExpanded() {
+        let next = !expanded
+        userExpanded = next
+        reading?.expanded[expansionKey] = next
+    }
+
     var body: some View {
-        if rows.count == 1, case .reasoning(let text) = rows[0].item {
-            reasoning(text)
-        } else {
-            group
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading) {
+                if rows.count == 1, case .reasoning(let text) = rows[0].item { reasoning(text) }
+                else { group }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            if let details, let first = rows.first {
+                Button { details.open(first.id) } label: {
+                    Image(systemName: "arrow.up.right.square").frame(width: 36, height: 36)
+                }.buttonStyle(.plain).accessibilityLabel("查看工具详情").help("查看工具详情")
+            }
         }
     }
 
@@ -594,7 +655,7 @@ struct ToolGroupView: View {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let streaming = rows[0].isStreaming
         VStack(alignment: .leading, spacing: 4) {
-            Button { withAnimation(.snappy(duration: 0.2)) { userExpanded = !expanded } } label: {
+            Button { withAnimation(.snappy(duration: 0.2)) { toggleExpanded() } } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "brain").font(.system(size: 15, weight: .light)).frame(width: 18)
                         .foregroundStyle(Theme.muted)
@@ -621,7 +682,7 @@ struct ToolGroupView: View {
 
     private var group: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Button { withAnimation(.snappy(duration: 0.2)) { userExpanded = !expanded } } label: {
+            Button { withAnimation(.snappy(duration: 0.2)) { toggleExpanded() } } label: {
                 HStack(spacing: 8) {
                     icon
                     if let command {
@@ -738,11 +799,24 @@ func workSummary<S: Sequence>(_ rows: S) -> String where S.Element == TimelineRo
     return parts.joined(separator: String(localized: "，", comment: "列举时的分隔符（逗号）"))
 }
 
-private struct ToolDetailView: View {
+struct ToolDetailView: View {
     let row: TimelineRow
     let showHeader: Bool
+    var fullContent = false
 
-    var body: some View {
+    @ViewBuilder var body: some View {
+        if fullContent {
+            if let path = row.readImagePath {
+                MarkdownImage(alt: path, url: path, cacheKey: row.id)
+            } else if case .toolCall(_, _, _, .edit(_, let old, let new, let unified), _, _) = row.item {
+                DiffView(diff: unified ?? DiffView.fallback(old: old ?? "", new: new ?? ""), lineLimit: nil)
+            } else {
+                CodeBlock(code: ToolDetailsSelection.text(row))
+            }
+        } else { preview }
+    }
+
+    private var preview: some View {
         VStack(alignment: .leading, spacing: 4) {
             if showHeader {
                 Text(row.item.toolSummary).font(.system(size: Theme.code)).foregroundStyle(Theme.muted).lineLimit(1)
@@ -867,6 +941,7 @@ private struct UnknownToolDetail: View {
 
 struct DiffView: View {
     let diff: String
+    var lineLimit: Int? = 400
     /// Cap the height (permission card): short diffs keep their size, long ones scroll inside instead of
     /// spilling over the card and its buttons.
     var maxHeight: CGFloat? = nil
@@ -887,7 +962,7 @@ struct DiffView: View {
     private var lines: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(diff.split(separator: "\n", omittingEmptySubsequences: false).prefix(400).enumerated()), id: \.offset) { _, line in
+                ForEach(Array(diff.split(separator: "\n", omittingEmptySubsequences: false).prefix(lineLimit ?? Int.max).enumerated()), id: \.offset) { _, line in
                     Text(line.isEmpty ? " " : String(line))
                         .foregroundStyle(color(line))
                         .padding(.horizontal, 8)

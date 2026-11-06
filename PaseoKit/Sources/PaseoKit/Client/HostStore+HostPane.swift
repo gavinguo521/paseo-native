@@ -562,6 +562,19 @@ extension HostStore {
         timelines[agentId] = t
     }
 
+    /// 搜索/大纲的独立快照，不替换正在同步的时间线，不触发聊天区全量布局。
+    public func fetchTimelineHistory(_ agentId: String) async throws -> AgentTimeline {
+        let r = try await conn().request("fetch_agent_timeline_request", [
+            "agentId": .string(agentId), "direction": "tail", "limit": 0, "projection": "projected",
+        ], timeout: .seconds(120))
+        try check(r)
+        return await Task.detached(priority: .userInitiated) {
+            var snapshot = AgentTimeline()
+            snapshot.applyPage(r["payload"] ?? .null)
+            return snapshot
+        }.value
+    }
+
     // MARK: Project icons
 
     /// Fetches a project's icon (custom or discovered) unless the cached one has the same revision.

@@ -11,6 +11,7 @@ struct AgentView: View {
     @AppStorage("timelineDetail") private var timelineDetail = TimelineDetail.collapseTurns.rawValue
     @AppStorage("autoExpandReasoning") private var autoExpandReasoning = true
     private var collapseTurns: Bool { timelineDetail == TimelineDetail.collapseTurns.rawValue }
+    @State private var toolDetailID: String?
     @State private var atBottom = true
     /// 聊天区可视高度（去掉工具栏等安全区）：内容至少撑满它，见下面 frame(minHeight:)
     @State private var viewportHeight: CGFloat = 0
@@ -19,6 +20,15 @@ struct AgentView: View {
     @State private var matchIndex = 0
     @State private var showOutline = false
     @State private var loadingAll = false
+    @State private var history: AgentTimeline?
+    @State private var historyCache = TimelineHistoryCache()
+    @State private var historyTask: Task<Void, Never>?
+    @State private var matches: [String] = []
+    @State private var reading = TimelineReadingState()
+    @State private var restoreOffset: CGFloat?
+    @State private var pendingJump: String?
+    @State private var prependGeometry: (offset: CGFloat, height: CGFloat)?
+    @State private var contentHeight: CGFloat = 0
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     @State private var displayCache = DisplayItemCache()
     /// One older page at a time.
@@ -38,17 +48,10 @@ struct AgentView: View {
 
     // MARK: Find & outline
 
-    /// Messages whose text contains the query (user and assistant rows).
-    private var matches: [String] {
-        let q = findQuery.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return [] }
-        return (timeline?.rows ?? []).compactMap { r in
-            switch r.item {
-            case .userMessage(let t, _), .assistantMessage(let t, _): t.lowercased().contains(q) ? r.id : nil
-            default: nil
-            }
-        }
+    private var searchableTimeline: AgentTimeline? {
+        historyCache.snapshot(history, live: timeline)
     }
+    private var displayedTimeline: AgentTimeline? { reading.historyWindow ?? timeline }
 
     private var currentMatch: String? {
         guard finding, !matches.isEmpty else { return nil }
@@ -74,7 +77,25 @@ struct AgentView: View {
         .padding(.horizontal, 14).frame(height: 36)
         .compatibleGlassEffect(in: Capsule())
         .padding(.top, 8)
-        .onChange(of: findQuery) { matchIndex = max(matches.count - 1, 0); jump() }
+        .task(id: "\(findQuery)|\(searchableTimeline?.revision ?? 0)") {
+            let query = findQuery.trimmingCharacters(in: .whitespaces).lowercased()
+            let rows = searchableTimeline?.rows ?? []
+            do { try await Task.sleep(for: .milliseconds(120)) } catch { return }
+            let found = await Task.detached(priority: .userInitiated) {
+                guard !query.isEmpty else { return [String]() }
+                return rows.compactMap { row -> String? in
+                    switch row.item {
+                    case .userMessage(let text, _), .assistantMessage(let text, _):
+                        return text.lowercased().contains(query) ? row.id : nil
+                    default: return nil
+                    }
+                }
+            }.value
+            guard !Task.isCancelled else { return }
+            matches = found
+            matchIndex = max(found.count - 1, 0)
+            jump()
+        }
         .onKeyPress(.escape) { finding = false; return .handled }
     }
 
@@ -86,11 +107,11 @@ struct AgentView: View {
 
     private func jump() {
         guard let id = currentMatch else { return }
-        withAnimation { scrollPosition.scrollTo(id: id, anchor: .center) }
+        showMessage(id)
     }
 
     private var prompts: [TimelineRow] {
-        (timeline?.rows ?? []).filter { if case .userMessage = $0.item { true } else { false } }
+        (searchableTimeline?.rows ?? []).filter { if case .userMessage = $0.item { true } else { false } }
     }
 
     private var outline: some View {
@@ -107,7 +128,7 @@ struct AgentView: View {
                     ForEach(prompts) { r in
                         Button {
                             showOutline = false
-                            Task { try? await Task.sleep(for: .milliseconds(100)); withAnimation { scrollPosition.scrollTo(id: r.id, anchor: .top) } }
+                            showMessage(r.id)
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 if case .userMessage(let t, _) = r.item { Text(t).lineLimit(2).font(.system(size: 13)) }
@@ -134,7 +155,31 @@ struct AgentView: View {
     private func ensureFullHistory() {
         guard timeline?.hasOlder == true, !loadingAll else { return }
         loadingAll = true
-        Task { await host.loadFullTimeline(agentId); loadingAll = false }
+        historyTask?.cancel()
+        historyTask = Task {
+            defer { loadingAll = false }
+            do {
+                let snapshot = try await host.fetchTimelineHistory(agentId)
+                guard !Task.isCancelled else { return }
+                history = snapshot
+            } catch {
+                if !Task.isCancelled { actionError = String(localized: "加载历史失败：\(error)") }
+            }
+        }
+    }
+
+    private func showMessage(_ id: String, snapshot: AgentTimeline? = nil) {
+        guard let window = (snapshot ?? searchableTimeline)?.window(around: id) else { return }
+        reading.historyWindow = window
+        atBottom = false
+        pendingJump = id
+    }
+
+    private func returnToLatest() {
+        reading.historyWindow = nil
+        atBottom = true
+        pendingJump = nil
+        scrollPosition.scrollTo(edge: .bottom)
     }
 
     /// Built once per session view so the environment values below keep their identity.
@@ -165,7 +210,7 @@ struct AgentView: View {
             }
         })
         let cwd = agent?.cwd ?? workspace?.directory ?? "/"
-        let reader = HostFileReader { raw in
+        let reader = HostFileReader(cacheScope: host.id + "|" + cwd) { raw in
             let path = (raw.hasPrefix("/") ? raw : cwd + "/" + raw)
             let dir = (path as NSString).deletingLastPathComponent, name = (path as NSString).lastPathComponent
             return try? await host.readFile(cwd: dir, path: name, maxBytes: 20 * 1024 * 1024).data
@@ -331,26 +376,39 @@ struct AgentView: View {
                         ContentUnavailableView("还没有消息", systemImage: "bubble.left", description: Text("在下面输入要做的事"))
                             .frame(maxWidth: .infinity).padding(.top, 60)
                     }
-                    if timeline?.hasOlder == true {
+                    if reading.historyWindow == nil, timeline?.hasOlder == true {
                         // Loading starts when this comes near the viewport (onScrollGeometryChange below), not onAppear:
                         // the timeline is a plain VStack, so every row appears at once and onAppear would load all history.
                         ProgressView().frame(maxWidth: .infinity)
                     }
-                    ForEach(displayCache.items(timeline, lastTurnActive: agent?.status == .running,
-                                               collapse: collapseTurns && !finding && !showOutline,
+                    if let window = reading.historyWindow {
+                        HStack {
+                            Button("加载更早") {
+                                if let id = window.rows.first?.id { showMessage(id) }
+                            }
+                            Spacer()
+                            Button("返回最新消息") { returnToLatest() }
+                        }
+                    }
+                    ForEach(displayCache.items(displayedTimeline, lastTurnActive: agent?.status == .running,
+                                               collapse: collapseTurns && reading.historyWindow == nil,
                                                separateReasoning: autoExpandReasoning)) { item in
                         TimelineItemView(item: item)
                             .modifier(LayoutProbe(label: "item " + item.id))
                             .padding(4)
                             .background(item.id == currentMatch ? Theme.dotWarning.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 8))
                     }
+                    .environment(\.timelineReadingState, reading)
                     .environment(\.sentImages, host.sentImages)
                     .environment(\.timelineActions, env?.actions ?? TimelineActions())
                     .environment(\.hostFileReader, env?.fileReader)
                     .environment(\.findQuery, finding ? findQuery : "")
                     .environment(\.agentTitle, env?.agentTitle)
                     .environment(\.pluginContext, pluginContext)
-                    if let agent {
+                    if let window = reading.historyWindow, let id = window.rows.last?.id {
+                        Button("加载更多") { showMessage(id) }.frame(maxWidth: .infinity)
+                    }
+                    if reading.historyWindow == nil, let agent {
                         ForEach(agent.pendingPermissions) { PermissionCard(host: host, agentId: agentId, request: $0) }
                         TurnFooter(agent: agent)
                     }
@@ -375,15 +433,22 @@ struct AgentView: View {
             } message: { Text(actionError ?? "") }
             .defaultScrollAnchor(.bottom)
             // Stay pinned to the bottom while a reply grows, unless the user scrolled up to read.
-            .defaultScrollAnchor(.bottom, for: .sizeChanges)
+            .defaultScrollAnchor(atBottom && reading.historyWindow == nil ? .bottom : .top, for: .sizeChanges)
             // Sending a message always jumps to it.
             .onChange(of: lastUserMessageId) { old, new in
                 guard old != nil, new != nil else { return }
-                withAnimation(.snappy(duration: 0.25)) { scrollPosition.scrollTo(edge: .bottom) }
+                withAnimation(.snappy(duration: 0.25)) { returnToLatest() }
             }
             .onScrollGeometryChange(for: Bool.self) { g in
                 g.contentSize.height - g.contentOffset.y - g.containerSize.height < 32
             } action: { _, bottom in atBottom = bottom }
+            .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.1) { ids in
+                guard restoreOffset == nil else { return }
+                let visible = Set(ids)
+                reading.anchorID = displayCache.items(displayedTimeline, lastTurnActive: agent?.status == .running,
+                    collapse: collapseTurns && reading.historyWindow == nil, separateReasoning: autoExpandReasoning)
+                    .first(where: { visible.contains($0.id) })?.id
+            }
             // 可视高度：布局给滚动区的尺寸本身已不含工具栏和底部输入框，直接用，不再扣边距。
             // 不能用 onScrollGeometryChange 的 containerSize − contentInsets：内容不满一屏时 SwiftUI 为贴底把上方空白算进
             // 顶部内边距，和这里的 minHeight 互相影响会来回跳。
@@ -392,14 +457,40 @@ struct AgentView: View {
             .onScrollGeometryChange(for: Bool.self) { g in
                 g.contentSize.height > g.containerSize.height && g.contentOffset.y + g.contentInsets.top < 400
             } action: { _, nearTop in
-                guard nearTop, timeline?.hasOlder == true, !loadingOlder else { return }
+                guard nearTop, reading.historyWindow == nil, timeline?.hasOlder == true, !loadingOlder, restoreOffset == nil else { return }
+                prependGeometry = (reading.offset, contentHeight)
                 loadingOlder = true
-                Task { await host.loadOlder(agentId); loadingOlder = false }
+                Task {
+                    await host.loadOlder(agentId)
+                    loadingOlder = false
+                }
             }
-            // PASEO_LAYOUT_DEBUG=1 (launch environment, also in Release so it can run on a device): log the scroll geometry.
-            .onScrollGeometryChange(for: String.self) { g in
-                "scroll container \(Int(g.containerSize.width))x\(Int(g.containerSize.height)) content \(Int(g.contentSize.width))x\(Int(g.contentSize.height)) offset \(Int(g.contentOffset.x)),\(Int(g.contentOffset.y))"
-            } action: { _, s in if LayoutProbe.on { print("[layout] \(agentId.prefix(7)) " + s) } }
+            .onScrollGeometryChange(for: TimelineGeometry.self) { g in
+                TimelineGeometry(offset: g.contentOffset.y, height: g.contentSize.height, viewport: g.containerSize.height)
+            } action: { _, geometry in
+                contentHeight = geometry.height
+                if LayoutProbe.on { print("[layout] \(agentId.prefix(7)) height \(geometry.height) offset \(geometry.offset) viewport \(geometry.viewport)") }
+                if let offset = restoreOffset, geometry.viewport > 0, displayedTimeline?.isLoaded == true {
+                    restoreOffset = nil
+                    if geometry.height >= offset + geometry.viewport - 1 {
+                        scrollPosition.scrollTo(y: offset)
+                    } else if let anchor = reading.anchorID {
+                        scrollPosition.scrollTo(id: anchor, anchor: .top)
+                    } else {
+                        scrollPosition.scrollTo(y: max(0, geometry.height - geometry.viewport))
+                    }
+                } else if let before = prependGeometry, !loadingOlder, geometry.height != before.height {
+                    prependGeometry = nil
+                    scrollPosition.scrollTo(y: max(0, before.offset + geometry.height - before.height))
+                } else if restoreOffset == nil {
+                    reading.offset = geometry.offset
+                }
+            }
+            .task(id: pendingJump) {
+                guard let id = pendingJump else { return }
+                scrollPosition.scrollTo(id: id, anchor: .center)
+                pendingJump = nil
+            }
             .overlay {
                 if host.timelineLoading.contains(agentId) && (timeline?.rows.isEmpty ?? true) { ProgressView() }
             }
@@ -421,20 +512,37 @@ struct AgentView: View {
                 }
                 // 「Scroll to bottom」 is a chip at the right end of the composer's chips row (was a round button at
                 // the window's far right edge).
-                .environment(\.scrollToBottom, atBottom ? nil : {
-                    withAnimation { scrollPosition.scrollTo(edge: .bottom) }
+                .environment(\.scrollToBottom, atBottom && reading.historyWindow == nil ? nil : {
+                    withAnimation { returnToLatest() }
                 })
             }
         }
+        .modifier(ToolDetailsPresenter(rows: displayedTimeline?.rows ?? [], selectedID: $toolDetailID))
+        .environment(\.hostFileReader, env?.fileReader)
         .onAppear {
+            reading = model.readingState(for: AgentRef(serverId: host.id, agentId: agentId))
+            atBottom = reading.atBottom
+            if reading.hasPosition, !reading.atBottom {
+                // 未发生缓存淘汰/历史重置时恢复精确偏移；内容基准变了就回最新，避免越界空白。
+                if reading.historyWindow != nil || reading.firstRowID == timeline?.rows.first?.id {
+                    restoreOffset = max(0, reading.offset)
+                }
+            }
             if env == nil { env = makeEnvironment() }
             host.openTimeline(agentId)
             host.clearAttention(agentId)
+            if reading.historyWindow != nil { ensureFullHistory() }
             #if DEBUG && os(iOS)
             ScrollBench.startIfRequested { [host, agentId] in await host.loadFullTimeline(agentId) }
             #endif
         }
-        .onDisappear { host.closeTimeline(agentId) }
+        .onDisappear {
+            reading.atBottom = atBottom && reading.historyWindow == nil
+            reading.hasPosition = true
+            reading.firstRowID = timeline?.rows.first?.id
+            historyTask?.cancel()
+            host.closeTimeline(agentId)
+        }
         // The session being watched finished or failed.
         .phoneFeedback(trigger: agent?.status) { old, new in
             guard old == .running else { return nil }
@@ -446,8 +554,20 @@ struct AgentView: View {
             if let (id, message) = n.object as? (String, String), id == agentId { actionError = message }
         }
         .onReceive(NotificationCenter.default.publisher(for: .scrollToMessage)) { n in
-            guard let id = n.object as? String, timeline?.rows.contains(where: { $0.id == id }) == true else { return }
-            withAnimation { scrollPosition.scrollTo(id: id, anchor: .top) }
+            if let target = n.object as? TimelineNavigationTarget, target.agentId == agentId, target.serverId == host.id {
+                history = target.snapshot
+                showMessage(target.rowId, snapshot: target.snapshot)
+            } else if let id = n.object as? String { showMessage(id) }
+        }
+        .onChange(of: timeline?.epoch) { _, epoch in
+            if let window = reading.historyWindow, let epoch, window.epoch != epoch { returnToLatest(); history = nil }
+            if reading.historyWindow != nil, history == nil { ensureFullHistory() }
+        }
+        .onChange(of: loadingOlder) { _, loading in
+            if !loading, let before = prependGeometry, contentHeight != before.height {
+                prependGeometry = nil
+                scrollPosition.scrollTo(y: max(0, before.offset + contentHeight - before.height))
+            }
         }
         .onChange(of: agent?.requiresAttention) { _, needs in if needs == true { host.clearAttention(agentId) } }
     }
@@ -755,4 +875,17 @@ struct QuestionButtonStyle: ButtonStyle {
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(primary ? .clear : Theme.border))
             .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.5)
     }
+}
+
+private struct TimelineGeometry: Equatable {
+    let offset: CGFloat
+    let height: CGFloat
+    let viewport: CGFloat
+}
+
+struct TimelineNavigationTarget {
+    let serverId: String
+    let agentId: String
+    let rowId: String
+    let snapshot: AgentTimeline
 }

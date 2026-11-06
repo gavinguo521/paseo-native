@@ -111,7 +111,11 @@ public final class HostStore: Identifiable {
     /// Round trip of a session `ping` RPC to this daemon (relay included), measured every heartbeat (15 s).
     /// nil while not connected or before the first answer.
     public private(set) var latencyMs: Int?
-    @ObservationIgnored private var openAgents: [String] = []
+    @ObservationIgnored private var timelineWatchers: [String: Int] = [:]
+    private var openAgents: [String] { timelineWatchers.keys.sorted() }
+    @ObservationIgnored private var timelineSyncTask: Task<Void, Never>?
+    @ObservationIgnored private var timelineInterestRevision = 0
+    @ObservationIgnored private var recentTimelines: [String] = []
     @ObservationIgnored private var timelineSubscriptionId: String?
     @ObservationIgnored var subscriptionIds: Set<String> = []
     @ObservationIgnored private var streamBuffer: [String: [JSONValue]] = [:]
@@ -138,6 +142,8 @@ public final class HostStore: Identifiable {
     }
 
     public func stop() {
+        timelineSyncTask?.cancel()
+        timelineSyncTask = nil
         runTask?.cancel()
         runTask = nil
         heartbeatTask?.cancel()
@@ -174,10 +180,13 @@ public final class HostStore: Identifiable {
                 attempt = 0
                 try await bootstrap(c)
                 state = .connected
+                scheduleTimelineSync()
                 startHeartbeat()
                 for await message in c.events { handle(message) }
                 // Stream ended: connection closed.
                 heartbeatTask?.cancel()
+                timelineSyncTask?.cancel()
+                timelineSyncTask = nil
                 latencyMs = nil
                 connection = nil
                 subscriptionIds.removeAll()
@@ -286,10 +295,7 @@ public final class HostStore: Identifiable {
             projects = next
         }
 
-        if !openAgents.isEmpty {
-            try await resubscribeTimelines(c)
-            for agentId in openAgents { await catchUp(agentId, c) }
-        }
+        // 时间线在进入 connected 后独立补齐，不阻塞全局状态和通知的事件消费。
     }
 
     func track(_ response: JSONValue) {
@@ -359,26 +365,58 @@ public final class HostStore: Identifiable {
     public func openTimeline(_ agentId: String) {
         focusedAgentId = agentId
         sendHeartbeat()
-        guard !openAgents.contains(agentId) else {
-            if let c = connection { Task { await catchUp(agentId, c) } }
-            return
-        }
-        openAgents.append(agentId)
-        guard let c = connection else { return }
-        timelineLoading.insert(agentId)
-        Task {
-            try? await resubscribeTimelines(c)
-            await catchUp(agentId, c)
-        }
+        timelineWatchers[agentId, default: 0] += 1
+        recentTimelines.removeAll { $0 == agentId }
+        recentTimelines.append(agentId)
+        timelineInterestRevision += 1
+        scheduleTimelineSync()
     }
 
     public func closeTimeline(_ agentId: String) {
         if focusedAgentId == agentId { focusedAgentId = nil; sendHeartbeat() }
+        if let count = timelineWatchers[agentId], count > 1 { timelineWatchers[agentId] = count - 1 }
+        else { timelineWatchers[agentId] = nil }
+        timelineInterestRevision += 1
+        scheduleTimelineSync()
+        trimTimelineCache()
     }
 
-    private func resubscribeTimelines(_ c: DaemonConnection) async throws {
+    /// 串行提交订阅集合：快速 A→B→C 时，旧请求不能覆盖新选择。全局 agent/通知订阅不受影响。
+    private func scheduleTimelineSync() {
+        guard state == .connected, let c = connection, timelineSyncTask == nil else { return }
+        timelineSyncTask = Task {
+            defer { if connection === c { timelineSyncTask = nil } }
+            while !Task.isCancelled, connection === c {
+                let revision = timelineInterestRevision
+                let ids = openAgents
+                do {
+                    try await resubscribeTimelines(c, agentIds: ids)
+                    for id in ids where timelineWatchers[id] != nil {
+                        timelineLoading.insert(id)
+                        await catchUp(id, c)
+                    }
+                } catch {
+                    for id in openAgents { timelineErrors[id] = String(localized: "加载历史失败：\(error)", bundle: .module) }
+                }
+                if revision == timelineInterestRevision { break }
+            }
+        }
+    }
+
+    private func trimTimelineCache() {
+        let inactive = recentTimelines.filter { timelineWatchers[$0] == nil && !catchingUp.contains($0) }
+        for id in inactive.dropLast(8) {
+            timelines[id] = nil
+            timelineErrors[id] = nil
+            streamBuffer[id] = nil
+            recentTimelines.removeAll { $0 == id }
+        }
+    }
+
+    private func resubscribeTimelines(_ c: DaemonConnection, agentIds: [String]) async throws {
         let old = timelineSubscriptionId
-        let r = try await c.request("agent.timeline.set_subscription.request", ["agentIds": .array(openAgents.map { .string($0) })])
+        let r = try await c.request("agent.timeline.set_subscription.request", ["agentIds": .array(agentIds.map { .string($0) })])
+        guard connection === c, !Task.isCancelled else { return }
         timelineSubscriptionId = r["payload"]?["subscriptionId"]?.stringValue
         if let old, old != timelineSubscriptionId {
             _ = try? await c.request("subscription.release.request", ["subscriptionId": .string(old)])
@@ -392,6 +430,7 @@ public final class HostStore: Identifiable {
         defer {
             catchingUp.remove(agentId)
             timelineLoading.remove(agentId)
+            trimTimelineCache()
         }
         var timeline = timelines[agentId] ?? AgentTimeline()
         let startEnd = timeline.endSeq
@@ -408,6 +447,7 @@ public final class HostStore: Identifiable {
         do {
             for _ in 0..<50 {
                 let r = try await c.request("fetch_agent_timeline_request", params)
+                guard connection === c, !Task.isCancelled else { return }
                 guard let p = r["payload"] else { break }
                 if let e = p["error"], e != .null {
                     timelineErrors[agentId] = e["message"]?.stringValue ?? e.stringValue ?? String(localized: "加载历史失败", bundle: .module)
@@ -429,6 +469,8 @@ public final class HostStore: Identifiable {
         timelineErrors[agentId] = nil
         timelines[agentId] = timeline
         let buffered = streamBuffer.removeValue(forKey: agentId) ?? []
+        // 回放已进入同步后的时间线；否则 applyStream 会把它们再次放回缓冲区。
+        catchingUp.remove(agentId)
         // 诊断（实时推送时文字偶尔停在第一块）：只记补拉，不记正常推送。
         AppLog.shared.record("时间线", "\(agentId.prefix(8)) 补拉 endSeq \(startEnd.map(String.init) ?? "空")→\(timeline.endSeq.map(String.init) ?? "空")，\(pages) 页，回放缓冲 \(buffered.count) 条：\(buffered.compactMap { $0["seq"]?.doubleValue.map { String(Int($0)) } }.joined(separator: ","))")
         for p in buffered { applyStream(agentId, p) }
@@ -468,7 +510,8 @@ public final class HostStore: Identifiable {
         timelineErrors[agentId] = nil
         guard let c = connection else { return }
         timelineLoading.insert(agentId)
-        Task { await catchUp(agentId, c) }
+        if timelineWatchers[agentId] != nil { scheduleTimelineSync() }
+        else { Task { await catchUp(agentId, c) } }
     }
 
     private func reloadTimeline(_ agentId: String) {

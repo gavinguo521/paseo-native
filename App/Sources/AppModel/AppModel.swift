@@ -28,6 +28,7 @@ enum Destination: Hashable, Codable, Sendable {
     case schedules
     case usage
     case board
+    case overview
 }
 
 /// One tab in a workspace. Official: workspace-tabs/model.ts (no split panes yet).
@@ -146,12 +147,36 @@ final class AppModel {
     var queue: [String: [QueuedMessage]] = [:]
 
     /// Unsent composer text per agent, kept across switching sessions and relaunches.
-    private(set) var composerDrafts: [String: String] = UserDefaults.standard.dictionary(forKey: "composerDrafts") as? [String: String] ?? [:]
+    @ObservationIgnored private(set) var composerDrafts: [String: String] = UserDefaults.standard.dictionary(forKey: "composerDrafts") as? [String: String] ?? [:]
+    @ObservationIgnored private var draftSaveTask: Task<Void, Never>?
+    @ObservationIgnored private var draftsDirty = false
+    @ObservationIgnored private var readingStates: [AgentRef: TimelineReadingState] = [:]
+
+    func readingState(for ref: AgentRef) -> TimelineReadingState {
+        if let state = readingStates[ref] { return state }
+        let state = TimelineReadingState()
+        readingStates[ref] = state
+        return state
+    }
 
     func saveDraft(_ text: String, for agentId: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard composerDrafts[agentId] != (trimmed.isEmpty ? nil : text) else { return }
         if trimmed.isEmpty { composerDrafts[agentId] = nil } else { composerDrafts[agentId] = text }
+        draftsDirty = true
+        draftSaveTask?.cancel()
+        draftSaveTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            self?.flushDrafts()
+        }
+    }
+
+    func flushDrafts() {
+        draftSaveTask?.cancel()
+        draftSaveTask = nil
+        guard draftsDirty else { return }
         UserDefaults.standard.set(composerDrafts, forKey: "composerDrafts")
+        draftsDirty = false
     }
     /// Which settings page opens next (0 通用, 1 机器).
     var settingsTab = 0
@@ -221,7 +246,29 @@ final class AppModel {
         var offer: PairingOffer
     }
 
+    #if DEBUG
+    /// 隔离性能测试只注入内存状态，不读取钥匙串或启动连接。
+    init(testHosts: [HostStore]) {
+        clientId = "sidebar-performance-test"
+        hosts = testHosts
+    }
+    #endif
+
     init() {
+        #if DEBUG && PASEO_REPLAY
+        if let replay = DebugStreamReplay.loadIfRequested() {
+            clientId = "isolated-replay"
+            hosts = [replay.host]
+            sort = .manual
+            grouping = .project
+            projectOrder = ["project:对照项目", "project:回放项目"]
+            workspaceOrder = [:]
+            projectAliases = [:]
+            hostFilter = nil
+            destination = .agent(AgentRef(serverId: replay.host.id, agentId: "replay"))
+            return
+        }
+        #endif
         // Stable across launches: the daemon resumes the logical session by clientId.
         if let id = UserDefaults.standard.string(forKey: "clientId") {
             clientId = id
@@ -261,12 +308,20 @@ final class AppModel {
     /// Pinned workspaces first (official "Pinned" section), then by project or by status.
     var groups: [SessionGroup] {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
+        let hosts = visibleHosts
         var matched: [(HostStore, Agent)] = []
-        for h in visibleHosts {
-            for a in h.agents.values where !h.isNested(a) && a.archivedAt == nil && matchesLabels(a, in: h)
-                && (query.isEmpty || a.displayTitle.lowercased().contains(query)
+        var workspaceSessions: [String: [String: [Agent]]] = [:]
+        var descendants: [String: [String: [Agent]]] = [:]
+        // 每台机器只扫描一次；原先每个工作区都重扫所有会话和子任务，数据量大时接近平方增长。
+        for h in hosts {
+            for a in h.agents.values where a.archivedAt == nil {
+                if let parent = a.parentAgentId { descendants[h.id, default: [:]][parent, default: []].append(a) }
+                guard !h.isNested(a) else { continue }
+                if let workspace = a.workspaceId { workspaceSessions[h.id, default: [:]][workspace, default: []].append(a) }
+                if matchesLabels(a, in: h) && (query.isEmpty || a.displayTitle.lowercased().contains(query)
                     || (a.workspaceId.flatMap { h.workspaces[$0]?.title }?.lowercased().contains(query) ?? false)) {
-                matched.append((h, a))
+                    matched.append((h, a))
+                }
             }
         }
         typealias Row = (host: HostStore, agent: Agent, bucket: StatusBucket, key: Date)
@@ -275,14 +330,14 @@ final class AppModel {
             let h = list[0].0
             let pick = representative(list.map(\.1), host: h)
             // Status and order come from all the workspace's live sessions, not only the ones matching the search.
-            let all = pick.workspaceId.map { ws in h.agents.values.filter { $0.workspaceId == ws && $0.archivedAt == nil && !h.isNested($0) } } ?? [pick]
-            collapsed.append((h, pick, groupBucket(all, in: h), all.map { sortKey($0) }.max() ?? sortKey(pick)))
+            let all = pick.workspaceId.flatMap { workspaceSessions[h.id]?[$0] } ?? [pick]
+            collapsed.append((h, pick, groupBucket(all, in: h, children: descendants[h.id] ?? [:]), all.map { sortKey($0) }.max() ?? sortKey(pick)))
         }
         collapsed.sort { $0.key > $1.key }
         let rowsOf = { (list: [Row]) in list.map { (serverId: $0.host.id, agent: $0.agent, bucket: $0.bucket) } }
         let pinned = collapsed.filter { r in r.agent.workspaceId.flatMap { r.host.workspaces[$0]?.pinnedAt } != nil }
         let rest = collapsed.filter { r in r.agent.workspaceId.flatMap { r.host.workspaces[$0]?.pinnedAt } == nil }
-        let multiHost = visibleHosts.count > 1
+        let multiHost = hosts.count > 1
         var out: [SessionGroup] = []
         switch grouping {
         case .project:
@@ -310,7 +365,7 @@ final class AppModel {
             if query.isEmpty && labelFilter.isEmpty {
                 let shown = Set(out.map(\.id))
                 var idle: [String: [(HostStore, Project)]] = [:]
-                for h in visibleHosts {
+                for h in hosts {
                     for project in h.projects.values where !shown.contains("project:" + groupName(h.id, project.displayName, auto: auto)) {
                         idle[groupName(h.id, project.displayName, auto: auto), default: []].append((h, project))
                     }
@@ -399,6 +454,10 @@ final class AppModel {
     func groupBucket(_ roots: [Agent], in host: HostStore) -> StatusBucket {
         let live = host.agents.values.filter { $0.archivedAt == nil && $0.parentAgentId != nil }
         let children = Dictionary(grouping: live) { $0.parentAgentId! }
+        return groupBucket(roots, in: host, children: children)
+    }
+
+    private func groupBucket(_ roots: [Agent], in host: HostStore, children: [String: [Agent]]) -> StatusBucket {
         var best = roots.map(\.bucket).min() ?? .done
         var stack = roots.map(\.id)
         var seen = Set(stack)
@@ -725,6 +784,9 @@ final class AppModel {
     func start() {
         guard !started else { return }
         started = true
+        #if DEBUG && PASEO_REPLAY
+        if let replay = DebugStreamReplay.active { replay.play(); return }
+        #endif
         NotificationManager.shared.setUp()
         NotificationManager.shared.onOpen = { [weak self] ref in self?.open(ref) }
         NotificationManager.shared.onAction = { [weak self] ref, action in await self?.handleNotification(action, ref: ref) }
@@ -929,6 +991,7 @@ final class AppModel {
     }
 
     func setAppVisible(_ visible: Bool) {
+        if !visible { flushDrafts() }
         appActive = visible
         hosts.forEach { $0.setAppVisible(visible) }
     }
@@ -1018,6 +1081,10 @@ final class AppModel {
     }
 
     private func persist() {
+        #if DEBUG && PASEO_REPLAY
+        // 回放设置中的操作也不得写入日常连接所在的钥匙串。
+        guard DebugStreamReplay.active == nil else { return }
+        #endif
         let stored = hosts.map { StoredHost(label: $0.label, offer: $0.offer) }
         if let data = try? JSONEncoder().encode(stored) { Keychain.save(data, account: Self.hostsKey) }
     }

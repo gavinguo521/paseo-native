@@ -31,6 +31,8 @@ import UIKit
     private var hitchTime: CFTimeInterval = 0
     private var elapsed: CFTimeInterval = 0
     private var worst: CFTimeInterval = 0
+    private var intervals: [Double] = []
+    private var targets: [Int: Int] = [:]
     private var droppedPerLeg = [0, 0, 0, 0, 0]
     /// Frames where the content height changed, and where something other than us moved the offset.
     private var sizeChanges = [0, 0, 0, 0, 0]
@@ -53,10 +55,11 @@ import UIKit
             print("BENCH no scroll view"); return
         }
         scrollView = s
-        print("BENCH start content=\(Int(s.contentSize.height)) view=\(Int(s.bounds.height)) speed=\(Int(speed))")
+        let maximum = Float(s.window?.windowScene?.screen.maximumFramesPerSecond ?? 60)
+        print("BENCH start content=\(Int(s.contentSize.height)) view=\(Int(s.bounds.height)) speed=\(Int(speed)) displayMax=\(Int(maximum))Hz")
         Self.running = self
         let link = CADisplayLink(target: self, selector: #selector(tick))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, maximum), maximum: maximum, preferred: maximum)
         link.add(to: .main, forMode: .common)
         self.link = link
     }
@@ -69,6 +72,8 @@ import UIKit
             frames += 1
             elapsed += dt
             worst = max(worst, dt)
+            intervals.append(dt * 1000)
+            if budget > 0 { targets[Int((1 / budget).rounded()), default: 0] += 1 }
             if budget > 0, dt > budget * 1.5 {
                 dropped += Int((dt / budget).rounded()) - 1
                 droppedPerLeg[min(legs, 4)] += Int((dt / budget).rounded()) - 1
@@ -93,6 +98,8 @@ import UIKit
     private func finish() {
         link?.invalidate()
         let ms = elapsed > 0 ? hitchTime * 1000 / elapsed : 0
+        let sorted = intervals.sorted()
+        print("BENCH callbackFPS=\(elapsed > 0 ? Double(frames) / elapsed : 0) p95ms=\(sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]) targetHz=\(targets)")
         print(String(format: "BENCH done frames=%d dropped=%d hitch=%.1fms/s worst=%.1fms seconds=%.1f content=%d legs=%@",
                      frames, dropped, ms, worst * 1000, elapsed, Int(scrollView?.contentSize.height ?? 0),
                      droppedPerLeg.prefix(4).map(String.init).joined(separator: "/"))

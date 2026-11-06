@@ -35,6 +35,9 @@ struct PaseoApp: App {
                 }
                 .onChange(of: scenePhase) { _, phase in
                     model.setAppVisible(phase == .active)
+                    #if os(macOS)
+                    if phase == .active { UpdateChecker.shared.checkOnActivation() }
+                    #endif
                     #if os(iOS)
                     if phase == .active { LiveActivityController.shared.sync() }
                     #endif

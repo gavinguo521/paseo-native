@@ -66,8 +66,6 @@ struct ComposerView: View {
     @State private var sending = false
     @State private var sentCount = 0
     @State private var error: String?
-    @State private var showSubagents = false
-    @State private var showBackgroundTasks = false
     @State private var uploads: [UploadItem] = []
     @State private var autocomplete = AutocompleteModel()
     @State private var suggestion: NextInputSuggestion?
@@ -84,34 +82,6 @@ struct ComposerView: View {
     private var running: Bool { agent?.status == .running }
     private var behavior: SendBehavior { SendBehavior(rawValue: sendBehavior) ?? .steer }
     private var queued: [QueuedMessage] { model.queue[agentId] ?? [] }
-    /// 直接子会话（含跨机器的），带上它所在的主机：归档、解除父子关系都要发给那台主机。
-    private var subagents: [(agent: Agent, host: HostStore)] {
-        descendants.filter { $0.depth == 0 }.map { ($0.agent, $0.host) }
-    }
-    /// 全部后代会话（子会话、子会话的子会话……），深度优先，depth 0 = 直接子会话；弹层按它缩进成树，
-    /// 不然孙会话只能先点进子会话才看得到。子会话可能开在别的机器上（label `paseo.parent-server-id`
-    /// 指回父会话所在主机），所以在所有已连接主机里找，按「父主机|父会话 id」归组。
-    private var descendants: [(agent: Agent, host: HostStore, depth: Int)] {
-        var children: [String: [(agent: Agent, host: HostStore)]] = [:]
-        for h in model.hosts {
-            for a in h.agents.values where a.archivedAt == nil {
-                guard let parent = a.parentAgentId else { continue }
-                children[(a.parentServerId ?? h.id) + "|" + parent, default: []].append((a, h))
-            }
-        }
-        var out: [(agent: Agent, host: HostStore, depth: Int)] = []
-        var seen: Set<String> = [host.id + "|" + agentId]
-        func walk(_ serverId: String, _ id: String, _ depth: Int) {
-            for c in (children[serverId + "|" + id] ?? []).sorted(by: { ($0.agent.createdAt ?? .distantPast) > ($1.agent.createdAt ?? .distantPast) })
-            where seen.insert(c.host.id + "|" + c.agent.id).inserted {
-                out.append((c.agent, c.host, depth))
-                walk(c.host.id, c.agent.id, depth + 1)
-            }
-        }
-        walk(host.id, agentId, 0)
-        return out
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             if !queued.isEmpty { queueTrack }
@@ -127,7 +97,7 @@ struct ComposerView: View {
                 ComposerControls(summary: composerSummary(host, agent?.provider ?? "", agent?.model,
                                                           agent?.thinkingOptionId ?? agent?.effectiveThinkingOptionId)) { controls }
             } trailing: {
-                if !compact { subagentPill }
+                if !compact { ComposerSubagents(host: host, agentId: agentId) }
                 if let usage = agent?.lastUsage { ContextRing(usage: usage, quota: (host, agentId, agent?.model), compact: compact) }
                 if hasContent {
                     RoundButton(systemImage: "arrow.up", busy: sending, help: running ? behavior.label : String(localized: "发送")) { send() }
@@ -153,9 +123,7 @@ struct ComposerView: View {
             if text.isEmpty, let draft = model.composerDrafts[agentId] { text = draft }
         }
         .onChange(of: text) { _, t in model.saveDraft(t, for: agentId) }
-        #if DEBUG
-        .task { if model.debugPane == "subagents" { try? await Task.sleep(for: .seconds(4)); showSubagents = true } }
-        #endif
+        .onDisappear { model.saveDraft(text, for: agentId); model.flushDrafts() }
         .task(id: host.state == .connected) { await host.watchProviderSubagents(agentId) }
         .onChange(of: text) { _, t in autocomplete.update(text: t, host: host, agentId: agentId, cwd: agent?.cwd) }
         .onChange(of: agent?.status) { _, status in
@@ -170,15 +138,6 @@ struct ComposerView: View {
             text += (text.isEmpty || text.hasSuffix(" ") || text.hasSuffix("\n") ? "" : " ") + t + " "
             focused = true
         }
-    }
-
-    /// The current turn's task list (official composer task pill).
-    private var latestTodos: [TodoItem]? {
-        for r in (host.timelines[agentId]?.rows ?? []).reversed() {
-            if case .todo(let items) = r.item { return items }
-            if case .userMessage = r.item { return nil }
-        }
-        return nil
     }
 
     private func sendSuggestion(_ s: NextInputSuggestion) {
@@ -223,17 +182,7 @@ struct ComposerView: View {
             .accessibilityLabel(String(localized: "把建议填进输入框：\(s.text)"))
         }
         #endif
-        if let todos = latestTodos, !todos.isEmpty, todos.contains(where: { !$0.completed }) {
-            Chip {
-                Image(systemName: "checklist")
-                Text("任务 \(todos.filter(\.completed).count)/\(todos.count)")
-                if let current = todos.first(where: { $0.status == "in_progress" }) {
-                    Text(current.text).lineLimit(1).frame(maxWidth: 260)
-                }
-            }
-            .help(todos.map { ($0.completed ? "✓ " : "○ ") + $0.text }.joined(separator: "\n"))
-        }
-        backgroundTaskPill
+        ComposerTaskChips(host: host, agentId: agentId)
         let branchMarker = BranchMarker(agent: agent, workspace: workspace, host: host)
         if branchMarker.showsChip { BranchChip(marker: branchMarker) }
         if let workspace, let add = workspace.additions, let del = workspace.deletions, add + del > 0 {
@@ -243,116 +192,7 @@ struct ComposerView: View {
                 Text("−\(del)").foregroundStyle(Theme.diffRemove)
             }
         }
-        if compact { subagentPill }
-    }
-
-    /// Subagents live beside the context ring in the bottom row: both are this session's current state.
-    @ViewBuilder private var subagentPill: some View {
-        let providerSubs = host.providerSubagents(of: agentId)
-        let nested = descendants.map(\.agent)
-        if !nested.isEmpty || !providerSubs.isEmpty {
-            Button { showSubagents.toggle() } label: {
-                Chip {
-                    Image(systemName: "person.2")
-                    // Narrow composer (iPad portrait, split view): just the count.
-                    ViewThatFits(in: .horizontal) {
-                        Text(subagentPillLabel(providerSubs)).fixedSize()
-                        Text("\(nested.count + providerSubs.count)").fixedSize()
-                    }
-                    if providerSubs.contains(where: { !$0.isFinished }) || nested.contains(where: { $0.status == .running }) {
-                        ProgressView().controlSize(.mini)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .help(subagentPillLabel(providerSubs))
-            .popover(isPresented: $showSubagents, arrowEdge: .bottom) {
-                // A real popover on iPhone too, not a full-height sheet with the list floating in it.
-                subagentList.compactPopover()
-            }
-        }
-    }
-
-    /// Claude 在后台跑的命令（Bash 的 run_in_background）。daemon 不提供这个列表，由时间线推出来（`backgroundTasks`）。
-    private var backgroundTasks: [AgentBackgroundTask] {
-        let ended = agent.map { $0.status == .closed || $0.status == .error } ?? false
-        return host.timelines[agentId]?.backgroundTasks(sessionEnded: ended) ?? []
-    }
-
-    /// 有后台命令在跑时显示；点开列出这个会话的后台命令（在跑的在前），点一条跳到时间线里那条命令。
-    @ViewBuilder private var backgroundTaskPill: some View {
-        let tasks = backgroundTasks
-        let running = tasks.filter { $0.state == .running }.count
-        if running > 0 {
-            Button { showBackgroundTasks.toggle() } label: {
-                Chip {
-                    Image(systemName: "terminal")
-                    ViewThatFits(in: .horizontal) {
-                        Text("\(running) 个后台任务").fixedSize()
-                        Text("\(running)").fixedSize()
-                    }
-                    ProgressView().controlSize(.mini)
-                }
-            }
-            .buttonStyle(.plain)
-            .help("\(running) 个后台任务运行中")
-            .accessibilityLabel("\(running) 个后台任务运行中")
-            .popover(isPresented: $showBackgroundTasks, arrowEdge: .bottom) {
-                backgroundTaskList(tasks).compactPopover()
-            }
-        }
-    }
-
-    private func backgroundTaskList(_ tasks: [AgentBackgroundTask]) -> some View {
-        let ordered = tasks.filter { $0.state == .running }.reversed() + tasks.filter { $0.state != .running }.reversed().prefix(10)
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(ordered) { task in
-                    Button {
-                        showBackgroundTasks = false
-                        NotificationCenter.default.post(name: .scrollToMessage, object: task.rowId)
-                    } label: {
-                        BackgroundTaskRow(task: task)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.vertical, 6)
-        }
-        .frame(maxHeight: 420)
-        #if os(iOS)
-        .frame(width: 340)
-        #else
-        .frame(width: 400)
-        #endif
-    }
-
-    /// Like the official pill: active states with counts, otherwise the total.
-    private func subagentPillLabel(_ providerSubs: [ProviderSubagent]) -> String {
-        let subagents = descendants.map(\.agent)
-        let running = providerSubs.filter { !$0.isFinished }.count + subagents.filter { $0.status == .running }.count
-        let failed = providerSubs.filter { $0.status == "failed" }.count + subagents.filter { $0.status == .error }.count
-        let needsInput = subagents.filter { $0.bucket == .needsInput }.count
-        let review = subagents.filter { $0.bucket == .attention }.count
-        var parts: [String] = []
-        if needsInput > 0 { parts.append(String(localized: "\(needsInput) 个需要输入")) }
-        if failed > 0 { parts.append(String(localized: "\(failed) 个失败")) }
-        if running > 0 { parts.append(String(localized: "\(running) 个运行中")) }
-        if review > 0 { parts.append(String(localized: "\(review) 个待查看")) }
-        return parts.isEmpty ? String(localized: "\(subagents.count + providerSubs.count) 个子代理") : parts.joined(separator: " · ")
-    }
-
-    private var finishedSubagentCount: Int {
-        host.providerSubagents(of: agentId).filter(\.isFinished).count
-            + subagents.filter { $0.agent.status == .idle || $0.agent.status == .error }.count
-    }
-
-    /// Clears finished provider subagents from the pill and archives finished child sessions.
-    private func archiveFinishedSubagents() {
-        host.hideProviderSubagents(host.providerSubagents(of: agentId).filter(\.isFinished).map(\.id))
-        let finished = subagents.filter { $0.agent.status == .idle || $0.agent.status == .error }
-        Task { for f in finished { try? await f.host.archive(f.agent.id) } }
-        showSubagents = false
+        if compact { ComposerSubagents(host: host, agentId: agentId) }
     }
 
     /// Per-message settings, inside the input box like the official composer.
@@ -392,63 +232,6 @@ struct ComposerView: View {
                     .help("套用 Agent 配置（模型、思考、模式、开关）")
             }
         }
-    }
-
-    private var subagentList: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if finishedSubagentCount > 0 {
-                Button(action: archiveFinishedSubagents) {
-                    Label("归档已完成的子代理", systemImage: "archivebox")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 14).padding(.vertical, 10)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                Divider()
-            }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(descendants, id: \.agent.id) { sub, subHost, depth in
-                        HStack(spacing: 0) {
-                            if depth > 0 {
-                                Image(systemName: "arrow.turn.down.right").font(.system(size: 10)).foregroundStyle(Theme.muted)
-                                    .padding(.leading, 14 + CGFloat(depth - 1) * 16).padding(.trailing, -8)
-                            }
-                            SubagentRowButton(label: sub.displayTitle, detail: sub.status == .running ? String(localized: "运行中") : nil,
-                                              tag: subHost.id == host.id ? nil : subHost.label) {
-                                StatusDot(bucket: sub.bucket)
-                            } action: {
-                                showSubagents = false
-                                model.open(AgentRef(serverId: subHost.id, agentId: sub.id))
-                            }
-                            Menu {
-                                Button("解除父子关系", systemImage: "link") { Task { try? await subHost.detach(sub.id) } }
-                                Button("归档", systemImage: "archivebox", role: .destructive) { Task { try? await subHost.archive(sub.id) } }
-                            } label: { Image(systemName: "ellipsis").frame(width: 24, height: 24) }
-                                .controlMenuStyle()
-                                .accessibilityLabel("更多操作")
-                                .padding(.trailing, 10)
-                        }
-                    }
-                    ForEach(host.providerSubagents(of: agentId)) { sub in
-                        SubagentRowButton(label: sub.label, detail: sub.detail) {
-                            ProviderSubagentStatusIcon(status: sub.status)
-                        } action: {
-                            showSubagents = false
-                            model.openProviderSubagent(serverId: host.id, parentAgentId: agentId, subagentId: sub.id)
-                        }
-                    }
-                }
-                .padding(.vertical, 6)
-            }
-            .frame(maxHeight: 420)
-        }
-        #if os(iOS)
-        .frame(width: 340)
-        #else
-        .frame(width: 400)
-        #endif
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var queueTrack: some View {
@@ -568,6 +351,245 @@ struct ComposerView: View {
         model.queue[agentId] = list
         dispatch(next.text, next.images, files: next.files, steer: true)
     }
+}
+
+// 子会话和任务区独立观察数据，输入文字变化不再重建它们的派生列表。
+private struct ComposerSubagents: View {
+    @Environment(AppModel.self) private var model
+    let host: HostStore
+    let agentId: String
+    @State private var showSubagents = false
+    var body: some View {
+        subagentPill
+        #if DEBUG
+        .task { if model.debugPane == "subagents" { showSubagents = true } }
+        #endif
+    }
+    /// 直接子会话（含跨机器的），带上它所在的主机：归档、解除父子关系都要发给那台主机。
+    private var subagents: [(agent: Agent, host: HostStore)] {
+        descendants.filter { $0.depth == 0 }.map { ($0.agent, $0.host) }
+    }
+    /// 全部后代会话（子会话、子会话的子会话……），深度优先，depth 0 = 直接子会话；弹层按它缩进成树，
+    /// 不然孙会话只能先点进子会话才看得到。子会话可能开在别的机器上（label `paseo.parent-server-id`
+    /// 指回父会话所在主机），所以在所有已连接主机里找，按「父主机|父会话 id」归组。
+    private var descendants: [(agent: Agent, host: HostStore, depth: Int)] {
+        var children: [String: [(agent: Agent, host: HostStore)]] = [:]
+        for h in model.hosts {
+            for a in h.agents.values where a.archivedAt == nil {
+                guard let parent = a.parentAgentId else { continue }
+                children[(a.parentServerId ?? h.id) + "|" + parent, default: []].append((a, h))
+            }
+        }
+        var out: [(agent: Agent, host: HostStore, depth: Int)] = []
+        var seen: Set<String> = [host.id + "|" + agentId]
+        func walk(_ serverId: String, _ id: String, _ depth: Int) {
+            for c in (children[serverId + "|" + id] ?? []).sorted(by: { ($0.agent.createdAt ?? .distantPast) > ($1.agent.createdAt ?? .distantPast) })
+            where seen.insert(c.host.id + "|" + c.agent.id).inserted {
+                out.append((c.agent, c.host, depth))
+                walk(c.host.id, c.agent.id, depth + 1)
+            }
+        }
+        walk(host.id, agentId, 0)
+        return out
+    }
+
+    /// Subagents live beside the context ring in the bottom row: both are this session's current state.
+    @ViewBuilder private var subagentPill: some View {
+        let providerSubs = host.providerSubagents(of: agentId)
+        let nested = descendants.map(\.agent)
+        if !nested.isEmpty || !providerSubs.isEmpty {
+            Button { showSubagents.toggle() } label: {
+                Chip {
+                    Image(systemName: "person.2")
+                    // Narrow composer (iPad portrait, split view): just the count.
+                    ViewThatFits(in: .horizontal) {
+                        Text(subagentPillLabel(providerSubs)).fixedSize()
+                        Text("\(nested.count + providerSubs.count)").fixedSize()
+                    }
+                    if providerSubs.contains(where: { !$0.isFinished }) || nested.contains(where: { $0.status == .running }) {
+                        ProgressView().controlSize(.mini)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .help(subagentPillLabel(providerSubs))
+            .popover(isPresented: $showSubagents, arrowEdge: .bottom) {
+                // A real popover on iPhone too, not a full-height sheet with the list floating in it.
+                subagentList.compactPopover()
+            }
+        }
+    }
+
+    /// Like the official pill: active states with counts, otherwise the total.
+    private func subagentPillLabel(_ providerSubs: [ProviderSubagent]) -> String {
+        let subagents = descendants.map(\.agent)
+        let running = providerSubs.filter { !$0.isFinished }.count + subagents.filter { $0.status == .running }.count
+        let failed = providerSubs.filter { $0.status == "failed" }.count + subagents.filter { $0.status == .error }.count
+        let needsInput = subagents.filter { $0.bucket == .needsInput }.count
+        let review = subagents.filter { $0.bucket == .attention }.count
+        var parts: [String] = []
+        if needsInput > 0 { parts.append(String(localized: "\(needsInput) 个需要输入")) }
+        if failed > 0 { parts.append(String(localized: "\(failed) 个失败")) }
+        if running > 0 { parts.append(String(localized: "\(running) 个运行中")) }
+        if review > 0 { parts.append(String(localized: "\(review) 个待查看")) }
+        return parts.isEmpty ? String(localized: "\(subagents.count + providerSubs.count) 个子代理") : parts.joined(separator: " · ")
+    }
+
+    private var finishedSubagentCount: Int {
+        host.providerSubagents(of: agentId).filter(\.isFinished).count
+            + subagents.filter { $0.agent.status == .idle || $0.agent.status == .error }.count
+    }
+
+    /// Clears finished provider subagents from the pill and archives finished child sessions.
+    private func archiveFinishedSubagents() {
+        host.hideProviderSubagents(host.providerSubagents(of: agentId).filter(\.isFinished).map(\.id))
+        let finished = subagents.filter { $0.agent.status == .idle || $0.agent.status == .error }
+        Task { for f in finished { try? await f.host.archive(f.agent.id) } }
+        showSubagents = false
+    }
+
+    private var subagentList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if finishedSubagentCount > 0 {
+                Button(action: archiveFinishedSubagents) {
+                    Label("归档已完成的子代理", systemImage: "archivebox")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Divider()
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(descendants, id: \.agent.id) { sub, subHost, depth in
+                        HStack(spacing: 0) {
+                            if depth > 0 {
+                                Image(systemName: "arrow.turn.down.right").font(.system(size: 10)).foregroundStyle(Theme.muted)
+                                    .padding(.leading, 14 + CGFloat(depth - 1) * 16).padding(.trailing, -8)
+                            }
+                            SubagentRowButton(label: sub.displayTitle, detail: sub.status == .running ? String(localized: "运行中") : nil,
+                                              tag: subHost.id == host.id ? nil : subHost.label) {
+                                StatusDot(bucket: sub.bucket)
+                            } action: {
+                                showSubagents = false
+                                model.open(AgentRef(serverId: subHost.id, agentId: sub.id))
+                            }
+                            Menu {
+                                Button("解除父子关系", systemImage: "link") { Task { try? await subHost.detach(sub.id) } }
+                                Button("归档", systemImage: "archivebox", role: .destructive) { Task { try? await subHost.archive(sub.id) } }
+                            } label: { Image(systemName: "ellipsis").frame(width: 24, height: 24) }
+                                .controlMenuStyle()
+                                .accessibilityLabel("更多操作")
+                                .padding(.trailing, 10)
+                        }
+                    }
+                    ForEach(host.providerSubagents(of: agentId)) { sub in
+                        SubagentRowButton(label: sub.label, detail: sub.detail) {
+                            ProviderSubagentStatusIcon(status: sub.status)
+                        } action: {
+                            showSubagents = false
+                            model.openProviderSubagent(serverId: host.id, parentAgentId: agentId, subagentId: sub.id)
+                        }
+                    }
+                }
+                .padding(.vertical, 6)
+            }
+            .frame(maxHeight: 420)
+        }
+        #if os(iOS)
+        .frame(width: 340)
+        #else
+        .frame(width: 400)
+        #endif
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+}
+
+private struct ComposerTaskChips: View {
+    let host: HostStore
+    let agentId: String
+    @State private var showBackgroundTasks = false
+    private var agent: Agent? { host.agents[agentId] }
+    var body: some View {
+        Group {
+        if let todos = latestTodos, !todos.isEmpty, todos.contains(where: { !$0.completed }) {
+            Chip {
+                Image(systemName: "checklist")
+                Text("任务 \(todos.filter(\.completed).count)/\(todos.count)")
+                if let current = todos.first(where: { $0.status == "in_progress" }) {
+                    Text(current.text).lineLimit(1).frame(maxWidth: 260)
+                }
+            }
+            .help(todos.map { ($0.completed ? "✓ " : "○ ") + $0.text }.joined(separator: "\n"))
+        }
+        backgroundTaskPill
+        }
+    }
+    /// The current turn's task list (official composer task pill).
+    private var latestTodos: [TodoItem]? {
+        for r in (host.timelines[agentId]?.rows ?? []).reversed() {
+            if case .todo(let items) = r.item { return items }
+            if case .userMessage = r.item { return nil }
+        }
+        return nil
+    }
+
+    /// Claude 在后台跑的命令（Bash 的 run_in_background）。daemon 不提供这个列表，由时间线推出来（`backgroundTasks`）。
+    private var backgroundTasks: [AgentBackgroundTask] {
+        let ended = agent.map { $0.status == .closed || $0.status == .error } ?? false
+        return host.timelines[agentId]?.backgroundTasks(sessionEnded: ended) ?? []
+    }
+
+    /// 有后台命令在跑时显示；点开列出这个会话的后台命令（在跑的在前），点一条跳到时间线里那条命令。
+    @ViewBuilder private var backgroundTaskPill: some View {
+        let tasks = backgroundTasks
+        let running = tasks.filter { $0.state == .running }.count
+        if running > 0 {
+            Button { showBackgroundTasks.toggle() } label: {
+                Chip {
+                    Image(systemName: "terminal")
+                    ViewThatFits(in: .horizontal) {
+                        Text("\(running) 个后台任务").fixedSize()
+                        Text("\(running)").fixedSize()
+                    }
+                    ProgressView().controlSize(.mini)
+                }
+            }
+            .buttonStyle(.plain)
+            .help("\(running) 个后台任务运行中")
+            .accessibilityLabel("\(running) 个后台任务运行中")
+            .popover(isPresented: $showBackgroundTasks, arrowEdge: .bottom) {
+                backgroundTaskList(tasks).compactPopover()
+            }
+        }
+    }
+
+    private func backgroundTaskList(_ tasks: [AgentBackgroundTask]) -> some View {
+        let ordered = tasks.filter { $0.state == .running }.reversed() + tasks.filter { $0.state != .running }.reversed().prefix(10)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(ordered) { task in
+                    Button {
+                        showBackgroundTasks = false
+                        NotificationCenter.default.post(name: .scrollToMessage, object: task.rowId)
+                    } label: {
+                        BackgroundTaskRow(task: task)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 6)
+        }
+        .frame(maxHeight: 420)
+        #if os(iOS)
+        .frame(width: 340)
+        #else
+        .frame(width: 400)
+        #endif
+    }
+
 }
 
 extension Agent {
@@ -1259,6 +1281,8 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
     #endif
     @State private var dropTargeted = false
     @State private var fullscreen = false
+    @State private var tablePaste: TablePasteRequest?
+    @State private var tablePasteFailed = false
     #if os(macOS)
     /// ⌘V interception: the text field's editor only pastes text, so images never reached onPasteCommand.
     @State private var pasteMonitor: Any?
@@ -1335,7 +1359,7 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                     if let uploads, !uploads.wrappedValue.isEmpty { UploadTray(items: uploads) }
                     #if os(iOS)
                     ComposerTextView(text: $text, placeholder: placeholder, focused: focused, fontSize: Theme.content,
-                                     onReturn: hardwareReturn, onKey: hardwareKey, onPasteImages: { images += $0 })
+                                     onReturn: hardwareReturn, onKey: hardwareKey, onPasteImages: { images += $0 }, tablePaste: tablePaste)
                         .padding(.horizontal, 6)
                         .padding(.top, 8)
                     #else
@@ -1363,8 +1387,13 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                             onSubmit()
                             return .handled
                         }
-                        .onPasteCommand(of: [.png, .tiff, .jpeg, .heic, .fileURL]) { providers in
-                            ImageTools.load(providers) { images += $0 }
+                        .onPasteCommand(of: [.html, .utf8PlainText, .tabSeparatedText, .png, .tiff, .jpeg, .heic, .fileURL]) { providers in
+                            if pasteAttachments() { return }
+                            if let value = TableClipboard.pasted() {
+                                insertPastedTable(value)
+                            } else if let value = NSPasteboard.general.string(forType: .string) {
+                                insertPastedTable(value, isTable: false)
+                            } else { ImageTools.load(providers) { images += $0 } }
                         }
                         #endif
                     #endif
@@ -1385,6 +1414,10 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                                 Button("添加 Issue / PR…", systemImage: "number") { pickingForge = true }
                             }
                             Divider()
+                            Button("粘贴为表格", systemImage: "tablecells") {
+                                if let value = TableClipboard.pasted(explicit: true) { insertPastedTable(value) }
+                                else { tablePasteFailed = true }
+                            }
                             Button("全屏编辑", systemImage: "arrow.up.left.and.arrow.down.right") { fullscreen = true }
                         } label: {
                             Image(systemName: "plus").font(.system(size: 15, weight: .medium)).frame(width: 28, height: 28)
@@ -1437,12 +1470,17 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                 guard focused.wrappedValue,
                       e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
                       e.charactersIgnoringModifiers?.lowercased() == "v",
-                      pasteAttachments() else { return e }
+                      (pasteTableIfAvailable() || pasteAttachments()) else { return e }
                 return nil
             }
         }
         .onDisappear { if let m = pasteMonitor { NSEvent.removeMonitor(m); pasteMonitor = nil } }
         #endif
+        .alert("无法识别表格", isPresented: $tablePasteFailed) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("请复制 Markdown 表格、网页表格或行列一致的制表符文本。原内容未改动，可使用普通粘贴。")
+        }
         .onDrop(of: [.image, .fileURL], isTargeted: $dropTargeted) { providers in
             // Images become inline images; other files are uploaded as attachments.
             for p in providers {
@@ -1550,7 +1588,27 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
         }
     }
 
+    private func insertPastedTable(_ value: String, isTable: Bool = true) {
+        #if os(macOS)
+        if focused.wrappedValue, let editor = NSApp.keyWindow?.firstResponder as? NSTextView {
+            let insertion = isTable ? TableClipboard.insertion(value, into: editor.string, range: editor.selectedRange()) : value
+            editor.insertText(insertion, replacementRange: editor.selectedRange())
+        } else {
+            text += isTable ? TableClipboard.insertion(value, into: text, range: NSRange(location: (text as NSString).length, length: 0)) : value
+            focused.wrappedValue = true
+        }
+        #else
+        tablePaste = TablePasteRequest(text: value)
+        #endif
+    }
+
     #if os(macOS)
+    private func pasteTableIfAvailable() -> Bool {
+        guard let value = TableClipboard.pasted() else { return false }
+        insertPastedTable(value)
+        return true
+    }
+
     /// Pastes images (and, with uploads, other copied files) as attachments. Returns false when the
     /// clipboard holds text instead, so ⌘V falls through to the normal text paste.
     private func pasteAttachments() -> Bool {

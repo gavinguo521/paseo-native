@@ -9,7 +9,7 @@ import Foundation
 final class UpdateChecker {
     static let shared = UpdateChecker()
 
-    struct Release: Equatable, Identifiable {
+    struct Release: Codable, Equatable, Identifiable {
         let version: String
         let notes: String
         let page: URL
@@ -26,14 +26,36 @@ final class UpdateChecker {
     var prompt: Release?
     /// 手动检查的结果（已是最新 / 失败），弹一次提示。
     var notice: String?
-    private(set) var lastChecked: Date? = UserDefaults.standard.object(forKey: "updates.lastChecked") as? Date
+    private(set) var lastChecked: Date?
+    private var lastAttempt: Date?
+    private(set) var latestRelease: Release?
+    private let defaults: UserDefaults
+    private let now: () -> Date
+    private let fetch: (() async throws -> Release)?
+    static let checkInterval: TimeInterval = 30 * 60
+    static let reminderDelay: TimeInterval = 24 * 3600
 
-    var autoCheck: Bool {
-        get { UserDefaults.standard.object(forKey: "updates.auto") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "updates.auto") }
+    init(defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init,
+         repo: String? = nil, fetch: (() async throws -> Release)? = nil) {
+        self.defaults = defaults
+        self.now = now
+        self.fetch = fetch
+        self.repo = (repo ?? Bundle.main.object(forInfoDictionaryKey: "PaseoReleasesRepo") as? String ?? "").trimmingCharacters(in: .whitespaces)
+        lastChecked = defaults.object(forKey: "updates.lastChecked") as? Date
+        lastAttempt = defaults.object(forKey: "updates.lastAttempt") as? Date ?? lastChecked
+        latestRelease = defaults.data(forKey: "updates.latestRelease").flatMap { try? JSONDecoder().decode(Release.self, from: $0) }
     }
 
-    let repo = (Bundle.main.object(forInfoDictionaryKey: "PaseoReleasesRepo") as? String ?? "").trimmingCharacters(in: .whitespaces)
+    var availableRelease: Release? {
+        latestRelease.flatMap { Self.isNewer($0.version, than: currentVersion) ? $0 : nil }
+    }
+
+    var autoCheck: Bool {
+        get { defaults.object(forKey: "updates.auto") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "updates.auto") }
+    }
+
+    let repo: String
     var isEnabled: Bool { repo.contains("/") }
 
     var currentVersion: String {
@@ -46,18 +68,32 @@ final class UpdateChecker {
 
     private var timer: Task<Void, Never>?
 
-    /// 启动后自动检查：距上次超过一天才查，之后每 6 小时看一次是否又满一天。Debug 版不自动查（避免开发时弹窗），可用 PASEO_UPDATE_VERSION 测试。
-    func startAutomaticChecks() {
-        guard isEnabled, timer == nil else { return }
+    private var automaticChecksAllowed: Bool {
         #if DEBUG
-        guard ProcessInfo.processInfo.environment["PASEO_UPDATE_VERSION"] != nil else { return }
+        return ProcessInfo.processInfo.environment["PASEO_UPDATE_VERSION"] != nil
+        #else
+        return true
         #endif
+    }
+
+    /// 启动和回到前台共用限频；即使失败或多窗口同时触发，也不重复请求。
+    func checkOnActivation() {
+        guard automaticChecksAllowed else { return }
+        Task { await check(manual: false) }
+    }
+
+    /// 根据上次尝试时间安排下一次检查，手动检查或前台检查不会让定时器多等一整轮。
+    func startAutomaticChecks() {
+        guard isEnabled, timer == nil, automaticChecksAllowed else { return }
         timer = Task { [weak self] in
             while !Task.isCancelled {
-                if let self, self.autoCheck, Date().timeIntervalSince(self.lastChecked ?? .distantPast) > 86_400 {
-                    await self.check(manual: false)
-                }
-                try? await Task.sleep(for: .seconds(6 * 3600))
+                guard let self else { return }
+                await self.check(manual: false)
+                let delay = self.autoCheck
+                    ? max(1, Self.checkInterval - self.now().timeIntervalSince(self.lastAttempt ?? self.now()))
+                    : Self.checkInterval
+                do { try await Task.sleep(for: .seconds(delay)) }
+                catch { return }
             }
         }
     }
@@ -65,14 +101,27 @@ final class UpdateChecker {
     /// manual：用户点的（不管有没有跳过都提示）；alert：用弹窗告诉结果（设置页里点的直接在页面上显示，不弹）。
     func check(manual: Bool, alert: Bool = true) async {
         guard isEnabled, status != .checking else { return }
+        let attempt = now()
+        if !manual {
+            guard autoCheck, attempt.timeIntervalSince(lastAttempt ?? .distantPast) >= Self.checkInterval else { return }
+        }
+        lastAttempt = attempt
+        defaults.set(attempt, forKey: "updates.lastAttempt")
         status = .checking
         do {
-            let release = try await fetchLatest()
-            lastChecked = Date()
-            UserDefaults.standard.set(lastChecked, forKey: "updates.lastChecked")
+            let release: Release
+            if let fetch { release = try await fetch() }
+            else { release = try await fetchLatest() }
+            lastChecked = now()
+            defaults.set(lastChecked, forKey: "updates.lastChecked")
+            latestRelease = release
+            if let data = try? JSONEncoder().encode(release) { defaults.set(data, forKey: "updates.latestRelease") }
             if Self.isNewer(release.version, than: currentVersion) {
                 status = .available(release)
-                if alert, manual || UserDefaults.standard.string(forKey: "updates.skipped") != release.version { prompt = release }
+                if alert, manual || (autoCheck && shouldRemind(release)), prompt == nil {
+                    markPrompted(release)
+                    prompt = release
+                }
             } else {
                 status = .upToDate
                 if manual, alert { notice = String(localized: "已是最新版本（\(currentVersion)）") }
@@ -84,12 +133,34 @@ final class UpdateChecker {
     }
 
     func skip(_ release: Release) {
-        UserDefaults.standard.set(release.version, forKey: "updates.skipped")
+        defaults.set(release.version, forKey: "updates.skipped")
         prompt = nil
+    }
+
+    func remindLater(_ release: Release) {
+        defaults.set(release.version, forKey: "updates.snoozedVersion")
+        defaults.set(now().addingTimeInterval(Self.reminderDelay), forKey: "updates.snoozedUntil")
+        prompt = nil
+    }
+
+    private func shouldRemind(_ release: Release) -> Bool {
+        guard defaults.string(forKey: "updates.skipped") != release.version else { return false }
+        if defaults.string(forKey: "updates.snoozedVersion") == release.version,
+           let until = defaults.object(forKey: "updates.snoozedUntil") as? Date { return now() >= until }
+        return defaults.string(forKey: "updates.promptedVersion") != release.version
+    }
+
+    private func markPrompted(_ release: Release) {
+        defaults.set(release.version, forKey: "updates.promptedVersion")
+        if defaults.string(forKey: "updates.snoozedVersion") == release.version {
+            defaults.removeObject(forKey: "updates.snoozedVersion")
+            defaults.removeObject(forKey: "updates.snoozedUntil")
+        }
     }
 
     /// 有 dmg 就直接下载 dmg，没有就打开发布页。
     func download(_ release: Release) {
+        markPrompted(release)
         NSWorkspace.shared.open(release.download ?? release.page)
         prompt = nil
     }

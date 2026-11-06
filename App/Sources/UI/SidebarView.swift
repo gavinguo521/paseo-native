@@ -3,6 +3,7 @@
 
 import PaseoKit
 import SwiftUI
+import ImageIO
 
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
@@ -53,11 +54,11 @@ struct SidebarView: View {
 
     var body: some View {
         @Bindable var model = model
-        #if DEBUG && os(macOS)
+        #if DEBUG
         let _ = SidebarBench.bodyCount += 1
         #endif
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 if !titleInToolbar {
                     appTitle(size: 26)
                         .padding(.horizontal, 16)
@@ -79,8 +80,15 @@ struct SidebarView: View {
                 let auto = model.autoProjectAliases
                 // 工作区子会话索引同理：整个侧栏算一次，每行查表
                 let kids = model.sidebarSessionIndex()
+                let unread = model.sidebarUnreadIndex()
+                let shortcuts = commandHeld ? Dictionary(groups.flatMap { $0.rows }.prefix(9).enumerated().map {
+                    (AgentRef(serverId: $0.element.serverId, agentId: $0.element.agent.id), $0.offset + 1)
+                }, uniquingKeysWith: { first, _ in first }) : [:]
                 ForEach(groups) { group in
-                    groupView(group, all: groups, auto: auto, kids: kids)
+                    // 一个项目对应一个惰性子视图，避免多分支 ViewBuilder 为统计子节点而提前创建全部行。
+                    VStack(alignment: .leading, spacing: 0) {
+                        groupView(group, all: groups, auto: auto, kids: kids, shortcuts: shortcuts, unread: AppModel.unread(in: group, index: unread))
+                    }
                 }
                 if groups.isEmpty && !model.hosts.isEmpty && (!model.search.isEmpty || !model.labelFilter.isEmpty || model.hostFilter != nil) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -193,6 +201,7 @@ struct SidebarView: View {
             Spacer()
             if !hiddenNav.contains("history") { navIcon("clock.arrow.circlepath", String(localized: "会话历史"), .history) }
             if !hiddenNav.contains("schedules") { navIcon("calendar", String(localized: "计划任务"), .schedules) }
+            navIcon("square.grid.2x2", String(localized: "会话总览"), .overview)
             if model.hasBoardPlugin && !hiddenNav.contains("board") { navIcon("rectangle.split.3x1", String(localized: "看板"), .board) }
             Menu {
                 Picker("分组", selection: Binding(get: { model.grouping }, set: { model.grouping = $0 })) {
@@ -287,7 +296,10 @@ struct SidebarView: View {
         return p.count == 4 && p[1] == "w" ? (String(p[2]), String(p[3])) : nil
     }
 
-    @ViewBuilder private func groupView(_ group: SessionGroup, all: [SessionGroup], auto: [String: String], kids: [String: [Agent]]) -> some View {
+    @ViewBuilder private func groupView(_ group: SessionGroup, all: [SessionGroup], auto: [String: String], kids: [String: [Agent]], shortcuts: [AgentRef: Int], unread: [AgentRef]) -> some View {
+        #if DEBUG
+        let _ = SidebarBench.groupCount += 1
+        #endif
         let isCollapsed = collapsed.contains(group.id) && model.search.isEmpty
         // Not a Button: the 「+」 and 「⋯」 inside must stay separately clickable.
         // 悬停状态放在标题自己的 HoverReader 里：滚动时标题从鼠标下经过会频繁切换悬停，挂在整个侧栏上会让侧栏每次都整体重算（掉帧）。
@@ -307,6 +319,24 @@ struct SidebarView: View {
                     Text(group.hostLabel).font(.system(size: Theme.base - 2)).foregroundStyle(Theme.extraMuted).lineLimit(1)
                 }
                 Spacer(minLength: 4)
+                if let next = unread.first {
+                    Button {
+                        collapsed.remove(group.id)
+                        model.open(next)
+                        model.revealDetail += 1
+                    } label: {
+                        HStack(spacing: 3) {
+                            Circle().fill(Theme.accent).frame(width: 5, height: 5)
+                            Text("\(unread.count)").monospacedDigit()
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 6).frame(minHeight: 24)
+                        .background(Theme.accent.opacity(0.1), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help("查看新回复")
+                    .accessibilityLabel(String(localized: "\(unread.count) 个会话有新回复，点击查看"))
+                }
                 // Touch screens have no hover: show 「+」「⋯」 all the time instead of hiding them behind it.
                 #if os(macOS)
                 let showActions = hovered
@@ -379,7 +409,7 @@ struct SidebarView: View {
                 let childrenOpen = children.count >= 2 && model.expandedSessionRows.contains(expandKey)
                 SessionRow(agent: row.agent, bucket: row.bucket, selected: isSelected(row.serverId, row.agent), workspace: workspace,
                            context: rowContext(group, row.agent, serverId: row.serverId),
-                           shortcut: commandHeld ? shortcutNumber(ref) : nil,
+                           shortcut: shortcuts[ref],
                            childCount: children.count >= 2 ? children.count : 0, expanded: childrenOpen,
                            onToggle: { toggleChildren(expandKey) }) {
                     model.openRow(ref)
@@ -551,10 +581,6 @@ struct SidebarView: View {
     private func isSelected(_ serverId: String, _ agent: Agent) -> Bool {
         if let ws = agent.workspaceId { return model.currentWorkspace == WorkspaceRef(serverId: serverId, workspaceId: ws) }
         return model.destination == .agent(AgentRef(serverId: serverId, agentId: agent.id))
-    }
-
-    private func shortcutNumber(_ ref: AgentRef) -> Int? {
-        model.orderedSessions.prefix(9).firstIndex(of: ref).map { $0 + 1 }
     }
 
     /// Project name under the title where the group does not already say it.
@@ -731,6 +757,9 @@ private struct SessionRow: View {
     private var title: String { useAgentTitle ? agent.displayTitle : workspace?.title.flatMap { $0.isEmpty ? nil : $0 } ?? agent.displayTitle }
 
     var body: some View {
+        #if DEBUG
+        let _ = SidebarBench.rowCount += 1
+        #endif
         Button(action: action) {
             HStack(spacing: 8) {
                 // Status sits in front of the title, in the indent under the project icon.
@@ -978,6 +1007,8 @@ struct ProjectIcon: View {
     var size: CGFloat = 16
     /// For a project without workspaces: where its id, key and icon revision come from.
     var project: Project? = nil
+    @Environment(\.displayScale) private var displayScale
+    @State private var decodedImage: Image?
 
     private var projectId: String? { workspace?.projectId ?? project?.id }
     private var revision: String? { workspace?.projectIconRevision ?? project?.iconRevision }
@@ -998,18 +1029,15 @@ struct ProjectIcon: View {
         return Color(red: Double(rgb >> 16 & 0xff) / 255, green: Double(rgb >> 8 & 0xff) / 255, blue: Double(rgb & 0xff) / 255)
     }
 
-    private var image: Image? {
-        guard let id = projectId, let data = host.projectIcons[id]?.data else { return nil }
-        #if os(macOS)
-        return NSImage(data: data).map { Image(nsImage: $0) }
-        #else
-        return UIImage(data: data).map { Image(uiImage: $0) }
-        #endif
+    private struct ImageRequest: Equatable {
+        let data: Data?
+        let pixels: Int
     }
 
     var body: some View {
+        let request = ImageRequest(data: projectId.flatMap { host.projectIcons[$0]?.data }, pixels: max(1, Int((size * displayScale).rounded(.up))))
         Group {
-            if let image {
+            if let image = decodedImage {
                 // Someone's logo: sized, never clipped (official project-icon-view.tsx).
                 image.resizable().scaledToFit()
             } else {
@@ -1026,6 +1054,34 @@ struct ProjectIcon: View {
         .task(id: (projectId ?? "") + (revision ?? "")) {
             if let projectId { await host.loadProjectIcon(projectId: projectId, revision: revision) }
         }
+        .task(id: request) {
+            guard let data = request.data else { decodedImage = nil; return }
+            let image = await ProjectIconDecoder.shared.decode(data, maxPixel: request.pixels)
+            guard !Task.isCancelled else { return }
+            if let image { decodedImage = Image(decorative: image, scale: displayScale) }
+            else {
+                // 保留平台原有格式支持（例如 Mac 能解码而 ImageIO 不支持的图标），也只在数据变化时执行一次。
+                #if os(macOS)
+                decodedImage = NSImage(data: data).map { Image(nsImage: $0) }
+                #else
+                decodedImage = UIImage(data: data).map { Image(uiImage: $0) }
+                #endif
+            }
+        }
+    }
+}
+
+/// 图标只在数据或显示尺寸改变时解码；滚动和悬停不重复解码原图。
+actor ProjectIconDecoder {
+    static let shared = ProjectIconDecoder()
+    func decode(_ data: Data, maxPixel: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+        ] as CFDictionary)
     }
 }
 

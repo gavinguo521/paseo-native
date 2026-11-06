@@ -140,6 +140,10 @@ enum MainWindow {
         SelectionAutoCopy.install()
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        model?.flushDrafts()
+    }
+
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         guard let model else { return nil }
         let sessions = MenuBarSessions(model: model)

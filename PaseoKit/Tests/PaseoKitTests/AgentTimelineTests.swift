@@ -46,12 +46,46 @@ private func text(_ row: TimelineRow) -> String {
         #expect(t.endSeq == 2 && t.startSeq == 1 && t.hasOlder)
     }
 
+    @Test func rowRevisionKeepsUnchangedHistoryAndInvalidatesReplacements() {
+        var t = loaded()
+        let before = t.rows.map(\.revision)
+        _ = t.applyStream(stream(3, ["type": "assistant_message", "text": " world"]))
+        #expect(t.rows[0].revision == before[0])
+        #expect(t.rows[1].revision != before[1])
+        let streamed = t.rows[1].revision
+        t = loaded()
+        #expect(t.rows[1].revision != streamed)
+    }
+
+    @Test func searchHistoryKeepsOlderRowsAndUsesLatestStreamedText() {
+        var live = loaded()
+        var history = live
+        history.applyPage(page("before", [entry(0, ["type": "user_message", "text": "older", "messageId": "m0"])], start: 0, end: 0))
+        _ = live.applyStream(stream(3, ["type": "assistant_message", "text": " world"]))
+        let combined = history.includingLiveTail(live)
+        #expect(combined.rows.map(text) == ["older", "hi", "hello world"])
+        #expect(live.rows.map(text) == ["hi", "hello world"])
+        #expect(history.rows.map(text) == ["older", "hi", "hello"])
+        #expect(combined.window(around: "m1", radius: 0)?.rows.map(text) == ["hi"])
+    }
+
     @Test func streamsAndMergesAssistantChunks() {
         var t = loaded()
         #expect(t.applyStream(stream(3, ["type": "assistant_message", "text": " world"])) == .applied)
         #expect(t.rows.map(text) == ["hi", "hello world"])
         #expect(t.applyStream(stream(3, ["type": "assistant_message", "text": " dup"])) == .stale)
         #expect(t.rows.last.map(text) == "hello world")
+    }
+
+    @Test func historyMergeDoesNotDuplicateCompletedBackgroundTool() {
+        var live = loaded()
+        var history = live
+        history.applyPage(page("before", [entry(0, ["type": "tool_call", "callId": "background", "name": "Bash", "status": "running"])], start: 0, end: 0))
+        _ = live.applyStream(stream(3, ["type": "tool_call", "callId": "background", "name": "Bash", "status": "completed"]))
+        let merged = history.includingLiveTail(live)
+        #expect(merged.rows.map(text) == ["hi", "hello", "Bash:completed"])
+        #expect(Set(merged.rows.map(\.id)).count == merged.rows.count)
+        #expect(history.rows.first.map(text) == "Bash:running")
     }
 
     @Test func detectsGapAndEpochChange() {

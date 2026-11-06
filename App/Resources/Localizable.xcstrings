@@ -5839,7 +5839,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Open Session"
+            "value": "Open session"
           }
         }
       }
@@ -10038,16 +10038,6 @@
         }
       }
     },
-    "自动检查更新会每天访问一次 GitHub 查询最新版本，只下载版本信息，不上传任何数据；有新版本时提示你下载，不会自动安装。\n遇到问题时导出，发给开发者分析。包含版本、各机器的连接、Provider 和插件状态、日志；不含对话内容，配对链接和密码会隐藏。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Automatic update checks contact GitHub once a day to look up the latest version. Only version info is downloaded and no data is uploaded. When a new version is available you’ll be prompted to download it; nothing is installed automatically.\nIf you run into problems, export diagnostics and send them to the developer. They include the version, each host’s connection, Provider and plugin status, and logs; they don’t include conversation content, and pairing links and passwords are hidden."
-          }
-        }
-      }
-    },
     "自动（%@）": {
       "localizations": {
         "en": {
@@ -11876,6 +11866,416 @@
           "stringUnit": {
             "state": "translated",
             "value": "Expand %lld sessions"
+          }
+        }
+      }
+    },
+    "会话总览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sessions overview"
+          }
+        }
+      }
+    },
+    "待输入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Needs input"
+          }
+        }
+      }
+    },
+    "搜索会话、项目或机器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search sessions, projects or hosts"
+          }
+        }
+      }
+    },
+    "提供商": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Provider"
+          }
+        }
+      }
+    },
+    "全部提供商": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All providers"
+          }
+        }
+      }
+    },
+    "重置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset"
+          }
+        }
+      }
+    },
+    "离线机器显示最后收到的状态，连接后自动更新": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline hosts show their last received state and update when reconnected."
+          }
+        }
+      }
+    },
+    "会话状态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session status"
+          }
+        }
+      }
+    },
+    "暂无会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No sessions"
+          }
+        }
+      }
+    },
+    "本轮用时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn duration"
+          }
+        }
+      }
+    },
+    "收起请求": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide requests"
+          }
+        }
+      }
+    },
+    "查看待处理请求": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View pending requests"
+          }
+        }
+      }
+    },
+    "停止这个会话？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop this session?"
+          }
+        }
+      }
+    },
+    "工具详情": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tool details"
+          }
+        }
+      }
+    },
+    "查看工具详情": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View tool details"
+          }
+        }
+      }
+    },
+    "上一条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous"
+          }
+        }
+      }
+    },
+    "下一条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next"
+          }
+        }
+      }
+    },
+    "复制详情": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy details"
+          }
+        }
+      }
+    },
+    "跟随实时输出": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow live output"
+          }
+        }
+      }
+    },
+    "详情暂不可用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Details unavailable"
+          }
+        }
+      }
+    },
+    "该消息不在当前历史窗口中，请重新打开。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This message is outside the current history window. Open it again."
+          }
+        }
+      }
+    },
+    "查看新回复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View new replies"
+          }
+        }
+      }
+    },
+    "%lld 个会话有新回复，点击查看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld sessions have new replies. Open to view."
+          }
+        }
+      }
+    },
+    "复制表格": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy table"
+          }
+        }
+      }
+    },
+    "复制所选区域": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy selected cells"
+          }
+        }
+      }
+    },
+    "取消选择": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear selection"
+          }
+        }
+      }
+    },
+    "选择单元格": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select cell"
+          }
+        }
+      }
+    },
+    "双击选择单元格，长按拖动选择区域": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Double-click a cell to select it. Press and hold, then drag to select a range."
+          }
+        }
+      }
+    },
+    "复制为 Markdown": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy as Markdown"
+          }
+        }
+      }
+    },
+    "复制为表格": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy for Spreadsheet"
+          }
+        }
+      }
+    },
+    "粘贴为表格": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paste as Table"
+          }
+        }
+      }
+    },
+    "无法识别表格": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Table Not Recognized"
+          }
+        }
+      }
+    },
+    "请复制 Markdown 表格、网页表格或行列一致的制表符文本。原内容未改动，可使用普通粘贴。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy a Markdown table, a web table, or tab-separated text with consistent columns. Your content is unchanged; you can use regular paste."
+          }
+        }
+      }
+    },
+    "自动检查更新会在启动、回到前台及运行期间查询 GitHub，自动检查至少间隔 30 分钟。只下载版本信息，不上传任何数据；有新版本时提示你下载，不会自动安装。\n遇到问题时导出，发给开发者分析。包含版本、各机器的连接、Provider 和插件状态、日志；不含对话内容，配对链接和密码会隐藏。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic update checks contact GitHub at launch, when returning to the foreground, and while running, at least 30 minutes apart. Only version info is downloaded and no data is uploaded. When a new version is available you’ll be prompted to download it; nothing is installed automatically.\nIf you run into problems, export diagnostics and send them to the developer. They include the version, each host’s connection, Provider and plugin status, and logs; they don’t include conversation content, and pairing links and passwords are hidden."
+          }
+        }
+      }
+    },
+    "选择「以后再说」将在 24 小时后再次提醒；也可以随时到「设置 → 关于」下载。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose Later to be reminded after 24 hours. You can also download from Settings → About at any time."
+          }
+        }
+      }
+    },
+    "![%@](%@)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "new",
+            "value": "![%1$@](%2$@)"
+          }
+        }
+      }
+    },
+    "%@ %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ %2$lld"
+          }
+        }
+      }
+    },
+    "加载更多": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load More"
+          }
+        }
+      }
+    },
+    "加载更早": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load Earlier"
+          }
+        }
+      }
+    },
+    "离线": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline"
+          }
+        }
+      }
+    },
+    "返回最新消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back to Latest Messages"
           }
         }
       }

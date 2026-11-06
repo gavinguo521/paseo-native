@@ -255,6 +255,8 @@ struct RootView: View {
             SchedulesView()
         case .usage:
             UsageView()
+        case .overview:
+            SessionOverview()
         case .board:
             BoardView(workspace: model.boardWorkspace, agent: model.boardAgent)
                 .id("\(model.boardWorkspace.map { $0.serverId + $0.workspaceId } ?? "")|\(model.boardAgent?.agentId ?? "")")

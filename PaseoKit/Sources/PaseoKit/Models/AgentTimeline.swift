@@ -6,13 +6,17 @@ import Synchronization
 
 public struct TimelineRow: Sendable, Identifiable {
     public let id: String
-    public var turnId: String?
+    public var turnId: String? { didSet { touch() } }
     public var timestamp: Date?
-    public var item: TimelineItem
+    public var item: TimelineItem { didSet { touch() } }
     /// Reasoning stops streaming as soon as any other event arrives.
-    public var isStreaming: Bool
+    public var isStreaming: Bool { didSet { if oldValue != isStreaming { touch() } } }
     /// Local optimistic user row not yet confirmed by the daemon.
-    public var isPending: Bool
+    public var isPending: Bool { didSet { if oldValue != isPending { touch() } } }
+    /// 行内容的版本；快照替换和同 id 更新都必须使展示缓存失效。
+    public private(set) var revision = nextRevision.add(1, ordering: .relaxed).newValue
+    private static let nextRevision = Atomic<Int>(0)
+    private mutating func touch() { revision = Self.nextRevision.add(1, ordering: .relaxed).newValue }
 }
 
 public struct TimelineCursor: Sendable, Equatable {
@@ -43,6 +47,29 @@ public struct AgentTimeline: Sendable {
     public init() {}
 
     public var isLoaded: Bool { epoch != nil }
+
+    /// 独立历史快照接上当前已加载的尾部，搜索仍能看到新回复；不写回同步状态。
+    public func includingLiveTail(_ live: AgentTimeline?) -> AgentTimeline {
+        guard let live, live.isLoaded else { return self }
+        guard epoch == live.epoch else { return live }
+        guard let first = live.rows.first, let start = rows.firstIndex(where: { $0.id == first.id }) else { return live }
+        var result = self
+        // 跨回合后台工具的完成事件可能被追加到实时尾部，不能同时保留历史中的旧状态。
+        let liveIDs = Set(live.rows.map(\.id))
+        result.rows = rows[..<start].filter { !liveIDs.contains($0.id) } + live.rows
+        result.endSeq = live.endSeq
+        result.backgroundTaskEnds.merge(live.backgroundTaskEnds) { _, current in current }
+        return result
+    }
+
+    /// 定位搜索结果只展示附近条目；快照不用于推进网络同步游标。
+    public func window(around id: String, radius: Int = 40) -> AgentTimeline? {
+        guard let index = rows.firstIndex(where: { $0.id == id }) else { return nil }
+        var result = self
+        result.rows = Array(rows[max(0, index - radius)..<min(rows.count, index + radius + 1)])
+        result.hasOlder = false
+        return result
+    }
     public var startCursor: JSONValue? { cursor(startSeq) }
     public var endCursor: JSONValue? { cursor(endSeq) }
 

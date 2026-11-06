@@ -29,6 +29,7 @@ struct WorkspaceTabsView: View {
     @State private var explorerSheet = false
     /// Width of this view (= the window on iPhone), to size the title menu in the toolbar.
     @State private var viewWidth: CGFloat = 0
+    @State private var draggedExplorerWidth: Double?
     private var narrow: Bool {
         #if os(iOS)
         sizeClass == .compact
@@ -60,8 +61,11 @@ struct WorkspaceTabsView: View {
             }
             .frame(minWidth: narrow ? nil : 380)
             if explorerVisible, !narrow, let workspace {
-                ResizeHandle(width: $explorerWidth)
-                explorer(workspace).frame(width: explorerWidth)
+                ResizeHandle(width: Binding(get: { draggedExplorerWidth ?? explorerWidth }, set: { draggedExplorerWidth = $0 })) {
+                    if let width = draggedExplorerWidth { explorerWidth = width }
+                    draggedExplorerWidth = nil
+                }
+                explorer(workspace).frame(width: draggedExplorerWidth ?? explorerWidth)
                     .transition(.move(edge: .trailing))
             }
         }
@@ -799,16 +803,27 @@ private struct PRPanel: View {
 private struct OutlineColumn: View {
     let host: HostStore
     let agentId: String?
+    @State private var history: AgentTimeline?
+    @State private var historyCache = TimelineHistoryCache()
+    @State private var error: String?
+    @State private var loading = false
 
     var body: some View {
+        VStack {
+        if let error { Text(error).font(.caption).foregroundStyle(Theme.destructive) }
+        if loading { ProgressView() }
         if let agentId {
-            let prompts = (host.timelines[agentId]?.rows ?? []).filter { $0.item.startsTurn }
+            let snapshot = historyCache.snapshot(history, live: host.timelines[agentId])
+            let prompts = (snapshot?.rows ?? []).filter { $0.item.startsTurn }
             if prompts.isEmpty {
                 ContentUnavailableView("还没有提问", systemImage: "list.bullet.indent")
             } else {
                 List(prompts) { r in
                     Button {
-                        NotificationCenter.default.post(name: .scrollToMessage, object: r.id)
+                        if let snapshot {
+                            NotificationCenter.default.post(name: .scrollToMessage,
+                                object: TimelineNavigationTarget(serverId: host.id, agentId: agentId, rowId: r.id, snapshot: snapshot))
+                        }
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(text(r)).lineLimit(3).font(.system(size: 12))
@@ -819,10 +834,23 @@ private struct OutlineColumn: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .task(id: agentId) { if host.timelines[agentId]?.hasOlder == true { await host.loadFullTimeline(agentId) } }
+
             }
         } else {
             ContentUnavailableView("选中一个会话标签后显示它的提问", systemImage: "list.bullet.indent")
+        }
+        }
+        .task(id: agentId) {
+            history = nil
+            error = nil
+            guard let agentId, host.timelines[agentId]?.hasOlder == true else { return }
+            loading = true
+            defer { loading = false }
+            do {
+                let snapshot = try await host.fetchTimelineHistory(agentId)
+                guard !Task.isCancelled else { return }
+                history = snapshot
+            } catch { if !Task.isCancelled { self.error = String(localized: "加载历史失败：\(error)") } }
         }
     }
 
@@ -930,6 +958,7 @@ private struct SetupLogSheet: View {
 /// Drag to resize the explorer column (it grows to the left).
 private struct ResizeHandle: View {
     @Binding var width: Double
+    let onEnd: () -> Void
     @State private var start: Double?
 
     var body: some View {
@@ -945,7 +974,7 @@ private struct ResizeHandle: View {
                             start = base
                             width = min(max(base - g.translation.width, 280), 720)
                         }
-                        .onEnded { _ in start = nil })
+                        .onEnded { _ in start = nil; onEnd() })
             }
     }
 }

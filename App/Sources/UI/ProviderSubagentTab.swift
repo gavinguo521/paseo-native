@@ -140,7 +140,7 @@ struct ProviderSubagentTab: View {
     private func makeEnvironment() -> TimelineEnvironment {
         let host = host
         let cwd = parent?.cwd ?? workspace?.directory ?? "/"
-        let reader = HostFileReader { raw in
+        let reader = HostFileReader(cacheScope: host.id + "|" + cwd) { raw in
             let path = (raw.hasPrefix("/") ? raw : cwd + "/" + raw)
             let dir = (path as NSString).deletingLastPathComponent, name = (path as NSString).lastPathComponent
             return try? await host.readFile(cwd: dir, path: name, maxBytes: 20 * 1024 * 1024).data

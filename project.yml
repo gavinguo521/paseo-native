@@ -16,7 +16,7 @@ settings:
     # 界面文案：中文为源语言，英文翻译在各 target 的 Localizable.xcstrings（编译时自动收集 SwiftUI 文案）
     SWIFT_EMIT_LOC_STRINGS: YES
     LOCALIZATION_PREFERS_STRING_CATALOGS: YES
-    MARKETING_VERSION: "1.0.13"
+    MARKETING_VERSION: "1.0.14"
     CURRENT_PROJECT_VERSION: "1"
 packages:
   PaseoKit:
@@ -24,7 +24,53 @@ packages:
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm
     from: "1.99.2"
+schemes:
+  Paseo:
+    build:
+      targets:
+        Paseo: all
+    test:
+      targets: [PaseoTests]
+      environmentVariables:
+        PASEO_HOSTS_KEY: performance-tests
+  PaseoMobile:
+    build:
+      targets:
+        Paseo: all
+    test:
+      targets: [PaseoMobileTests]
+      environmentVariables:
+        PASEO_HOSTS_KEY: performance-tests
 targets:
+  PaseoMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - AppTests/SidebarTestFixture.swift
+      - MobileTests
+    dependencies:
+      - target: Paseo
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: $(PASEO_BUNDLE_ID).mobile-tests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Paseo.app/Paseo
+  PaseoTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: AppTests
+        excludes: [Fixtures]
+      - path: AppTests/Fixtures
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - target: Paseo
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: $(PASEO_BUNDLE_ID).tests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Paseo.app/Contents/MacOS/Paseo
   Paseo:
     type: application
     supportedDestinations: [iOS, macOS]
@@ -49,6 +95,8 @@ targets:
         CFBundleLocalizations: [zh-Hans, en]
         LSApplicationCategoryType: public.app-category.developer-tools
         UILaunchScreen: {}
+        # 允许支持 ProMotion 的 iPhone 使用完整刷新率范围；实际帧率由系统按交互和功耗调度。
+        CADisableMinimumFrameDurationOnPhone: true
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~iphone: [UIInterfaceOrientationPortrait]
         NSCameraUsageDescription: 扫描配对二维码

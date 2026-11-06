@@ -25,6 +25,7 @@ struct ComposerTextView: UIViewRepresentable {
     var onKey: ((ComposerKey) -> Bool)? = nil
     /// Pasted images (the pasteboard holds images and no text).
     var onPasteImages: (([ImageAttachment]) -> Void)? = nil
+    var tablePaste: TablePasteRequest? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -55,6 +56,10 @@ struct ComposerTextView: UIViewRepresentable {
         v.onReturn = onReturn
         v.onKey = onKey
         v.onPasteImages = onPasteImages
+        if let request = tablePaste, v.lastTablePaste != request.id {
+            v.lastTablePaste = request.id
+            DispatchQueue.main.async { v.insertTable(request.text) }
+        }
         // Focus: only take it when someone asks (FocusState turns true: 「编辑」 a queued message, quoting…).
         // Never give it up from here — this view carries no .focused(), so SwiftUI keeps the FocusState false
         // and resigning on that dropped the focus at every text change (picked a candidate, deleted a character).
@@ -96,6 +101,11 @@ struct ComposerTextView: UIViewRepresentable {
 }
 
 final class ComposerUITextView: UITextView {
+    var lastTablePaste: UUID?
+    func insertTable(_ value: String) {
+        insertText(TableClipboard.insertion(value, into: text, range: selectedRange))
+        updatePlaceholder()
+    }
     var onReturn: ((Bool) -> Bool)?
     var onKey: ((ComposerKey) -> Bool)?
     var onPasteImages: (([ImageAttachment]) -> Void)?
@@ -148,11 +158,13 @@ final class ComposerUITextView: UITextView {
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)), UIPasteboard.general.contains(pasteboardTypes: ["public.html", TableClipboard.tsvType]) { return true }
         if action == #selector(paste(_:)), onPasteImages != nil, UIPasteboard.general.hasImages { return true }
         return super.canPerformAction(action, withSender: sender)
     }
 
     override func paste(_ sender: Any?) {
+        if let table = TableClipboard.pasted() { insertTable(table); return }
         let pb = UIPasteboard.general
         if let onPasteImages, pb.hasImages, !pb.hasStrings {
             let images = (pb.images ?? []).compactMap { $0.pngData().flatMap(ImageTools.attachment(from:)) }
