@@ -48,6 +48,7 @@ targets:
     sources:
       - AppTests/SidebarTestFixture.swift
       - AppTests/VisualizationTests.swift
+      - AppTests/ToolPreviewLayoutTests.swift
       - MobileTests
     dependencies:
       - target: Paseo
