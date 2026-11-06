@@ -35,6 +35,8 @@ swift test --package-path PaseoKit --filter PaseoWatchBridgeTests
 
 During v1 development, physical testing with watchOS 11.5 and iOS 18.7.7 confirmed session refresh/opening while the phone is locked, dictation and reply delivery, newest-first messages, and yes/no question selection and submission. Multi-question forms, multi-select, custom answers, generic permission actions, schedule details, notification routing, and watchOS 26 appearance still need broader physical coverage. Automated tests cover question parsing, protocol compatibility and action retry behavior. These results describe tested configurations, not a restriction on contributors' test devices.
 
+Integration validation on 2026-11-06: all 60 PaseoKit tests passed, including regressions for retaining a complete session page when an equal-timestamp preview arrives and for retaining a rejected receipt across retries while allowing a new edited message. Release builds passed for iPhone with its embedded watch app and for macOS. Chinese and English session-list, session-detail, and question screens were launched and visually checked on the watchOS 27.2 simulator. The README screenshots use sample data in an isolated screenshot build; that fixture is not included in the production app. These simulator checks do not validate real WatchConnectivity delivery, dictation, or notification routing, and no fresh physical-device test was performed for this integration.
+
 ## Implementation
 
 - `PaseoWatchBridge`: Foundation-only Codable messages and an action receipt ledger. The watch links this product, not the daemon/terminal client.

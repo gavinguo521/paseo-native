@@ -1,8 +1,8 @@
 # Paseo Native
 
-An **Apple Watch companion (watchOS 11+)** is included: view sessions and schedules, dictate replies, answer question forms, and review permission requests through the paired iPhone. It uses Liquid Glass on watchOS 26+ and standard controls on older systems. See [building and testing the watch companion](docs/watch-companion.md).
-
 An unofficial native client for [Paseo](https://paseo.sh) on Mac, iPhone and iPad, from one SwiftUI codebase.
+
+An **Apple Watch companion (watchOS 11+)** is included: view sessions and schedules, dictate replies, answer question forms, and review permission requests through the paired iPhone. It uses Liquid Glass on watchOS 26+ and standard controls on older systems. See [building and testing the watch companion](docs/watch-companion.md).
 
 > **Not affiliated with the Paseo project.** Like the official apps, it connects to the Paseo daemon on your own
 > computer, and can be installed and used side by side with them. The interface is available in English and Simplified Chinese and follows your system language (from 1.0.8).
@@ -26,6 +26,7 @@ An unofficial native client for [Paseo](https://paseo.sh) on Mac, iPhone and iPa
   built-in manager that runs the daemon without the official desktop app (switch back any time), update notifications
 - **iPhone / iPad**: Live Activities and Dynamic Island, notifications with Approve / Deny / Reply — pushed by a
   plugin on *your own* machine with *your own* APNs key, no third-party server
+- **Apple Watch**: session status and messages, previewed dictation replies, single/multiple-choice and custom answers, permission requests, and read-only schedules through the paired iPhone
 - **Companion plugins (optional)**: usage limits, turn speed, next-input suggestions, titles
 
 It is only a client: it doesn't include or modify the Paseo daemon, and your agents keep running on your computer
@@ -37,10 +38,10 @@ with the Claude Code / Codex accounts logged in there.
 |---|---|
 | **Mac** | Download `Paseo-Native-x.y.z.dmg` from [Releases](https://github.com/gavinguo521/paseo-native/releases/latest) and drag "Paseo Native" into Applications. Signed and notarized by Apple. It installs as `Paseo Native.app` and does not replace the official `Paseo.app` |
 | **iPhone / iPad** | No prebuilt package; build it with Xcode, see [iPhone / iPad](#iphone--ipad) |
-| **Apple Watch** | Build with the iPhone app; communication requires its paired iPhone. See [watch setup](docs/watch-companion.md#build-and-test) |
+| **Apple Watch** | Build with the iPhone app; communication requires its paired iPhone. See [Apple Watch](#apple-watch) |
 | **Android** | Use the official app; both can connect to the same machine |
 
-Requires macOS 26 / iOS 18 / iPadOS 18. iOS / iPadOS 18 uses compatible styling while 26 and later retains Liquid Glass, with the same feature logic. Also requires a computer running a Paseo daemon (bundled with the official desktop app;
+Requires macOS 26 / iOS 18 / iPadOS 18. Apple Watch requires watchOS 11+ and a paired iPhone running this app on iOS 18+. iOS / iPadOS 18 uses compatible styling while 26 and later retains Liquid Glass, with the same feature logic. Also requires a computer running a Paseo daemon (bundled with the official desktop app;
 Paseo Native can also install one). Tested with Paseo v0.15.
 
 ## Getting started
@@ -108,6 +109,24 @@ Apple doesn't allow installing iOS apps from outside the App Store, so build it 
 With a free Apple ID the app expires after 7 days, at most 3 self-built apps can be installed, and background
 notifications are unavailable (the Live Activity still updates while the app is open). A paid Apple Developer account
 (USD 99/year) removes these limits and allows TestFlight.
+
+## Apple Watch
+
+Check session status and recent messages from your wrist. Dictate a reply, preview it, then explicitly send it. Question forms support single/multiple selections, custom answers, and multiple questions. Review permission requests that fit on the watch, and read schedules and run results. Oversized or unsupported requests direct you back to the iPhone.
+
+<p align="center">
+  <img src="docs/images/en/watch-home.png" width="200" alt="Apple Watch session list">
+  <img src="docs/images/en/watch-session.png" width="200" alt="Apple Watch session details and reply button">
+  <img src="docs/images/en/watch-question.png" width="200" alt="Apple Watch native question choices">
+</p>
+
+*Screenshots from the watchOS 27.2 simulator with sample sessions, without personal project or machine information.*
+
+**Install**: build and install the iPhone app using the steps above. Pair a watch running watchOS 11+ with that iPhone. Select the `PaseoWatch` scheme and paired watch in Xcode, use the same signing team as the iPhone app, and build and run. Enable Developer Mode on the watch when prompted. Connect a host in Paseo on the iPhone before opening the watch app. See the [full build and test guide](docs/watch-companion.md#build-and-test).
+
+**Connection and scope**: this first version communicates through the paired iPhone and does not connect independently; an iPad cannot replace the paired iPhone. Cached content and its last refresh time remain available when the phone cannot be reached. watchOS 26+ uses Liquid Glass; older supported systems use compatible styling. Installation currently requires building from source; there is no standalone watch download.
+
+The English and Chinese session list, details, and question screens have been checked in the simulator. Background wake-up while the phone is locked, real dictation delivery, and notification routing remain subject to the [physical-device validation record](docs/watch-companion.md#build-and-test).
 
 ## Dynamic Island and notifications (optional, paid developer account)
 

@@ -16,7 +16,7 @@
   <img src="docs/images/ipad-session.png" width="380" alt="iPad 会话界面">
 </p>
 
-**目录**：[有什么](#有什么) · [下载](#下载) · [开始使用](#开始使用) · [配套插件](#配套插件可选) · [替代官方桌面 App](#替代官方桌面-app可选以及怎么切回官方) · [iPhone / iPad 版安装](#iphone--ipad-版安装) · [灵动岛和推送](#灵动岛和推送可选需要付费开发者账号) · [更新](#更新) · [隐私与网络](#隐私与网络) · [卸载](#卸载) · [常见问题](#常见问题) · [交流群](#反馈与交流)
+**目录**：[有什么](#有什么) · [下载](#下载) · [开始使用](#开始使用) · [配套插件](#配套插件可选) · [替代官方桌面 App](#替代官方桌面-app可选以及怎么切回官方) · [iPhone / iPad 版安装](#iphone--ipad-版安装) · [Apple Watch](#apple-watch-版) · [灵动岛和推送](#灵动岛和推送可选需要付费开发者账号) · [更新](#更新) · [隐私与网络](#隐私与网络) · [卸载](#卸载) · [常见问题](#常见问题) · [交流群](#反馈与交流)
 
 ## 有什么
 
@@ -24,6 +24,7 @@
 - **功能对齐官方客户端**：多台机器、会话、时间线、权限审批、终端、文件、改动、Git 与 PR、计划任务、命令面板
 - **Mac**：菜单栏显示等你处理和运行中的会话；在通知里直接回复、允许或拒绝；快速查看、拖出文件；可以不开官方桌面 App，由本 App 在后台运行 daemon（随时切回官方）；有新版本时提示更新
 - **iPhone / iPad**：灵动岛和锁屏实时活动；带「允许 / 拒绝 / 回复」按钮的推送——用**你自己的** APNs 密钥，由你自己机器上的插件推送，不经过任何第三方服务器
+- **Apple Watch**：查看会话状态和消息、听写后预览并发送回复、回答单选/多选/自定义问答、处理批准请求；计划任务只读，依赖配对 iPhone
 - **配套插件（可选）**：限额刷新时间、回合速度、下一句建议、中文标题，连上机器时一键安装
 
 **它不是什么**：它只是客户端，不包含也不修改 Paseo daemon；agent 照样跑在你的电脑上，用的是你电脑上已登录的 Claude Code / Codex 等账户。
@@ -34,10 +35,10 @@
 |---|---|
 | **Mac** | 到 [Releases](https://github.com/gavinguo521/paseo-native/releases/latest) 下载 `Paseo-Native-x.y.z.dmg`，打开后把「Paseo Native」拖进「应用程序」。已签名、已经过苹果公证，双击就能打开；装好叫「Paseo Native.app」，不会覆盖官方的 Paseo.app |
 | **iPhone / iPad** | 暂不提供安装包，需要用 Xcode 自己编译安装，见「[iPhone / iPad 版安装](#iphone--ipad-版安装)」 |
-| **Apple Watch** | 随 iPhone 应用构建，依赖配对 iPhone 通信，见[手表安装说明](docs/watch-companion.md#build-and-test) |
+| **Apple Watch** | 随 iPhone 应用构建，依赖配对 iPhone 通信，见「[Apple Watch 版](#apple-watch-版)」 |
 | **安卓** | 没有，继续用官方 App；两边可以连同一台机器 |
 
-**系统要求**：macOS 26 / iOS 18 / iPadOS 18。iOS / iPadOS 18 使用兼容界面，26 及以上保留 Liquid Glass，功能逻辑相同。另外需要一台跑着 Paseo daemon 的电脑（官方桌面 App 自带；没有的话本 App 可以帮你装，见下文）。已用 Paseo v0.15 测试。
+**系统要求**：macOS 26 / iOS 18 / iPadOS 18；Apple Watch 需 watchOS 11 及以上，并配对运行本 App 的 iPhone（iOS 18+）。iOS / iPadOS 18 使用兼容界面，26 及以上保留 Liquid Glass，功能逻辑相同。另外需要一台跑着 Paseo daemon 的电脑（官方桌面 App 自带；没有的话本 App 可以帮你装，见下文）。已用 Paseo v0.15 测试。
 
 ## 开始使用
 
@@ -122,6 +123,24 @@ daemon 用的仍是官方的 `@getpaseo/cli`，装在「~/Library/Application Su
 | 分发给同事 | 不行 | 可以用 TestFlight（`scripts/release-ios.sh`） |
 
 装好后先「添加机器」，见「[开始使用](#开始使用)」的 C。
+
+## Apple Watch 版
+
+抬腕查看会话状态和最新消息，听写回复后先预览、再明确发送。问答支持单选、多选、自定义回答和多题提交；可以处理能在手表完整展示的批准请求，查看计划任务与运行结果。内容过长或不支持的请求会提示回到 iPhone 处理。
+
+<p align="center">
+  <img src="docs/images/watch-home.png" width="200" alt="Apple Watch 会话列表">
+  <img src="docs/images/watch-session.png" width="200" alt="Apple Watch 会话详情与回复入口">
+  <img src="docs/images/watch-question.png" width="200" alt="Apple Watch 原生问答选项">
+</p>
+
+*watchOS 27.2 模拟器演示截图，使用示例会话；不包含真实项目或机器信息。*
+
+**安装**：先按上面的步骤构建并安装 iPhone 应用，手表需要 watchOS 11+ 并与该 iPhone 配对。在 Xcode 选择 `PaseoWatch` scheme 和配对手表，使用与 iPhone 相同的签名团队构建运行；按系统提示开启手表开发者模式。先在 iPhone 的 Paseo 中连接主机，再打开手表应用。详细步骤见[手表构建与测试说明](docs/watch-companion.md#build-and-test)。
+
+**连接与范围**：第一版通过配对 iPhone 通信，不支持手表独立联网；iPad 不能替代配对 iPhone。无法连接时可以查看缓存及上次刷新时间。watchOS 26+ 使用 Liquid Glass，watchOS 11 等旧系统使用兼容样式。当前提供源码构建，未提供独立手表安装包。
+
+模拟器已检查中英文会话列表、详情和问答页面；锁屏后台唤醒、真实听写送达及通知跳转仍以[真机验证记录](docs/watch-companion.md#build-and-test)为准。
 
 ## 灵动岛和推送（可选，需要付费开发者账号）
 
