@@ -441,7 +441,14 @@ Daemon 端对文本/工具事件做了 60 ms 的合并窗口（`packages/server/
 ```json
 {"type":"user_message","text":"把 README 里的安装步骤更新一下","messageId":"msg_3e9a7c1b","clientMessageId":"msg_3e9a7c1b"}
 ```
-`features.canonicalSubmittedPrompts` 时，带 `messageId` 发送的 prompt 会以**同一 ID** 作为 `messageId`（以及 `clientMessageId`）回显成规范行（`docs/timeline-sync.md:252-258,295-299`）。图片/附件**不会回显**（`docs/timeline-sync.md:231-235`），本地要自己保留缩略图。
+`features.canonicalSubmittedPrompts` 时，带 `messageId` 发送的 prompt 会以**同一 ID** 作为 `messageId`（以及 `clientMessageId`）回显成规范行（`docs/timeline-sync.md:252-258,295-299`）。图片/附件**不会回显**（`docs/timeline-sync.md:231-235`），需客户端另行保存和恢复。
+
+原生客户端的用户图片同步（`HostStore+MessageImages.swift`）：
+
+- 发图时使用现有 `file.upload.request` 保存图片，并在主机的 `~/.paseo/native-message-images/v1/<SHA256(messageId)>.json` 原子写入版本、消息 ID、有序图片引用及内容摘要。索引写入成功后才发送消息，避免接收端先收到消息却找不到图片；失败走原有发送失败流程，保留草稿供重试。
+- 消息文字、ID 和发送给模型的 `images` 保持原格式；普通消息、新会话首条消息、新工作区首条消息共用保存流程。不修改 daemon，也不依赖插件。需要主机支持 `fsEntryOps`、`workspaceFileEditing` 和现有上传权限。
+- 另一客户端按消息 ID 读取索引，再通过连接的主机读取图片。索引最大 128 KiB，按主机隔离缓存、合并同一消息的请求、最多并行 4 次读取；无图片的消息缓存空结果，网络错误允许重试。图片继续使用缩略图与大图加载器。
+- 两端均需使用支持该同步方式的原生客户端。此前只留在发送端内存里的图片不会自动迁移；工具读取图片、助手回复里的图片仍走原有路径。
 
 #### `assistant_message`
 ```json

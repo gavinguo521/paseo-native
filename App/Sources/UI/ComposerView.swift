@@ -1277,6 +1277,7 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
     @State private var pickingFiles = false
     #if os(iOS)
     @State private var pickingPhotos = false
+    @State private var takingPhoto = false
     @State private var photoItems: [PhotosPickerItem] = []
     #endif
     @State private var dropTargeted = false
@@ -1400,16 +1401,29 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                     HStack(spacing: 2) {
                         Menu {
                             #if os(iOS)
-                            // iPhone / iPad: photos come from the library first; the Files app stays one tap away.
-                            Button("从相册选择…", systemImage: "photo.on.rectangle") { pickingPhotos = true }
+                            // Preserve the bottom-anchored menu's visible order, with
+                            // camera capture fixed at the bottom instead of auto-reversing.
+                            Button("全屏编辑", systemImage: "arrow.up.left.and.arrow.down.right") { fullscreen = true }
+                            Button("粘贴为表格", systemImage: "tablecells") {
+                                if let value = TableClipboard.pasted(explicit: true) { insertPastedTable(value) }
+                                else { tablePasteFailed = true }
+                            }
+                            Divider()
+                            if searchForge != nil, uploads != nil {
+                                Button("添加 Issue / PR…", systemImage: "number") { pickingForge = true }
+                            }
+                            if onFiles != nil { Button("选择文件…", systemImage: "doc") { pickingFiles = true } }
                             Button("从文件选择图片…", systemImage: "photo") { picking = true }
+                            Button("从相册选择…", systemImage: "photo.on.rectangle") { pickingPhotos = true }
+                            Button("相机拍照", systemImage: "camera") {
+                                focused.wrappedValue = false
+                                PhoneKeyboard.dismiss()
+                                takingPhoto = true
+                            }
                             #else
                             Button("选择图片…", systemImage: "photo") { picking = true }
-                            #endif
                             if onFiles != nil { Button("选择文件…", systemImage: "doc") { pickingFiles = true } }
-                            #if os(macOS)
                             Button("粘贴图片", systemImage: "doc.on.clipboard") { pasteImages() }
-                            #endif
                             if searchForge != nil, uploads != nil {
                                 Button("添加 Issue / PR…", systemImage: "number") { pickingForge = true }
                             }
@@ -1419,10 +1433,12 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                                 else { tablePasteFailed = true }
                             }
                             Button("全屏编辑", systemImage: "arrow.up.left.and.arrow.down.right") { fullscreen = true }
+                            #endif
                         } label: {
                             Image(systemName: "plus").font(.system(size: 15, weight: .medium)).frame(width: 28, height: 28)
                                 .foregroundStyle(Theme.muted)
                         }
+                        .menuOrder(.fixed)
                         .controlMenuStyle()
                         .help("添加图片或文件")
                         .accessibilityLabel("添加图片或文件")
@@ -1516,6 +1532,9 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
             if case .success(let urls) = result { images += ImageTools.attachments(from: urls) }
         }
         #if os(iOS)
+        .fullScreenCover(isPresented: $takingPhoto) {
+            CameraCaptureSheet { images.append($0) }
+        }
         .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 10, matching: .images)
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }

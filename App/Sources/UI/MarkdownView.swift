@@ -526,6 +526,7 @@ struct MarkdownImage: View {
     let alt: String
     let url: String
     var maxSize = CGSize(width: 520, height: 420)
+    var alignment: Alignment = .leading
     /// Keep the first copy fetched under this key, so a file overwritten later still shows what was there.
     var cacheKey: String?
     @State private var zoomed: Image?
@@ -541,7 +542,7 @@ struct MarkdownImage: View {
         Group {
             if let thumbnail {
                 thumbnail.resizable().scaledToFit()
-                    .frame(maxWidth: maxSize.width, maxHeight: maxSize.height, alignment: .leading)
+                    .frame(maxWidth: maxSize.width, maxHeight: maxSize.height, alignment: alignment)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .onTapGesture {
                         zoomed = thumbnail

@@ -44,13 +44,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scan pairing QR codes"
+            "value" : "Scan pairing QR codes and take photos to attach to conversations"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "扫描配对二维码"
+            "value" : "扫描配对二维码和拍照添加到会话"
           }
         }
       }

@@ -351,9 +351,13 @@ final class TimelineActions {
 final class HostFileReader: Sendable {
     let cacheScope: String
     let read: @Sendable (String) async -> Data?
-    init(cacheScope: String = UUID().uuidString, _ read: @escaping @Sendable (String) async -> Data?) {
+    let messageImages: @Sendable (String) async throws -> [MessageImage]
+    init(cacheScope: String = UUID().uuidString,
+         messageImages: @escaping @Sendable (String) async throws -> [MessageImage] = { _ in [] },
+         _ read: @escaping @Sendable (String) async -> Data?) {
         self.cacheScope = cacheScope
         self.read = read
+        self.messageImages = messageImages
     }
 }
 
@@ -364,6 +368,7 @@ final class AgentTitleLookup {
 
 extension EnvironmentValues {
     @Entry var sentImages: [String: [ImageAttachment]] = [:]
+    @Entry var messageImagesConnected = false
     @Entry var timelineActions = TimelineActions()
     /// Reads a file on the agent's machine (images in replies that live there). Paths may be relative to the agent's cwd.
     /// Agent id → title on the same host, for tool details that target other sessions.
@@ -524,26 +529,12 @@ private struct RowView: View {
         if let d = turn?.duration, d >= 1 { Text(String(localized: "用时 \(formatDuration(d))")).lineLimit(1) }
     }
     @Environment(\.sentImages) private var sentImages
-    @State private var zoomed: Image?
 
     var body: some View {
         switch row.item {
         case .userMessage(let text, _):
             VStack(alignment: .trailing, spacing: 6) {
-                if let images = sentImages[row.id], !images.isEmpty {
-                    HStack(spacing: 6) {
-                        Spacer(minLength: 64)
-                        ForEach(images) { a in
-                            // Keep the picture's own proportions; only cap its size.
-                            (ImageTools.image(a, maxPixel: 1080) ?? Image(systemName: "photo")).resizable().scaledToFit()
-                                .frame(maxWidth: 360, maxHeight: 180).clipShape(RoundedRectangle(cornerRadius: 14))
-                                .onTapGesture { zoomed = ImageTools.image(a) }
-                        }
-                    }
-                    .sheet(isPresented: Binding(get: { zoomed != nil }, set: { if !$0 { zoomed = nil } })) {
-                        if let zoomed { ImageLightbox(image: zoomed) }
-                    }
-                }
+                UserMessageImages(messageId: row.id, localImages: sentImages[row.id] ?? [])
                 // 只发图片时文字为空，不画空气泡。
                 if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     UserBubble(text: text, pending: row.isPending)

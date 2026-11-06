@@ -48,7 +48,7 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>扫描配对二维码</string>
+	<string>扫描配对二维码和拍照添加到会话</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>选择图片发给会话</string>
 	<key>NSSupportsLiveActivities</key>

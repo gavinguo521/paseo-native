@@ -3,6 +3,15 @@ import PaseoKit
 import SwiftUI
 import UIKit
 
+@MainActor
+enum PhoneKeyboard {
+    /// ComposerTextView's FocusState is a focus request, not its responder state.
+    /// Explicit dismissal must reach the native text view instead.
+    static func dismiss() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
 /// Hardware-keyboard keys the composer acts on besides Return (completion list, recall, permission mode).
 enum ComposerKey { case up, down, tab, shiftTab, escape }
 
@@ -96,6 +105,12 @@ struct ComposerTextView: UIViewRepresentable {
         /// Back to false once taken, so the next request is a change again.
         func textViewDidBeginEditing(_ v: UITextView) {
             if parent.focused.wrappedValue { parent.focused.wrappedValue = false }
+        }
+
+        func textViewDidEndEditing(_ v: UITextView) {
+            // Capture any input-method text committed while the keyboard closes.
+            if parent.text != v.text { parent.text = v.text }
+            (v as? ComposerUITextView)?.updatePlaceholder()
         }
     }
 }

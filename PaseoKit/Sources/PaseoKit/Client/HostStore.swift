@@ -88,6 +88,8 @@ public final class HostStore: Identifiable {
     @ObservationIgnored var terminalListSubs: [String: String] = [:]
     @ObservationIgnored var diffSubs: [String: (id: String, mode: String)] = [:]
     @ObservationIgnored var binaryTask: Task<Void, Never>?
+    @ObservationIgnored let messageImageCache = MessageImageCache()
+    @ObservationIgnored var messageImageDirectoryTask: Task<Void, Error>?
     /// Views that show a session's provider subagents (composer pill, subagent tab): parent agent id → view count.
     @ObservationIgnored var providerSubagentWatchers: [String: Int] = [:]
     /// Watched parents whose live timeline launched a subagent (`sub_agent` tool call) during the current turn.
@@ -621,7 +623,7 @@ public final class HostStore: Identifiable {
         }
     }
 
-    /// Images aren't echoed back by the daemon, so the app keeps what it sent, keyed by message id.
+    /// Optimistic previews. Durable cross-device references live in the host's message-image store.
     public private(set) var sentImages: [String: [ImageAttachment]] = [:]
 
     public func send(_ text: String, to agentId: String, steer: Bool, images: [ImageAttachment] = [], attachments: [JSONValue] = [], messageID: String? = nil, timeout: Duration = .seconds(60)) async throws {
@@ -638,9 +640,12 @@ public final class HostStore: Identifiable {
         }
         if !attachments.isEmpty { params["attachments"] = .array(attachments) }
         do {
+            try await persistMessageImages(images, messageId: messageId)
+            try Task.checkCancellation()
             try check(try await c.request("send_agent_message_request", params, timeout: timeout))
         } catch {
             timelines[agentId]?.dropPendingUserMessage(messageId)
+            sentImages[messageId] = nil
             throw error
         }
     }
@@ -843,7 +848,11 @@ public final class HostStore: Identifiable {
                 agent["initialPrompt"] = .string(prompt)
                 let mid = "msg_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
                 agent["clientMessageId"] = .string(mid)
-                if !images.isEmpty { sentImages[mid] = images; agent["images"] = .array(images.map(\.json)) }
+                if !images.isEmpty {
+                    try await persistMessageImages(images, messageId: mid)
+                    sentImages[mid] = images
+                    agent["images"] = .array(images.map(\.json))
+                }
             }
             if !attachments.isEmpty { agent["attachments"] = .array(attachments) }
             params["agent"] = .object(agent)
@@ -1054,6 +1063,7 @@ public final class HostStore: Identifiable {
         if let modeId { config["modeId"] = .string(modeId) }
         if let thinkingOptionId { config["thinkingOptionId"] = .string(thinkingOptionId) }
         let clientMessageId = "msg_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        try await persistMessageImages(images, messageId: clientMessageId)
         if !images.isEmpty { sentImages[clientMessageId] = images }
         var params: [String: JSONValue] = [
             "idempotencyKey": .string("create-" + UUID().uuidString.lowercased()),

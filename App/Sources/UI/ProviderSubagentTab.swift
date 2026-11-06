@@ -82,6 +82,7 @@ struct ProviderSubagentTab: View {
                     TimelineItemView(item: item).padding(4)
                 }
                 .environment(\.sentImages, host.sentImages)
+                .environment(\.messageImagesConnected, host.state == .connected)
                 .environment(\.timelineActions, env?.actions ?? TimelineActions())
                 .environment(\.hostFileReader, env?.fileReader)
                 .environment(\.agentTitle, env?.agentTitle)
@@ -140,7 +141,7 @@ struct ProviderSubagentTab: View {
     private func makeEnvironment() -> TimelineEnvironment {
         let host = host
         let cwd = parent?.cwd ?? workspace?.directory ?? "/"
-        let reader = HostFileReader(cacheScope: host.id + "|" + cwd) { raw in
+        let reader = HostFileReader(cacheScope: host.id + "|" + cwd, messageImages: { try await host.messageImages($0) }) { raw in
             let path = (raw.hasPrefix("/") ? raw : cwd + "/" + raw)
             let dir = (path as NSString).deletingLastPathComponent, name = (path as NSString).lastPathComponent
             return try? await host.readFile(cwd: dir, path: name, maxBytes: 20 * 1024 * 1024).data

@@ -22,6 +22,7 @@ An **Apple Watch companion (watchOS 11+)** is included: view sessions and schedu
 - **Native UI**: SwiftUI with Liquid Glass on macOS / iOS 26 and later, and standard buttons and rounded backgrounds on iOS 18; long sessions scroll smoothly
 - **On par with the official client**: multiple machines, sessions, timeline, permissions, terminals, files, diffs,
   Git and pull requests, schedules, command palette
+- **Chat images**: preview and remove individual draft attachments, then view sent images on other native clients. On iPhone / iPad, **Take Photo** is the last item in the + menu; tap empty chat space or scroll to dismiss the keyboard. [Usage and validation](docs/chat-images.md)
 - **Mac**: menu bar status, reply / approve / deny from notifications, Quick Look, drag files out, an optional
   built-in manager that runs the daemon without the official desktop app (switch back any time), update notifications
 - **iPhone / iPad**: Live Activities and Dynamic Island, notifications with Approve / Deny / Reply — pushed by a
@@ -165,6 +166,9 @@ encrypted, or a direct address), `api.github.com` for update checks at least 30 
 render Mermaid diagrams, and nodejs.org / npm only when installing or updating the daemon. Pairing links and passwords
 stay in the Keychain. The Mac app is not sandboxed so it can show local files referenced in replies and manage the
 local daemon.
+
+Sent images are stored on the connected host through the existing connection, with per-message references in
+`~/.paseo/native-message-images/v1` for other native clients to restore. A confirmed camera photo stays in the draft until you send it.
 
 ## Uninstalling (Mac)
 
