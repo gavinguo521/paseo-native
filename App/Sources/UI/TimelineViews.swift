@@ -15,9 +15,7 @@ enum TimelineDetail: String, CaseIterable {
     }
 }
 
-/// What the list shows: single rows, runs of tool calls / thinking merged into one line, and finished
-/// turns folded into one line saying what the turn did (only the user message, compaction markers and the
-/// final reply stay visible). Official: agent-stream/turn-collapse/model.ts.
+/// 展示单行消息、工具与思考分组，以及已完成操作的摘要；助手正文始终按原顺序可见。
 indirect enum DisplayItem: Identifiable {
     case row(TimelineRow, footer: Bool, turn: TurnInfo? = nil)
     case group(id: String, rows: [TimelineRow])
@@ -52,12 +50,10 @@ indirect enum DisplayItem: Identifiable {
             if let head { out.append(.row(head, footer: true)) }
             var items: [DisplayItem]
             let finalIndex = body.lastIndex { if case .assistantMessage = $0.item { true } else { false } }
-            // Like official hasWork: a turn folds only when something before its reply is worth hiding — a tool
-            // call or an earlier message. Folding a lone thinking line would just swap one line for another.
+            // 助手正文不能因后续补充回复而被收起；只折叠已完成的普通工具操作。
             let worthFolding = finalIndex.map { body[..<$0].contains { r in
                 switch r.item {
-                case .assistantMessage: true
-                case .toolCall(_, _, _, _, _, let m): m == nil
+                case .toolCall(_, _, _, let detail, _, let m): m == nil && !detail.isPlan
                 default: false
                 }
             } } ?? false
@@ -67,16 +63,33 @@ indirect enum DisplayItem: Identifiable {
             } else {
                 let finalIndex = finalIndex!
                 items = []
-                let before = body[..<finalIndex]
-                // Compaction markers stay in the chat (official staysVisibleWhenCollapsed): they explain why the agent
-                // lost earlier context. Agent-sent messages already start their own turn.
-                let isCompaction = { (r: TimelineRow) in if case .compaction = r.item { true } else { false } }
-                let hidden = before.filter { !isCompaction($0) }
-                let label = workSummary(hidden)
-                items.append(.turnSummary(id: "turn-" + (head?.id ?? before.first!.id),
-                                          label: label.isEmpty ? String(localized: "查看轮次详情") : label,
-                                          hidden: groupOps(hidden, finalIndex: nil, separateReasoning: separateReasoning)))
-                items += before.filter(isCompaction).map { .row($0, footer: false) }
+                var activity: [TimelineRow] = []
+                func flushActivity() {
+                    guard let first = activity.first else { return }
+                    let hasTool = activity.contains { if case .toolCall = $0.item { true } else { false } }
+                    if hasTool {
+                        let label = workSummary(activity)
+                        items.append(.turnSummary(id: "turn-" + first.id,
+                            label: label.isEmpty ? String(localized: "查看轮次详情") : label,
+                            hidden: groupOps(activity, finalIndex: nil, separateReasoning: separateReasoning)))
+                    } else {
+                        items += groupOps(activity, finalIndex: nil, separateReasoning: separateReasoning)
+                    }
+                    activity.removeAll(keepingCapacity: true)
+                }
+                for row in body[..<finalIndex] {
+                    switch row.item {
+                    case .reasoning:
+                        activity.append(row)
+                    case .toolCall(_, _, _, let detail, _, let message) where message == nil && !detail.isPlan:
+                        activity.append(row)
+                    default:
+                        // 正文、计划、上下文压缩提示等保持可见，操作摘要不能跨过它们。
+                        flushActivity()
+                        items.append(.row(row, footer: false))
+                    }
+                }
+                flushActivity()
                 items += groupOps(Array(body[finalIndex...]), finalIndex: 0, separateReasoning: separateReasoning)
             }
             // The reply that closes a finished turn carries how long it took and the whole turn's text.

@@ -75,6 +75,49 @@ import PaseoKit
         }
     }
 
+    @Test func completedTurnKeepsEveryAssistantReplyVisible() {
+        let main: JSONValue = ["type": "assistant_message", "messageId": "answer",
+                               "text": "重要结论与操作说明"]
+        let last: JSONValue = ["type": "assistant_message", "messageId": "status",
+                               "text": "另一个任务还在等待复审"]
+        for withTools in [false, true] {
+            var messages: [JSONValue] = [["type": "user_message", "text": "处理任务", "messageId": "user"]]
+            if withTools {
+                messages.append(["type": "tool_call", "callId": "first", "name": "shell",
+                                 "status": "completed", "detail": ["type": "shell", "command": "check"]])
+            }
+            messages.append(main)
+            if withTools {
+                messages.append(["type": "reasoning", "text": "检查剩余任务"])
+                messages.append(["type": "tool_call", "callId": "second", "name": "shell",
+                                 "status": "completed", "detail": ["type": "shell", "command": "status"]])
+            }
+            messages.append(last)
+            var timeline = AgentTimeline()
+            timeline.applyPage(["direction": "tail", "epoch": "fold-test",
+                                "entries": .array(messages.enumerated().map { entry($0.offset, $0.element) })])
+            for active in [true, false] {
+                let items = DisplayItem.build(timeline.rows, lastTurnActive: active)
+                let visibleReplies = items.compactMap { item -> String? in
+                    if case .row(let row, _, _) = item, case .assistantMessage(let text, _) = row.item { return text }
+                    return nil
+                }
+                #expect(visibleReplies == ["重要结论与操作说明", "另一个任务还在等待复审"])
+                if !active && withTools {
+                    #expect(items.count == 5) // 用户、操作、正文、操作、补充正文
+                    if case .turnSummary(_, _, let hidden) = items[1] {
+                        #expect(!describe(hidden).joined().contains("重要结论"))
+                    } else { Issue.record("第一段工具操作应折叠") }
+                    if items.count > 3, case .turnSummary = items[3] {} else { Issue.record("第二段工具操作应在正文之后折叠") }
+                    #expect(Set(items.map(\.id)).count == items.count)
+                }
+                if !active, case .row(_, _, let turn) = items.last {
+                    #expect(turn?.text == "重要结论与操作说明\n\n另一个任务还在等待复审")
+                }
+            }
+        }
+    }
+
     @Test func incrementalTurnsMatchFullBuildAcrossStreamingAndReplacement() {
         let cache = DisplayItemCache()
         var timeline = history(turns: 50)

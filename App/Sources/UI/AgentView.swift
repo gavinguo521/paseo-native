@@ -510,16 +510,14 @@ struct AgentView: View {
                 Button("好") {}
             } message: { Text(actionError ?? "") }
             .defaultScrollAnchor(.bottom)
-            // Stay pinned to the bottom while a reply grows, unless the user scrolled up to read.
-            .defaultScrollAnchor(atBottom && reading.historyWindow == nil ? .bottom : .top, for: .sizeChanges)
+            .modifier(TimelineBottomFollow(following: $atBottom, position: $scrollPosition,
+                enabled: reading.historyWindow == nil && restoreOffset == nil &&
+                    pendingJump == nil && prependGeometry == nil))
             // Sending a message always jumps to it.
             .onChange(of: lastUserMessageId) { old, new in
                 guard old != nil, new != nil else { return }
                 withAnimation(.snappy(duration: 0.25)) { returnToLatest() }
             }
-            .onScrollGeometryChange(for: Bool.self) { g in
-                g.contentSize.height - g.contentOffset.y - g.containerSize.height < 32
-            } action: { _, bottom in atBottom = bottom }
             .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.1) { ids in
                 guard restoreOffset == nil else { return }
                 _ = allDisplayItems
