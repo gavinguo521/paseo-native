@@ -465,6 +465,7 @@ Detail  (6368-6373) = { id, label, value: string, tone? }
 | `creationLifecycle`（3650） | `workspace.create.update` 进度推送和 `creation.subscribe` 恢复 |
 | `workspaceRequestReceipts`、`backgroundWorkspaces`（3657） | 回执、后台创建 |
 | `projectAdd`（3743） | 支持 `project.add.request` |
+| `projectSuggestions`（0.15.2） | 支持 `project.suggestions.request` |
 | `forgeSearch`（3691） | 支持 `forge.search.request`；没有时退回 `github_search_request` |
 | `workspacePinning` | 置顶 |
 | `workspaceMarkUnread` | 标为未读 |
@@ -567,6 +568,8 @@ Detail  (6368-6373) = { id, label, value: string, tone? }
 **辅助 RPC**：`validate_branch_request{cwd, branchName}` → `{exists, resolvedRef, isRemote, error}`（2426-2431, 5970-5979）。
 
 ### 3.4 添加项目，以及目录选择
+
+**`project.suggestions.request{providers?, since?, limit?}`**（0.15.2）→ `project.suggestions.response{payload:{requestId, suggestions:[{rootPath, displayName, sessionCount, providerIds, lastActivityAt}], providerErrors:[{provider, message}]}}`。`since` 默认 30 天前，`limit` 默认 20、上限 100；已有项目不会出现，worktree 和子目录归到主仓库。会扫 Provider 历史，官方每个 Provider 单独请求一次。
 
 **`project.add.request{cwd}`**（`messages.ts:2640-2644`）
 

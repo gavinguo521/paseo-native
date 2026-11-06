@@ -116,6 +116,9 @@ struct AddProjectView: View {
     @State private var stack: [Page] = []
     @State private var query = ""
     @State private var suggestions: [String] = []
+    /// Folders recent provider sessions ran in, on the method page.
+    @State private var recentFolders: [ProjectSuggestion] = []
+    @State private var loadingRecentFolders = false
     /// Clone targets found on the host (marked "已经存在").
     @State private var existingTargets: Set<String> = []
     @State private var repos: [HostStore.GitHubRepo] = []
@@ -141,6 +144,7 @@ struct AddProjectView: View {
         .onAppear(perform: start)
         .onChange(of: page) { query = ""; suggestions = []; error = nil }
         .task(id: "\(page)|\(query)") { await refresh() }
+        .task(id: "\(serverId ?? "")|\(host?.providers.count ?? 0)") { await loadRecentFolders() }
     }
 
     // MARK: Header
@@ -196,6 +200,18 @@ struct AddProjectView: View {
                     icon: "arrow.down.circle", disabled: !can("projectGithubClone")) { stack.append(.githubSearch) }
                 row(String(localized: "新建目录"), subtitle: can("projectCreateDirectory") ? String(localized: "在「\(host?.label ?? "")」上建一个空目录") : String(localized: "先升级这台机器上的 Paseo"),
                     icon: "folder.badge.plus", disabled: !can("projectCreateDirectory")) { stack.append(.newParent) }
+                if loadingRecentFolders || !recentFolders.isEmpty {
+                    Section {
+                        ForEach(recentFolders) { s in
+                            row(s.displayName, subtitle: recentFolderSubtitle(s), icon: "clock.arrow.circlepath") { add(s.rootPath) }
+                        }
+                    } header: {
+                        HStack(spacing: 6) {
+                            Text("最近用过的目录")
+                            if loadingRecentFolders { ProgressView().controlSize(.mini) }
+                        }
+                    }
+                }
             }
         case .directory:
             searchField(String(localized: "搜索目录或输入路径"))
@@ -337,6 +353,30 @@ struct AddProjectView: View {
         guard parts.count == 2, !repos.contains(where: { $0.nameWithOwner.lowercased() == q.lowercased() }) else { return [] }
         let name = String(parts[1])
         return [(String(localized: "\(q)（HTTPS）"), q, name, "https", String(localized: "用 HTTPS 克隆 \(q)")), (String(localized: "\(q)（SSH）"), q, name, "ssh", String(localized: "用 SSH 克隆 \(q)"))]
+    }
+
+    private func recentFolderSubtitle(_ s: ProjectSuggestion) -> String {
+        [s.lastActivityAt?.formatted(.relative(presentation: .named)), abbreviate(s.rootPath)].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// Asks each enabled provider separately and shows rows as they answer; one that fails adds nothing.
+    private func loadRecentFolders() async {
+        recentFolders = []
+        guard let host, can("projectSuggestions") else { return }
+        let providers = host.providers.filter { $0["enabled"]?.boolValue != false }.compactMap { $0["provider"]?.stringValue }
+        guard !providers.isEmpty else { return }
+        loadingRecentFolders = true
+        defer { loadingRecentFolders = false }
+        var answers: [[ProjectSuggestion]] = []
+        await withTaskGroup(of: [ProjectSuggestion].self) { group in
+            for provider in providers {
+                group.addTask { (try? await host.projectSuggestions(provider: provider)) ?? [] }
+            }
+            for await answer in group {
+                answers.append(answer)
+                recentFolders = ProjectSuggestion.merge(answers)
+            }
+        }
     }
 
     private func refresh() async {

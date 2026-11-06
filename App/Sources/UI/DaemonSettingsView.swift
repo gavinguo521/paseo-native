@@ -176,7 +176,7 @@ struct DaemonSettingsView: View {
             }
         } message: {
             Text(host.terminalsSurviveRestart
-                 ? "正在运行的会话会中断（开了「重启后恢复」的会接着做）；终端里的程序可以保留。"
+                 ? "正在运行的会话会中断，要手动继续（目前「重启后恢复」只对崩溃、断电生效）；终端里的程序可以保留。"
                  : "正在运行的会话会中断，终端也会被关闭。这台 daemon 升级到 0.15 后，重启可以保留终端。")
         }
         .confirmationDialog("关闭中继？", isPresented: $confirmRelayOff) {

@@ -735,6 +735,13 @@ public final class HostStore: Identifiable {
         return p
     }
 
+    /// Folders sessions of one provider ran in over the last 30 days, minus existing projects (`projectSuggestions`).
+    /// Scans the provider's history, so ask per provider: a slow one then holds up only itself.
+    public func projectSuggestions(provider: String) async throws -> [ProjectSuggestion] {
+        let r = try await conn().request("project.suggestions.request", ["providers": [.string(provider)]], timeout: .seconds(60))
+        return (r["payload"]?["suggestions"]?.arrayValue ?? []).compactMap(ProjectSuggestion.init)
+    }
+
     /// Creates `parent/name` on the host and registers it as a project.
     public func createProjectDirectory(parent: String, name: String) async throws -> Project? {
         let r = try await conn().request("project.create_directory.request", ["parentPath": .string(parent), "name": .string(name)], timeout: .seconds(60))

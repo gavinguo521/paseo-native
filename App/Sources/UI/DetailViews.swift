@@ -715,7 +715,7 @@ struct PreferencesView: View {
                     #if os(macOS)
                     UpdateSettingsRows()
                     #endif
-                    LabeledContent("对齐官方版本", value: "v0.15.0")
+                    LabeledContent("对齐官方版本", value: "v0.15.2")
                     ForEach(model.hosts) { h in
                         LabeledContent(h.label, value: h.serverInfo?.version.map { "daemon v" + $0 } ?? String(localized: "未连接"))
                     }

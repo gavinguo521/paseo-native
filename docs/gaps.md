@@ -247,11 +247,32 @@
 
 协议改动都向下兼容，0.15 daemon 上不改也能用。以下 8 项按顺序跟进：
 
-1. **已做**（待 0.15 实测）重启后恢复被中断的会话：daemon 设置 `resumeOnStartup` / `resumePrompt`（`features.resumeOnStartupSetting`）
-2. **已做**（待 0.15 实测）重启 daemon 保留终端：`daemon.restart` 的 `killTerminals`、关闭的 `keepTerminals`（`features.terminalsSurviveRestart`）
-3. **已做**（待 0.15 实测）用量查询总开关：daemon 设置 `usage.enabled`（`features.usageSetting`），关掉后客户端不查用量
+1. **已做**（2026-11-06 实测：崩溃后恢复正常；手动重启不恢复，官方 bug，见下）重启后恢复被中断的会话：daemon 设置 `resumeOnStartup` / `resumePrompt`（`features.resumeOnStartupSetting`）
+2. **已做**（2026-11-06 实测通过）重启 daemon 保留终端：`daemon.restart` 的 `killTerminals`、关闭的 `keepTerminals`（`features.terminalsSurviveRestart`）
+3. **已做**（2026-11-06 实测通过）用量查询总开关：daemon 设置 `usage.enabled`（`features.usageSetting`），关掉后客户端不查用量
 4. **已做** 用量限制在倒计时旁显示具体重置时刻（官方 #8162）
 5. **已做**（点击未实测） 点回复里的已知 Agent 命令插入输入框（官方 #8371）
 6. **已做** 折叠的侧栏分组里仍显示当前会话（官方 #8395）
 7. **已做** 回复里的相对路径链接打开嵌套仓库中的文件（官方 #8361）
-8. **已做**（接收端，单元测试；待 0.15 实测） 大响应分块传输：客户端能力 `binary_chunking_v1`（官方 #8302）
+8. **已做**（2026-11-06 直连实测通过，中继未测） 大响应分块传输：客户端能力 `binary_chunking_v1`（官方 #8302）
+
+### 0.15 同步项实测记录（2026-11-06）
+
+在隔离的 0.15.2 daemon 上测（临时 `PASEO_HOME`、独立端口），客户端是 PaseoKit，**没有点 App 界面**。
+
+| 项 | 怎么测 | 结果 |
+|---|---|---|
+| 用量开关 | `patchDaemonConfig` 关 / 开，再调 `usageReports` | 通过。关闭后 `usageQueriesEnabled` 为 false，daemon 回「Usage is off on this host.」 |
+| 保留终端 | 建终端跑长命令，默认重启，再用 `killTerminals` 重启 | 通过。默认重启后 worker 换了，终端 id 和进程 PID 都在；`killTerminals` 后都没了。重连后终端输出能否接上没测 |
+| 分块传输 | 配置里放 40MB 字符串，读 `get_daemon_config_request` | 直连通过。声明能力时收到 2 个 `0x31` 帧，不声明时是一整条明文帧；PaseoKit 还原出 41943040 字节且连接仍可用。只有单条消息超过 32MB 才触发 |
+| 恢复会话（设置开，`kill -9` worker） | Claude 会话运行中杀 worker | 通过。恢复提示语送达，会话继续 |
+| 恢复会话（设置关，`kill -9` worker） | 同上 | 通过。不恢复 |
+| 恢复会话（设置开，手动重启） | Claude 会话运行中 `restart_server_request` | **不恢复，官方 bug** |
+
+**官方 bug**（0.15.2 和当时的 main 都在）：停机时 `captureRunningAgents` 写入 `resumeOnStartup`，紧接着 `closeAllAgents` 把会话关成 `idle`，`agent-storage` 的 `applySnapshot` 看到 `idle` 就清掉标记（日志里相隔 14ms）。只验证了 Claude。客户端修不了，所以重启确认框的文案改成了实际行为。
+
+## 官方 0.15.2 同步（2026-11-06）
+
+1. **已做** 项目建议（官方 #8363）：`project.suggestions.request`，由 `features.projectSuggestions` 控制。放在添加项目的方式列表下面（「最近用过的目录」），点一下走现有添加流程。按 Provider 并行请求，到一个合并一个。PaseoKit 对 0.15.2 实测通过，**界面未截图**：本机 daemon 升到 0.15.2 才看得到。和官方的差异：不做多选批量添加。
+
+其余不跟进：首次设置引导（Desktop / Web 新用户）、主题预览网格（我们没有深色变体）、控件尺寸和弹窗动效（官方 React 界面规范）、桌面端卸载 CLI（Electron 专属）。卸载 skills 前确认我们已有。0.15.1 只修 Windows。

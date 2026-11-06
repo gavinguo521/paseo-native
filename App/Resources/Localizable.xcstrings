@@ -7460,6 +7460,16 @@
         }
       }
     },
+    "最近用过的目录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recently used folders"
+          }
+        }
+      }
+    },
     "月限额": {
       "localizations": {
         "en": {
@@ -8194,6 +8204,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Running sessions will be interrupted and terminals will be closed. After this daemon is upgraded to 0.15, restarting can keep terminals."
+          }
+        }
+      }
+    },
+    "正在运行的会话会中断，要手动继续（目前「重启后恢复」只对崩溃、断电生效）；终端里的程序可以保留。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Running sessions will be interrupted and need to be continued by hand (for now, resume after restart only works after a crash or power loss). Programs in terminals can keep running."
           }
         }
       }

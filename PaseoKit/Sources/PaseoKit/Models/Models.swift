@@ -297,6 +297,41 @@ public struct Project: Sendable, Identifiable {
     }
 }
 
+/// A folder the user ran provider sessions in that isn't a project yet (`project.suggestions.response`, 0.15.2+).
+public struct ProjectSuggestion: Sendable, Identifiable, Equatable {
+    public var id: String { rootPath }
+    public let rootPath: String
+    public let displayName: String
+    public var sessionCount: Int
+    public var providerIds: [String]
+    public var lastActivityAt: Date?
+
+    public init?(_ v: JSONValue) {
+        guard let rootPath = v["rootPath"]?.stringValue else { return nil }
+        self.rootPath = rootPath
+        displayName = v["displayName"]?.stringValue ?? (rootPath as NSString).lastPathComponent
+        sessionCount = Int(v["sessionCount"]?.doubleValue ?? 0)
+        providerIds = (v["providerIds"]?.arrayValue ?? []).compactMap(\.stringValue)
+        lastActivityAt = v["lastActivityAt"]?.dateValue
+    }
+
+    /// One row per folder across the providers that answered, most recent first (official mergeProviderSuggestions).
+    public static func merge(_ answers: [[ProjectSuggestion]]) -> [ProjectSuggestion] {
+        var byRoot: [String: ProjectSuggestion] = [:]
+        for s in answers.joined() {
+            guard var existing = byRoot[s.rootPath] else { byRoot[s.rootPath] = s; continue }
+            existing.sessionCount += s.sessionCount
+            existing.providerIds = Array(Set(existing.providerIds + s.providerIds)).sorted()
+            existing.lastActivityAt = [existing.lastActivityAt, s.lastActivityAt].compactMap { $0 }.max()
+            byRoot[s.rootPath] = existing
+        }
+        return byRoot.values.sorted {
+            let (a, b) = ($0.lastActivityAt ?? .distantPast, $1.lastActivityAt ?? .distantPast)
+            return a == b ? $0.rootPath < $1.rootPath : a > b
+        }
+    }
+}
+
 // MARK: - Timeline
 
 public enum ToolCallDetail: Sendable {
