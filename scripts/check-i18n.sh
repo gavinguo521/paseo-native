@@ -11,7 +11,8 @@ xcodebuild -exportLocalizations -project Paseo.xcodeproj -localizationPath "$OUT
 python3 - <<'PY'
 import json, re, sys
 cats = ['App/Resources/Localizable.xcstrings', 'Widgets/Localizable.xcstrings', 'PaseoKit/Sources/PaseoKit/Resources/Localizable.xcstrings',
-        'App/Resources/InfoPlist.xcstrings', 'Widgets/InfoPlist.xcstrings']
+        'App/Resources/InfoPlist.xcstrings', 'Widgets/InfoPlist.xcstrings',
+        'Watch/Resources/Localizable.xcstrings', 'Watch/Resources/InfoPlist.xcstrings']
 miss = []
 for c in cats:
     try: d = json.load(open(c))['strings']

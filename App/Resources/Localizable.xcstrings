@@ -1610,6 +1610,16 @@
         }
       }
     },
+    "不支持的操作": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unsupported action."
+          }
+        }
+      }
+    },
     "与 %@ 的连接断开，%@后重试": {
       "localizations": {
         "en": {
@@ -1622,6 +1632,16 @@
           "stringUnit": {
             "state": "new",
             "value": "与 %1$@ 的连接断开，%2$@后重试"
+          }
+        }
+      }
+    },
+    "与主机的连接已中断，正在恢复，请稍后刷新": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The host connection was interrupted and is recovering. Refresh again shortly."
           }
         }
       }
@@ -1756,12 +1776,32 @@
         }
       }
     },
+    "主机响应超时，请稍后刷新": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The host did not respond in time. Refresh again shortly."
+          }
+        }
+      }
+    },
     "主机版本太旧": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Host version is too old"
+          }
+        }
+      }
+    },
+    "主机连接超时，请稍后刷新": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The host connection timed out. Refresh again shortly."
           }
         }
       }
@@ -2112,6 +2152,16 @@
         }
       }
     },
+    "会话已关闭，消息未发送": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The session is closed. Your message was not sent."
+          }
+        }
+      }
+    },
     "会话操作": {
       "localizations": {
         "en": {
@@ -2354,6 +2404,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Allow"
+          }
+        }
+      }
+    },
+    "允许本次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow Once"
           }
         }
       }
@@ -2706,6 +2766,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Content"
+          }
+        }
+      }
+    },
+    "内容过多，请在 iPhone 上查看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There is too much content. View it on your iPhone."
           }
         }
       }
@@ -3842,6 +3912,26 @@
         }
       }
     },
+    "回答内容无效，请重新选择或输入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid answer. Choose an option or enter your answer again."
+          }
+        }
+      }
+    },
+    "回答问题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Answer questions"
+          }
+        }
+      }
+    },
     "回退对话到这里": {
       "localizations": {
         "en": {
@@ -4858,6 +4948,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Small"
+          }
+        }
+      }
+    },
+    "尚未收到操作记录，请保持 iPhone 可连接后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No operation record has arrived yet. Keep your iPhone reachable and try again."
+          }
+        }
+      }
+    },
+    "尚未确认结果，请刷新会话查看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The result is unconfirmed. Refresh the session to check."
+          }
+        }
+      }
+    },
+    "尚未确认结果，请查询状态，避免重复发送": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The result is unconfirmed. Check its status before sending again."
           }
         }
       }
@@ -6652,6 +6772,26 @@
         }
       }
     },
+    "操作已发出，尚未确认结果": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The operation was sent, but its result is not yet confirmed."
+          }
+        }
+      }
+    },
+    "操作已过期，请重新查看后操作": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This operation expired. Review the request again before acting."
+          }
+        }
+      }
+    },
     "收起": {
       "localizations": {
         "en": {
@@ -7040,6 +7180,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Unlabelled"
+          }
+        }
+      }
+    },
+    "无法安全记录操作，未发送": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The operation could not be recorded safely and was not sent."
           }
         }
       }
@@ -8710,6 +8860,26 @@
         }
       }
     },
+    "消息为空或过长，请编辑后发送": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your message is empty or too long. Edit it before sending."
+          }
+        }
+      }
+    },
+    "消息已发送": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message Sent"
+          }
+        }
+      }
+    },
     "消息操作": {
       "localizations": {
         "en": {
@@ -10178,6 +10348,16 @@
         }
       }
     },
+    "计划任务已不存在": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This scheduled task no longer exists."
+          }
+        }
+      }
+    },
     "设置": {
       "localizations": {
         "en": {
@@ -10284,6 +10464,66 @@
           "stringUnit": {
             "state": "translated",
             "value": "Details"
+          }
+        }
+      }
+    },
+    "请在 iPhone 上打开 Paseo 后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Paseo on your iPhone, then try again."
+          }
+        }
+      }
+    },
+    "请在 iPhone 上查看此问答": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View this question on your iPhone"
+          }
+        }
+      }
+    },
+    "请更新 iPhone 和手表上的 Paseo 后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update Paseo on both your iPhone and Apple Watch, then try again."
+          }
+        }
+      }
+    },
+    "请求内容已变化，请刷新后重新查看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The request changed. Refresh and review it again."
+          }
+        }
+      }
+    },
+    "请求已处理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request Handled"
+          }
+        }
+      }
+    },
+    "请求批准": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permission Request"
           }
         }
       }
@@ -10838,6 +11078,16 @@
         }
       }
     },
+    "这个请求已处理，请刷新会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This request has already been handled. Refresh the session."
+          }
+        }
+      }
+    },
     "这个账号没有限额数据": {
       "localizations": {
         "en": {
@@ -10884,6 +11134,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "This Mac (Test Directory)"
+          }
+        }
+      }
+    },
+    "这台主机已从 iPhone 移除": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This host was removed from your iPhone."
           }
         }
       }

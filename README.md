@@ -2,6 +2,8 @@
 
 非官方的 [Paseo](https://paseo.sh) 原生客户端，Mac、iPhone、iPad 共用一套 SwiftUI 代码。
 
+现提供 **Apple Watch 配套应用（watchOS 11+）**：通过配对的 iPhone 查看会话与计划任务、听写回复、回答选择题和处理批准请求。watchOS 26 及以上使用 Liquid Glass，旧系统使用普通控件。[构建与测试说明](docs/watch-companion.md)
+
 > **与 Paseo 官方无关。** 它和官方 App 一样，连接你自己电脑上的 Paseo daemon；可以和官方 App 同时装、同时用。界面有简体中文和英文，跟随系统语言。
 
 [English](README.en.md)
@@ -32,6 +34,7 @@
 |---|---|
 | **Mac** | 到 [Releases](https://github.com/gavinguo521/paseo-native/releases/latest) 下载 `Paseo-Native-x.y.z.dmg`，打开后把「Paseo Native」拖进「应用程序」。已签名、已经过苹果公证，双击就能打开；装好叫「Paseo Native.app」，不会覆盖官方的 Paseo.app |
 | **iPhone / iPad** | 暂不提供安装包，需要用 Xcode 自己编译安装，见「[iPhone / iPad 版安装](#iphone--ipad-版安装)」 |
+| **Apple Watch** | 随 iPhone 应用构建，依赖配对 iPhone 通信，见[手表安装说明](docs/watch-companion.md#build-and-test) |
 | **安卓** | 没有，继续用官方 App；两边可以连同一台机器 |
 
 **系统要求**：macOS 26 / iOS 18 / iPadOS 18。iOS / iPadOS 18 使用兼容界面，26 及以上保留 Liquid Glass，功能逻辑相同。另外需要一台跑着 Paseo daemon 的电脑（官方桌面 App 自带；没有的话本 App 可以帮你装，见下文）。已用 Paseo v0.15 测试。
@@ -217,6 +220,7 @@ Mac 版的通知由 App 自己发：关掉窗口 App 还在运行（菜单栏或
 
 - `PaseoKit/`：协议层 Swift Package（Noise 加密通道、配对、客户端、数据模型），附对真实 daemon 的探针 `paseo-probe`
 - `App/`：SwiftUI 界面；`Widgets/`：灵动岛 / 实时活动扩展
+- `Watch/`：Apple Watch 配套界面；`PaseoKit/Sources/PaseoWatchBridge/`：手机与手表之间的数据和操作回执
 - `Config/`：签名和发布配置（`Local.xcconfig` 放你自己的值，不进仓库）
 - `docs/protocol/`：从官方源码整理的协议文档
 

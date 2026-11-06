@@ -1,0 +1,22 @@
+{
+  "sourceLanguage": "zh-Hans",
+  "strings": {
+    "NSMicrophoneUsageDescription": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用麦克风听写回复，确认后发送给会话。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dictate a reply with the microphone and review it before sending."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

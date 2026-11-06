@@ -19,6 +19,8 @@ struct PaseoApp: App {
         #if os(iOS)
         // 在这里而不是窗口出现后启动：实时活动的推送令牌可能在后台把 App 唤醒，要能马上交给插件。
         LiveActivityController.shared.start(model: model)
+        // WCSession can launch the app in the background before a scene becomes visible.
+        WatchCompanion.shared.start(model: model)
         #endif
     }
 

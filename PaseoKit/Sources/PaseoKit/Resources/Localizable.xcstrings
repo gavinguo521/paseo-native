@@ -121,6 +121,16 @@
         }
       }
     },
+    "会话已不存在": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This session no longer exists."
+          }
+        }
+      }
+    },
     "保存失败": {
       "localizations": {
         "en": {
@@ -407,6 +417,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Untitled Schedule"
+          }
+        }
+      }
+    },
+    "未收到会话消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No session messages were received."
           }
         }
       }
