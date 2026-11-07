@@ -78,6 +78,45 @@ import Testing
         try await capture(NavigationStack { SidebarView(showSettings: .constant(false), showAddHost: .constant(false)) }
             .frame(width: 320).frame(maxWidth: .infinity, alignment: .leading).environment(multi),
             name: "sidebar-compact", scroll: false)
+        multi.destination = .history
+        try await capture(NavigationStack { SidebarView(showSettings: .constant(false), showAddHost: .constant(false)) }
+            .environment(multi), name: "sidebar-return-history", scroll: false)
+    }
+
+    @Test func workspaceHierarchyGallery() async throws {
+        let model = try SidebarTestFixture.model(projects: 1)
+        let host = try #require(model.hosts.first)
+        // 即使残留旧版本的展开状态，单会话工作区也只显示一行。
+        host.agents = host.agents.filter { $0.key.hasSuffix("s0") }
+        let children = model.sidebarSessionIndex()
+        #expect(children.count == 8)
+        #expect(children.values.allSatisfy { $0.count == 1 })
+        let groups = model.groups
+        model.expandedSessionRows = Set(groups.flatMap(\.rows).map {
+            AppModel.rowKey(serverId: $0.serverId, agent: $0.agent)
+        })
+        try await capture(NavigationStack { SidebarView(showSettings: .constant(false), showAddHost: .constant(false)) }
+            .environment(model), name: "sidebar-single-session-direct", scroll: false)
+    }
+
+    @Test func workspaceNameIsDistinctFromSessionTitle() async throws {
+        let agent = try #require(Agent(["id": "title-session", "workspaceId": "title-workspace",
+            "cwd": "/test/project/main", "title": "讨论跨段复制", "status": "idle"]))
+        let workspace = try #require(Workspace(["id": "title-workspace", "name": "主工作区",
+            "title": "讨论跨段复制", "workspaceDirectory": "/test/project/main"]))
+        let parent = SessionRow(agent: agent, bucket: agent.bucket, selected: false,
+            workspace: workspace, childCount: 2, expanded: true, action: {})
+        let single = SessionRow(agent: agent, bucket: agent.bucket, selected: true,
+            workspace: workspace, action: {})
+        let child = SessionRow(agent: agent, bucket: agent.bucket, selected: true,
+            useAgentTitle: true, depth: 1, action: {})
+        #expect(parent.title == "主工作区")
+        #expect(single.title == "主工作区")
+        #expect(child.title == "讨论跨段复制")
+        #expect(SessionRow(agent: agent, bucket: agent.bucket, selected: false, action: {}).title == "main")
+        try await capture(VStack(spacing: 0) { parent; child }.padding(),
+            name: "workspace-and-session-titles", scroll: false)
+        try await capture(single.padding(), name: "single-workspace-title", scroll: false)
     }
 
     @Test func compactControlsRetainReadableSize() throws {

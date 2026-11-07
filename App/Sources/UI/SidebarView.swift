@@ -39,6 +39,14 @@ struct SidebarView: View {
     #endif
 
     private static let rowsPerGroup = 8
+    /// 手机项目标题保持原来的紧凑行高；iPad 继续使用较大的操作按钮。
+    private var projectActionSize: CGFloat {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .phone ? 22 : 44
+        #else
+        22
+        #endif
+    }
     #if os(iOS)
     /// iPad: the sidebar has a toolbar row (sidebar toggle) — put the title there instead of a second row.
     /// By device, not size class: the sidebar column reports compact even on a full-screen iPad.
@@ -248,7 +256,12 @@ struct SidebarView: View {
 
     /// History, schedules and board as icons beside the filter (they used to be three full rows).
     private func navIcon(_ icon: String, _ title: String, _ destination: Destination) -> some View {
+        #if os(iOS)
+        // 手机返回的是导航入口，保留的详情页不代表当前仍在该页面；iPad 分栏才显示选中项。
+        let selected = UIDevice.current.userInterfaceIdiom != .phone && model.destination == destination
+        #else
         let selected = model.destination == destination
+        #endif
         return Button {
             // 打开看板时记下当前所在的工作区（会话页和工作区里的终端 / 改动等标签页都算），看板直接定位到那个项目
             if destination == .board {
@@ -256,6 +269,8 @@ struct SidebarView: View {
                 else if case .agent(let r) = model.destination { model.boardAgent = r; model.boardWorkspace = nil }
             }
             model.destination = destination
+            // 返回侧栏后再次点同一入口，destination 不变，也要重新展开详情。
+            model.revealDetail += 1
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 14))
@@ -312,12 +327,18 @@ struct SidebarView: View {
         // 悬停状态放在标题自己的 HoverReader 里：滚动时标题从鼠标下经过会频繁切换悬停，挂在整个侧栏上会让侧栏每次都整体重算（掉帧）。
         HoverReader(forced: forcedHoverGroup == group.id) { hovered in
             // Project icon and name; hovering swaps the icon for the collapse chevron and shows 「+」 and 「⋯」 (official sidebar).
+            #if os(iOS)
+            // 触屏保留项目图标；点击标题即可展开，不用箭头替换图标。
+            let showChevron = false
+            #else
+            let showChevron = hovered
+            #endif
             HStack(spacing: 8) {
                 ZStack {
-                    groupIcon(group).opacity(hovered ? 0 : 1)
+                    groupIcon(group).opacity(showChevron ? 0 : 1)
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.muted)
                         .rotationEffect(.degrees(isCollapsed ? 0 : 90))
-                        .opacity(hovered ? 1 : 0)
+                        .opacity(showChevron ? 1 : 0)
                 }
                 .frame(width: 16, height: 16)
                 Text(group.name).font(.system(size: Theme.base, weight: .medium)).foregroundStyle(Theme.muted).lineLimit(1)
@@ -359,21 +380,21 @@ struct SidebarView: View {
                                 ForEach(targets, id: \.host.id) { t in Button(t.host.label) { start(t) } }
                             }
                         } label: {
-                            Image(systemName: "plus").font(.system(size: 12, weight: .medium)).frame(width: 22, height: 22).mobileTouchTarget().contentShape(Rectangle())
+                            Image(systemName: "plus").font(.system(size: 12, weight: .medium)).frame(width: projectActionSize, height: projectActionSize).contentShape(Rectangle())
                         }
                         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
                         .help("在此项目新建工作区")
                         .accessibilityLabel("在此项目新建工作区，选择机器")
                     } else if let t = targets.first {
                         Button { start(t) } label: {
-                            Image(systemName: "plus").font(.system(size: 12, weight: .medium)).frame(width: 22, height: 22).mobileTouchTarget().contentShape(Rectangle())
+                            Image(systemName: "plus").font(.system(size: 12, weight: .medium)).frame(width: projectActionSize, height: projectActionSize).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .help("在此项目新建工作区")
                         .accessibilityLabel("在此项目新建工作区")
                     }
                     Menu { groupMenu(group, all: all, auto: auto) } label: {
-                        Image(systemName: "ellipsis").font(.system(size: 12, weight: .medium)).frame(width: 22, height: 22).mobileTouchTarget().contentShape(Rectangle())
+                        Image(systemName: "ellipsis").font(.system(size: 12, weight: .medium)).frame(width: projectActionSize, height: projectActionSize).contentShape(Rectangle())
                     }
                     .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
                     .accessibilityLabel("分组操作")
@@ -402,6 +423,23 @@ struct SidebarView: View {
             return true
         })
 
+        if !isCollapsed, group.rows.isEmpty, case .project = group.kind {
+            let targets = sessionTargets(group, auto: auto)
+            if targets.count > 1 {
+                Menu {
+                    ForEach(targets, id: \.host.id) { target in
+                        Button(target.host.label) { start(target) }
+                    }
+                } label: {
+                    newWorkspaceLabel
+                }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            } else if let target = targets.first {
+                Button { start(target) } label: { newWorkspaceLabel }
+                    .buttonStyle(.plain)
+            }
+        }
+
         // A collapsed group still shows the session being viewed, so the selection never disappears (official 0.15 #8395).
         let current = group.rows.filter { isSelected($0.serverId, $0.agent) }
         let showAll = expandedAll.contains(group.id) || !model.search.isEmpty
@@ -410,14 +448,14 @@ struct SidebarView: View {
             ForEach(visible, id: \.agent.id) { row in
                 let ref = AgentRef(serverId: row.serverId, agentId: row.agent.id)
                 let workspace = model.workspace(of: ref)
-                // 工作区下钻：工作区里有 2 个及以上子会话（标签页）才给展开三角；子任务不在这里，看输入框的子代理胶囊
+                // 单会话直接进入；多个会话才提供展开入口。
                 let children = row.agent.workspaceId.flatMap { kids[row.serverId + "|" + $0] } ?? []
                 let expandKey = AppModel.rowKey(serverId: row.serverId, agent: row.agent)
-                let childrenOpen = children.count >= 2 && model.expandedSessionRows.contains(expandKey)
+                let childrenOpen = children.count > 1 && model.expandedSessionRows.contains(expandKey)
                 SessionRow(agent: row.agent, bucket: row.bucket, selected: isSelected(row.serverId, row.agent), workspace: workspace,
                            context: rowContext(group, row.agent, serverId: row.serverId),
                            shortcut: shortcuts[ref],
-                           childCount: children.count >= 2 ? children.count : 0, expanded: childrenOpen,
+                           childCount: children.count > 1 ? children.count : 0, expanded: childrenOpen,
                            onToggle: { toggleChildren(expandKey) }) {
                     model.openRow(ref)
                 }
@@ -537,6 +575,19 @@ struct SidebarView: View {
         }
         Button("全部折叠") { collapsed = Set(all.map(\.id)) }
         Button("全部展开") { collapsed = [] }
+    }
+
+    private var newWorkspaceLabel: some View {
+        Label("新建工作区", systemImage: "plus")
+            .font(.system(size: Theme.base)).foregroundStyle(Theme.muted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            #if os(iOS)
+            .frame(minHeight: 44)
+            #else
+            .frame(minHeight: 34)
+            #endif
+            .padding(.leading, 40).padding(.trailing, 16)
+            .contentShape(Rectangle())
     }
 
     /// Where a project group can start a session, one per machine: that machine's most recent workspace of the group,
@@ -734,7 +785,7 @@ struct SearchCapsule: View {
     }
 }
 
-private struct SessionRow: View {
+struct SessionRow: View {
     let agent: Agent
     /// Most urgent status among the workspace's sessions.
     let bucket: StatusBucket
@@ -747,7 +798,7 @@ private struct SessionRow: View {
     var useAgentTitle = false
     /// 缩进层级：0 工作区行，1 工作区里的子会话
     var depth = 0
-    /// 工作区里可展开的子会话数（≥2 才传，0 表示没有展开三角）
+    /// 工作区里可展开的会话数，0 表示没有展开入口。
     var childCount = 0
     var expanded = false
     var onToggle: (() -> Void)? = nil
@@ -761,78 +812,100 @@ private struct SessionRow: View {
     #else
     private let badgesBelow = false
     #endif
-    /// The workspace's title (official sidebar), else the session's.
-    private var title: String { useAgentTitle ? agent.displayTitle : workspace?.title.flatMap { $0.isEmpty ? nil : $0 } ?? agent.displayTitle }
+    /// 工作区用自身名称，不复用从会话生成的摘要标题；子行才显示会话标题。
+    var title: String {
+        guard !useAgentTitle, agent.workspaceId != nil else { return agent.displayTitle }
+        if let name = workspace?.name, !name.isEmpty { return name }
+        let directory = (workspace?.directory).flatMap { $0.isEmpty ? nil : $0 } ?? agent.cwd
+        let name = (directory as NSString).lastPathComponent
+        return name.isEmpty ? String(localized: "工作区") : name
+    }
 
     var body: some View {
         #if DEBUG
         let _ = SidebarBench.rowCount += 1
         #endif
-        Button(action: action) {
-            HStack(spacing: 8) {
-                // Status sits in front of the title, in the indent under the project icon.
-                StatusDot(bucket: bucket).frame(width: 16)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        // One step above the official base size (users found the list small).
-                        .font(.system(size: Theme.base + 1, weight: selected ? .semibold : .regular))
-                        .foregroundStyle(Theme.foreground)
-                        .lineLimit(1)
-                    if let context {
-                        Text(context).font(.system(size: Theme.base - 2)).foregroundStyle(Theme.extraMuted).lineLimit(1)
+        HStack(spacing: 0) {
+            if childCount > 0 {
+                Button { onToggle?() } label: {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.muted)
+                        #if os(iOS)
+                        .frame(width: 44, height: 44)
+                        #else
+                        .frame(width: 12, height: 34)
+                        #endif
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(expanded ? String(localized: "收起会话列表") : String(localized: "展开 \(childCount) 个会话"))
+            }
+            Button(action: action) {
+                HStack(spacing: 8) {
+                    // Status sits in front of the title, in the indent under the project icon.
+                    StatusDot(bucket: bucket).frame(width: 16)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(title)
+                            // One step above the official base size (users found the list small).
+                            .font(.system(size: Theme.base + 1, weight: selected ? .semibold : .regular))
+                            .foregroundStyle(Theme.foreground)
+                            .lineLimit(1)
+                        if let context {
+                            Text(context).font(.system(size: Theme.base - 2)).foregroundStyle(Theme.extraMuted).lineLimit(1)
+                        }
+                        if badgesBelow, hasBadges { HStack(spacing: 8) { badges } }
                     }
-                    if badgesBelow, hasBadges { HStack(spacing: 8) { badges } }
-                }
-                Spacer(minLength: 6)
-                if let shortcut {
-                    Text("⌘\(shortcut)").font(.system(size: 11, weight: .medium, design: .rounded))
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 4))
-                        .foregroundStyle(Theme.muted)
-                }
-                if let wt = workspace, wt.kind == "worktree" {
-                    // 在 worktree 里跑的会话：小树图标，悬停看分支
-                    Image(systemName: "tree").font(.system(size: Theme.base - 2)).foregroundStyle(Theme.muted)
-                        .help(String(localized: "worktree · 分支 \(wt.currentBranch ?? "—")") + "\n" + wt.directory)
-                }
-                if childCount >= 2 {
-                    Button { onToggle?() } label: {
-                        Text(verbatim: "\(childCount)").font(.system(size: Theme.base - 2.5, weight: .medium, design: .rounded))
-                            .foregroundStyle(Theme.muted)
+                    Spacer(minLength: 6)
+                    if let shortcut {
+                        Text("⌘\(shortcut)").font(.system(size: 11, weight: .medium, design: .rounded))
                             .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(Theme.surface2, in: Capsule())
+                            .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 4))
+                            .foregroundStyle(Theme.muted)
                     }
-                    .buttonStyle(.plain)
-                    .help(expanded ? String(localized: "收起会话列表") : String(localized: "展开 \(childCount) 个会话"))
-                }
-                if !badgesBelow { badges }
-                trailing
-            }
-            .padding(.leading, 12 + CGFloat(depth) * 16)
-            .padding(.trailing, 12)
-            .overlay(alignment: .leading) {
-                // 展开三角放在状态点前面的留白里，没有子会话的行不占位、不错位
-                if childCount >= 2 {
-                    Button { onToggle?() } label: {
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.muted)
-                            .frame(width: 12, height: 24).contentShape(Rectangle())
+                    if let wt = workspace, wt.kind == "worktree" {
+                        // 在 worktree 里跑的会话：小树图标，悬停看分支
+                        Image(systemName: "tree").font(.system(size: Theme.base - 2)).foregroundStyle(Theme.muted)
+                            .help(String(localized: "worktree · 分支 \(wt.currentBranch ?? "—")") + "\n" + wt.directory)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.leading, CGFloat(depth) * 16)
+                    if !badgesBelow { badges }
+                    trailing
                 }
+                .padding(.leading, childCount > 0 ? 0 : 12)
+                .padding(.trailing, 12)
+                // Touch: the system's 44pt row (34 was the Mac size, cramped and fiddly to hit on a phone).
+                #if os(iOS)
+                .frame(minHeight: 44)
+                #else
+                .frame(minHeight: 34)
+                #endif
+                .padding(.vertical, context == nil && !(badgesBelow && hasBadges) ? 0 : 3)
+                .contentShape(Rectangle())
             }
-            // Touch: the system's 44pt row (34 was the Mac size, cramped and fiddly to hit on a phone).
-            #if os(iOS)
-            .frame(minHeight: 44)
-            #else
-            .frame(minHeight: 34)
-            #endif
-            .padding(.vertical, context == nil && !(badgesBelow && hasBadges) ? 0 : 3)
-            .background(selected ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 10))
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            if childCount > 1 {
+                Button { onToggle?() } label: {
+                    Text(verbatim: "\(childCount)")
+                        .font(.system(size: Theme.base - 2.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(Theme.muted)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Theme.surface2, in: Capsule())
+                        #if os(iOS)
+                        .frame(width: 44, height: 44)
+                        #else
+                        .frame(width: 28, height: 34)
+                        #endif
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(expanded ? String(localized: "收起会话列表") : String(localized: "展开 \(childCount) 个会话"))
+            }
         }
-        .buttonStyle(.plain)
+        #if os(iOS)
+        .padding(.leading, CGFloat(depth) * 48)
+        #else
+        .padding(.leading, CGFloat(depth) * 16)
+        #endif
+        .background(selected ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 10))
         .padding(.horizontal, 4)
         .help(hoverInfo)
     }
