@@ -482,7 +482,7 @@ final class AppModel {
         return groupBucket(roots, in: host, children: children)
     }
 
-    private func groupBucket(_ roots: [Agent], in host: HostStore, children: [String: [Agent]]) -> StatusBucket {
+    func groupBucket(_ roots: [Agent], in host: HostStore, children: [String: [Agent]]) -> StatusBucket {
         var best = roots.map(\.bucket).min() ?? .done
         var stack = roots.map(\.id)
         var seen = Set(stack)
@@ -848,7 +848,12 @@ final class AppModel {
         Task { [weak self] in
             while true {
                 try? await Task.sleep(for: .seconds(60))
-                self?.hosts.forEach { $0.refreshRunningAgents() }
+                guard let self else { return }
+                // iOS 后台状态由推送接管，不为不可见的活动时间刷新发起逐会话请求。
+                #if os(iOS)
+                guard self.appActive else { continue }
+                #endif
+                self.hosts.forEach { $0.refreshRunningAgents() }
             }
         }
         #if DEBUG

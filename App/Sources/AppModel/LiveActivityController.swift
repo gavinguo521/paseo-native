@@ -105,7 +105,7 @@ final class LiveActivityController {
     /// 设置里开关变化或回到前台时调用。
     func sync() {
         guard let model else { return }
-        schedule(Self.snapshot(model))
+        if model.appActive { schedule(Self.snapshot(model)) }
         lastRegistration = nil
         Task { await register() }
     }
@@ -114,10 +114,13 @@ final class LiveActivityController {
 
     private func observe() {
         guard let model else { return }
-        let (state, pusherId) = withObservationTracking { (Self.snapshot(model), Self.pusher(model)?.id) } onChange: { [weak self] in
+        let (state, pusherId) = withObservationTracking {
+            (model.appActive ? Self.snapshot(model) : nil, Self.pusher(model)?.id)
+        } onChange: { [weak self] in
             Task { @MainActor in self?.observe() }
         }
-        schedule(state)
+        if let state { schedule(state) }
+        else { applyTask?.cancel(); applyTask = nil }
         if pusherId != lastPusherId {
             lastPusherId = pusherId
             Task { await register() }
@@ -353,7 +356,8 @@ final class LiveActivityController {
             let live = h.agents.values.filter { $0.archivedAt == nil && $0.parentAgentId != nil }
             let children = Dictionary(grouping: live) { $0.parentAgentId! }
             for (_, list) in Dictionary(grouping: roots, by: { $0.workspaceId ?? "agent:" + $0.id }) {
-                let bucket = model.groupBucket(list, in: h)
+                // 子会话索引按主机建一次，不能为每个工作区重新扫描所有会话。
+                let bucket = model.groupBucket(list, in: h, children: children)
                 guard let rank = rankOf[bucket], let status = statusOf[bucket] else { continue }
                 // 顶层会话加上它们的嵌套子会话（递归）。
                 var members = list

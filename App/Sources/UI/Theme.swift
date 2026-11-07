@@ -111,32 +111,51 @@ struct StatusDot: View {
 struct RunningRing: View {
     var size: CGFloat = 10
     @Environment(\.self) private var environment
+    #if os(iOS)
+    @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+    #endif
 
     var body: some View {
-        SpinningRing(color: Theme.dotRunning.resolve(in: environment).cgColor)
+        SpinningRing(color: Theme.dotRunning.resolve(in: environment).cgColor, animating: animating)
             .frame(width: size, height: size)
             .allowsHitTesting(false)
+            #if os(iOS)
+            .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+                lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+            }
+            #endif
+    }
+
+    private var animating: Bool {
+        #if os(iOS)
+        !lowPower && !environment.accessibilityReduceMotion && environment.scenePhase == .active
+        #else
+        !environment.accessibilityReduceMotion
+        #endif
     }
 }
 
 #if os(macOS)
 private struct SpinningRing: NSViewRepresentable {
     let color: CGColor
+    let animating: Bool
     func makeNSView(context: Context) -> SpinningRingView { SpinningRingView() }
-    func updateNSView(_ view: SpinningRingView, context: Context) { view.color = color }
+    func updateNSView(_ view: SpinningRingView, context: Context) { view.color = color; view.animating = animating }
 }
 #else
 private struct SpinningRing: UIViewRepresentable {
     let color: CGColor
+    let animating: Bool
     func makeUIView(context: Context) -> SpinningRingView { SpinningRingView() }
-    func updateUIView(_ view: SpinningRingView, context: Context) { view.color = color }
+    func updateUIView(_ view: SpinningRingView, context: Context) { view.color = color; view.animating = animating }
 }
 #endif
 
-private final class SpinningRingView: PlatformView {
+final class SpinningRingView: PlatformView {
     private let track = CAShapeLayer()
     private let arc = CAShapeLayer()
     private let lineWidth: CGFloat = 1.6
+    var animating = true { didSet { spin() } }
     var color: CGColor = PlatformColor.systemBlue.cgColor {
         didSet {
             track.strokeColor = color.copy(alpha: 0.25)
@@ -188,7 +207,11 @@ private final class SpinningRingView: PlatformView {
     }
 
     private func spin() {
-        guard window != nil, arc.animation(forKey: "spin") == nil else { return }
+        guard window != nil, animating else {
+            arc.removeAnimation(forKey: "spin")
+            return
+        }
+        guard arc.animation(forKey: "spin") == nil else { return }
         let a = CABasicAnimation(keyPath: "transform.rotation.z")
         a.fromValue = 0
         // Clockwise on screen; AppKit layers have y pointing up.
