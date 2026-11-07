@@ -220,6 +220,22 @@ private func text(_ row: TimelineRow) -> String {
         }
     }
 
+    @Test func multilineReceiptKeepsKnownCwdNoticeAndPairsCompletion() {
+        let first = "Command running in background with ID: b202t0ccr. Output is being written to: /tmp/tasks/b202t0ccr.output. You will be notified when it completes. To check interim output, use Read on that file path."
+        let cwd = "Session cwd remains /workspace/sample project; directory changes made by the backgrounded command do not apply to subsequent commands."
+        for newline in ["\n", "\r\n"] {
+            #expect(AgentBackgroundTask.taskId(fromOutput: first + newline + cwd, toolName: "Bash") == "b202t0ccr")
+        }
+        for extra in ["more source code", "Session cwd remains ; directory changes made by the backgrounded command do not apply to subsequent commands.", cwd + "\nmore source code", cwd + " unexpected suffix"] {
+            #expect(AgentBackgroundTask.taskId(fromOutput: first + "\n" + extra, toolName: "Bash") == nil)
+        }
+        var timeline = AgentTimeline()
+        timeline.applyPage(page("tail", [entry(1, bash("multiline", "build", output: first + "\n" + cwd))], start: 1, end: 1))
+        #expect(timeline.backgroundTasks(sessionEnded: false).first?.state == .running)
+        _ = timeline.applyStream(stream(2, notification(toolUseId: "multiline", taskId: "b202t0ccr", status: "completed", summary: "done")))
+        #expect(timeline.backgroundTasks(sessionEnded: false).first?.state == .completed)
+    }
+
     @Test func runningUntilNotificationArrives() {
         var t = AgentTimeline()
         t.applyPage(page("tail", [

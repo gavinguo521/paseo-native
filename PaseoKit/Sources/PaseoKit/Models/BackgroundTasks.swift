@@ -47,8 +47,19 @@ public struct AgentBackgroundTask: Sendable, Identifiable, Equatable {
     public static func taskId(fromOutput output: String, toolName: String) -> String? {
         guard toolName == "Bash" else { return nil }
         let receipt = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard receipt.hasPrefix(prefix) else { return nil }
-        let rest = receipt.dropFirst(prefix.count)
+        let lines = receipt.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard let first = lines.first, first.hasPrefix(prefix), lines.count <= 2 else { return nil }
+        if lines.count == 2 {
+            // Claude 的真实回执可附带 cwd 提示；不放行任意后续输出，避免源码再次误报。
+            let cwdPrefix = "Session cwd remains "
+            let cwdSuffix = "; directory changes made by the backgrounded command do not apply to subsequent commands."
+            let notice = lines[1]
+            guard notice.hasPrefix(cwdPrefix), notice.hasSuffix(cwdSuffix),
+                  notice.count > cwdPrefix.count + cwdSuffix.count,
+                  !notice.dropFirst(cwdPrefix.count).dropLast(cwdSuffix.count).trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        }
+        let rest = first.dropFirst(prefix.count)
         let id = rest.prefix { taskIDCharacters.contains($0) }
         guard !id.isEmpty else { return nil }
         let suffix = rest.dropFirst(id.count)
