@@ -89,6 +89,7 @@ struct ComposerView: View {
             ComposerShell(text: $text, images: $images, focused: $focused, error: error, placeholder: placeholder,
                           autocomplete: autocomplete, onPick: pick, uploads: $uploads,
                           onFiles: { uploadFiles($0, to: host, into: $uploads) },
+                          onTextAttachment: { uploadPastedText($0, to: host, into: $uploads) },
                           onAlternateSubmit: { send(alternate: true) }, onRecall: recall, onCycleMode: cycleMode,
                           onTabEmpty: { if let s = suggestion { text = s.text; return true }; return false },
                           searchForge: workspace?.isGit == true ? { [host, dir = workspace!.directory] q in try await host.forgeSearch(cwd: dir, query: q) } : nil) {
@@ -239,11 +240,11 @@ struct ComposerView: View {
             ForEach(queued) { q in
                 HStack(spacing: 8) {
                     Image(systemName: "clock").foregroundStyle(Theme.muted)
-                    Text(q.text).lineLimit(1)
+                    Text(q.text.isEmpty ? q.uploads.map(\.name).joined(separator: ", ") : q.text).lineLimit(1)
                     if !q.images.isEmpty { Text("· \(q.images.count) 张图").foregroundStyle(Theme.muted) }
                     Spacer()
-                    Button("编辑") { model.queue[agentId]?.removeAll { $0.id == q.id }; text = q.text; images = q.images; focused = true }
-                    Button("现在发送") { model.queue[agentId]?.removeAll { $0.id == q.id }; dispatch(q.text, q.images, files: q.files, steer: true) }
+                    Button("编辑") { model.queue[agentId]?.removeAll { $0.id == q.id }; text = q.text; images = q.images; uploads = UploadItem.restoring(q.uploads, into: uploads); focused = true }
+                    Button("现在发送") { model.queue[agentId]?.removeAll { $0.id == q.id }; dispatch(q.text, q.images, files: q.files, restoreUploads: q.uploads, steer: true) }
                     Button { model.queue[agentId]?.removeAll { $0.id == q.id } } label: { Image(systemName: "xmark") }
                         .accessibilityLabel("移出队列")
                 }
@@ -315,20 +316,21 @@ struct ComposerView: View {
         guard hasContent, !sending else { return }
         var behavior = self.behavior
         if alternate { behavior = behavior == .queue ? .steer : .queue }
-        guard !uploads.contains(where: { !$0.done && $0.error == nil }) else { error = String(localized: "文件还在上传"); return }
+        guard !uploads.contains(where: { !$0.done }) else { error = uploads.compactMap(\.error).first ?? String(localized: "文件还在上传"); return }
         let attached = images
         let files = uploads.compactMap(\.file).map(\.attachment)
+        let sentUploads = uploads
         text = ""
         images = []
         uploads = []
         if running && behavior == .queue && (agent?.pendingPermissions.isEmpty ?? true) {
-            model.queue[agentId, default: []].append(QueuedMessage(text: message, images: attached, files: files))
+            model.queue[agentId, default: []].append(QueuedMessage(text: message, images: attached, files: files, uploads: sentUploads))
             return
         }
-        dispatch(message, attached, files: files, steer: running && behavior == .steer)
+        dispatch(message, attached, files: files, restoreUploads: sentUploads, steer: running && behavior == .steer)
     }
 
-    private func dispatch(_ message: String, _ attached: [ImageAttachment], files: [JSONValue] = [], steer: Bool) {
+    private func dispatch(_ message: String, _ attached: [ImageAttachment], files: [JSONValue] = [], restoreUploads: [UploadItem] = [], steer: Bool) {
         sending = true
         error = nil
         host.noteActivity()
@@ -339,6 +341,7 @@ struct ComposerView: View {
             } catch {
                 self.error = String(localized: "发送失败：\(error)")
                 if text.isEmpty { text = message; images = attached }
+                uploads = UploadItem.restoring(restoreUploads, into: uploads)
             }
             sending = false
         }
@@ -349,7 +352,7 @@ struct ComposerView: View {
         guard var list = model.queue[agentId], !list.isEmpty else { return }
         let next = list.removeFirst()
         model.queue[agentId] = list
-        dispatch(next.text, next.images, files: next.files, steer: true)
+        dispatch(next.text, next.images, files: next.files, restoreUploads: next.uploads, steer: true)
     }
 }
 
@@ -687,16 +690,81 @@ struct UploadItem: Identifiable {
     let name: String
     var file: UploadedFile?
     var error: String?
+    var pastedText: PastedTextAttachment?
     var done: Bool { file != nil }
+
+    /// 排队编辑或发送失败时还原附件，同时保留用户刚添加的其他附件。
+    static func restoring(_ incoming: [UploadItem], into existing: [UploadItem]) -> [UploadItem] {
+        incoming.filter { item in !existing.contains { $0.id == item.id } } + existing
+    }
+}
+
+/// 卡片只保存短摘要供排版；上传内容保留原始 UTF-8 字节，不裁剪日志。
+struct PastedTextAttachment {
+    let data: Data
+    let preview: String
+    static func shouldAttach(_ text: String) -> Bool {
+        text.utf16.count > 12_000 || text.utf8.filter { $0 == 10 }.count >= 200
+    }
+    init(_ text: String) {
+        data = Data(text.utf8)
+        preview = String(text.prefix(160)).replacingOccurrences(of: "\r\n", with: " ").replacingOccurrences(of: "\r", with: " ").replacingOccurrences(of: "\n", with: " ")
+    }
+}
+
+struct PastedTextAttachmentCard: View {
+    let item: UploadItem
+    let attachment: PastedTextAttachment
+    let remove: () -> Void
+    var retry: (() -> Void)? = nil
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 19)).foregroundStyle(Theme.accentBright)
+                    .frame(width: 36, height: 40)
+                    .background(Theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                    HStack(spacing: 5) {
+                        Text("TXT").fontWeight(.medium)
+                        Text("·")
+                        Text(ByteCountFormatter.string(fromByteCount: Int64(attachment.data.count), countStyle: .file))
+                        if !item.done, item.error == nil { ProgressView().controlSize(.mini) }
+                    }.font(.system(size: 11)).foregroundStyle(Theme.muted)
+                }
+                Spacer(minLength: 0)
+                Button(action: remove) { Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).frame(width: 20, height: 20) }
+                    .buttonStyle(.plain).foregroundStyle(Theme.muted).accessibilityLabel("移除附件")
+            }
+            HStack(spacing: 8) {
+                Text(item.error ?? attachment.preview)
+                    .font(.system(size: 11)).foregroundStyle(item.error == nil ? Theme.muted : Theme.destructive)
+                    .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                if item.error != nil, let retry {
+                    Button("重试", action: retry).font(.system(size: 11)).buttonStyle(.plain).foregroundStyle(Theme.accentBright)
+                }
+            }
+        }
+        .padding(12).frame(width: 284)
+        .background(Theme.surface2.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border, lineWidth: 1))
+        .help(item.error ?? String(localized: "完整文本将作为附件发送"))
+    }
 }
 
 struct UploadTray: View {
     @Binding var items: [UploadItem]
+    var retry: ((UploadItem) -> Void)? = nil
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(items) { item in
+                    if let attachment = item.pastedText {
+                        PastedTextAttachmentCard(item: item, attachment: attachment, remove: { items.removeAll { $0.id == item.id } },
+                                                 retry: retry.map { action in { action(item) } })
+                    } else {
                     HStack(spacing: 6) {
                         if item.error != nil { Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.destructive) }
                         else if item.done { Image(systemName: "doc.fill").foregroundStyle(Theme.muted) }
@@ -709,6 +777,7 @@ struct UploadTray: View {
                     .padding(.horizontal, 10).frame(height: 28)
                     .background(Theme.surface2, in: Capsule())
                     .help(item.error ?? item.name)
+                    }
                 }
             }
             .padding(.top, 6).padding(.horizontal, 4)
@@ -738,11 +807,28 @@ func uploadFiles(_ urls: [URL], to host: HostStore, into items: Binding<[UploadI
     }
 }
 
+/// 与用户选择的文件走相同上传协议，不把长日志重新塞回输入框。
+@MainActor
+func uploadPastedText(_ content: PastedTextAttachment, to host: HostStore, into items: Binding<[UploadItem]>) {
+    let item = UploadItem(name: String(localized: "粘贴的文本.txt"), pastedText: content)
+    items.wrappedValue.append(item)
+    Task {
+        do {
+            guard content.data.count <= 50 * 1024 * 1024 else { throw HostStore.ActionError.rejected(String(localized: "文件超过 50 MB")) }
+            let file = try await host.upload(fileName: item.name, mimeType: "text/plain", data: content.data)
+            if let i = items.wrappedValue.firstIndex(where: { $0.id == item.id }) { items.wrappedValue[i].file = file }
+        } catch {
+            if let i = items.wrappedValue.firstIndex(where: { $0.id == item.id }) { items.wrappedValue[i].error = "\(error)" }
+        }
+    }
+}
+
 struct QueuedMessage: Identifiable {
     let id = UUID()
     let text: String
     let images: [ImageAttachment]
     var files: [JSONValue] = []
+    var uploads: [UploadItem] = []
 }
 
 /// New chat: pick provider/model/thinking; the first message creates the agent in `workspace`.
@@ -812,6 +898,7 @@ struct DraftComposerView: View {
         ComposerShell(text: $text, images: $images, focused: $focused, error: error, placeholder: String(localized: "发送消息"),
                       autocomplete: autocomplete, onPick: { autocomplete.apply($0, to: &text) }, uploads: $uploads,
                       onFiles: { uploadFiles($0, to: host, into: $uploads) },
+                          onTextAttachment: { uploadPastedText($0, to: host, into: $uploads) },
                       searchForge: workspace.isGit ? { [host, dir = workspace.directory] q in try await host.forgeSearch(cwd: dir, query: q) } : nil) {
             EmptyView()
         } controls: {
@@ -862,7 +949,7 @@ struct DraftComposerView: View {
             }
             }
         } trailing: {
-            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || uploads.contains(where: { $0.done }) {
                 RoundButton(systemImage: "arrow.up", busy: sending, help: String(localized: "开始")) { create() }
             }
         } onSubmit: { create() }
@@ -916,7 +1003,8 @@ struct DraftComposerView: View {
 
     private func create() {
         let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty, !sending else { return }
+        guard !sending, !prompt.isEmpty || uploads.contains(where: { $0.done }) else { return }
+        guard !uploads.contains(where: { !$0.done }) else { error = uploads.compactMap(\.error).first ?? String(localized: "文件还在上传"); return }
         sending = true
         error = nil
         let attachments = (app.forkDraft.map { [$0.attachment] } ?? []) + uploads.compactMap(\.file).map(\.attachment)
@@ -1262,6 +1350,7 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
     var onPick: ((Suggestion) -> Void)? = nil
     var uploads: Binding<[UploadItem]>? = nil
     var onFiles: (@MainActor @Sendable ([URL]) -> Void)? = nil
+    var onTextAttachment: ((PastedTextAttachment) -> Void)? = nil
     /// ⌘Enter: the other send behavior (queue ↔ now).
     var onAlternateSubmit: (() -> Void)? = nil
     /// ↑ in an empty box: bring back the last sent message.
@@ -1287,10 +1376,6 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
     @State private var fullscreen = false
     @State private var tablePaste: TablePasteRequest?
     @State private var tablePasteFailed = false
-    #if os(macOS)
-    /// ⌘V interception: the text field's editor only pastes text, so images never reached onPasteCommand.
-    @State private var pasteMonitor: Any?
-    #endif
     @State private var pickingForge = false
     @State private var forgeQuery = ""
     @State private var forgeResults: [ForgeItem] = []
@@ -1298,12 +1383,6 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
     /// "enter" (⇧↩ newline) or "cmdEnter" (↩ newline, ⌘↩ send).
     @AppStorage("sendKey") private var sendKey = "enter"
 
-    #if os(macOS)
-    /// 在输入框的光标处插入换行（有选中文字时替换掉），走当前的文字编辑器，撤销也正常。
-    private func insertNewlineAtCursor() {
-        NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)
-    }
-    #else
     /// Hardware Return in ComposerTextView (input method not composing, no ⇧): ↩ sends, ⌘↩ the other send;
     /// with 「⌘↩ 发送」 set, ↩ types a newline. False = let the text view type the newline.
     private func hardwareReturn(_ command: Bool) -> Bool {
@@ -1338,7 +1417,6 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
         }
         return true
     }
-    #endif
     @Environment(\.scrollToBottom) private var scrollToBottom
 
     var body: some View {
@@ -1360,46 +1438,24 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     if !images.isEmpty { AttachmentTray(images: $images) }
-                    if let uploads, !uploads.wrappedValue.isEmpty { UploadTray(items: uploads) }
+                    if let uploads, !uploads.wrappedValue.isEmpty {
+                        UploadTray(items: uploads) { item in
+                            guard let content = item.pastedText, let onTextAttachment else { return }
+                            onTextAttachment(content)
+                            uploads.wrappedValue.removeAll { $0.id == item.id }
+                        }
+                    }
                     #if os(iOS)
                     ComposerTextView(text: $text, placeholder: placeholder, focused: focused, fontSize: Theme.content,
-                                     onReturn: hardwareReturn, onKey: hardwareKey, onPasteImages: { images += $0 }, tablePaste: tablePaste)
+                                     onReturn: hardwareReturn, onKey: hardwareKey, onPasteImages: { images += $0 }, onLongText: attachLongText, tablePaste: tablePaste)
                         .padding(.horizontal, 6)
                         .padding(.top, 8)
                     #else
-                    TextField(placeholder, text: $text, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: Theme.content))
-                        .lineLimit(3...12)
-                        .focused(focused)
+                    MacComposerTextView(text: $text, placeholder: placeholder, focused: focused, fontSize: Theme.content,
+                                        onReturn: hardwareReturn, onKey: hardwareKey,
+                                        onPaste: { pasteTableIfAvailable() || pasteAttachments() }, onLongText: attachLongText)
                         .padding(.horizontal, 6)
                         .padding(.top, 8)
-                        #if os(macOS)
-                        .onKeyPress(.return, phases: .down) { press in
-                            // Return confirms the input method's pending text (e.g. stops voice input), never sends it.
-                            if inputMethodComposing() { return .ignored }
-                            // ⇧↩ 换行：自己在光标处插入换行。交还给系统的话，多行 TextField 在 macOS 上把 ⇧↩ 当成结束输入，换不了行。
-                            if press.modifiers.contains(.shift) { insertNewlineAtCursor(); return .handled }
-                            if let a = autocomplete, a.isActive { if let selected = a.selected { onPick?(selected) }; return .handled }
-                            if sendKey == "cmdEnter" {
-                                // ↩ inserts a newline; ⌘↩ sends.
-                                guard press.modifiers.contains(.command) else { insertNewlineAtCursor(); return .handled }
-                                onSubmit()
-                                return .handled
-                            }
-                            if press.modifiers.contains(.command), let onAlternateSubmit { onAlternateSubmit(); return .handled }
-                            onSubmit()
-                            return .handled
-                        }
-                        .onPasteCommand(of: [.html, .utf8PlainText, .tabSeparatedText, .png, .tiff, .jpeg, .heic, .fileURL]) { providers in
-                            if pasteAttachments() { return }
-                            if let value = TableClipboard.pasted() {
-                                insertPastedTable(value)
-                            } else if let value = NSPasteboard.general.string(forType: .string) {
-                                insertPastedTable(value, isTable: false)
-                            } else { ImageTools.load(providers) { images += $0 } }
-                        }
-                        #endif
                     #endif
                     HStack(spacing: 2) {
                         Menu {
@@ -1456,45 +1512,12 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                         HStack(spacing: 8) { trailing }
                     }
                 }
-                #if os(macOS)
-                // iOS: ComposerTextView passes these keys to hardwareKey.
-                .onKeyPress(keys: [.upArrow, .downArrow, .tab, .escape]) { press in
-                    // Arrows, Tab and Esc pick or cancel input method candidates while it is composing.
-                    if inputMethodComposing() { return .ignored }
-                    guard let a = autocomplete, a.isActive else {
-                        if press.key == .upArrow, text.isEmpty, let onRecall { onRecall(); return .handled }
-                        if press.key == .tab, press.modifiers.contains(.shift), let onCycleMode { onCycleMode(); return .handled }
-                        if press.key == .tab, text.isEmpty, onTabEmpty?() == true { return .handled }
-                        return .ignored
-                    }
-                    switch press.key {
-                    case .upArrow: a.moveSelection(-1)
-                    case .downArrow: a.moveSelection(1)
-                    case .tab: if let selected = a.selected { onPick?(selected) }
-                    default: a.dismiss()
-                    }
-                    return .handled
-                }
-                #endif
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
                 .compatibleGlassEffect(in: RoundedRectangle(cornerRadius: 24))
                 .overlay(RoundedRectangle(cornerRadius: 24).stroke(Theme.accent, lineWidth: dropTargeted ? 2 : 0))
             }
         }
-        #if os(macOS)
-        .onAppear {
-            guard pasteMonitor == nil else { return }
-            pasteMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
-                guard focused.wrappedValue,
-                      e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-                      e.charactersIgnoringModifiers?.lowercased() == "v",
-                      (pasteTableIfAvailable() || pasteAttachments()) else { return e }
-                return nil
-            }
-        }
-        .onDisappear { if let m = pasteMonitor { NSEvent.removeMonitor(m); pasteMonitor = nil } }
-        #endif
         .alert("无法识别表格", isPresented: $tablePasteFailed) {
             Button("好", role: .cancel) {}
         } message: {
@@ -1608,6 +1631,12 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
             do { forgeResults = try await searchForge(forgeQuery); forgeError = nil }
             catch { forgeError = "\(error)"; forgeResults = [] }
         }
+    }
+
+    private func attachLongText(_ value: String) -> Bool {
+        guard let onTextAttachment, PastedTextAttachment.shouldAttach(value) else { return false }
+        onTextAttachment(PastedTextAttachment(value))
+        return true
     }
 
     private func insertPastedTable(_ value: String, isTable: Bool = true) {

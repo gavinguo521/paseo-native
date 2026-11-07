@@ -167,12 +167,15 @@ struct ReplyDocument {
     var applying = false
     var selecting = false
     weak var view: ReplyNativeTextView?
+    private var appliedText: NSAttributedString?
 
     func update(_ document: ReplyDocument) {
         guard let view else { return }
         if view.replySelectedRange.length > 0 { pending = document; return }
         pending = nil
-        guard !view.replyStorage.isEqual(to: document.text) else { return }
+        // TextKit 会整理字体属性，不能用处理后的 storage 判断原始文档是否变化。
+        guard appliedText?.isEqual(to: document.text) != true else { return }
+        appliedText = document.text.copy() as? NSAttributedString
         applying = true
         view.replyStorage.setAttributedString(document.text)
         view.replySelectedRange = NSRange(location: 0, length: 0)
@@ -201,8 +204,38 @@ struct NativeReplyText: NSViewRepresentable {
     let openInApp: ((URL) -> Void)?
     let selectionChanged: (Bool) -> Void
     func makeCoordinator() -> ReplyTextCoordinator { ReplyTextCoordinator() }
-    func makeNSView(context: Context) -> ReplyNativeTextView {
-        let view = ReplyNativeTextView(frame: .zero)
+    func makeNSView(context: Context) -> ReplyTextHostView {
+        ReplyTextHostView(coordinator: context.coordinator)
+    }
+    func updateNSView(_ host: ReplyTextHostView, context: Context) {
+        context.coordinator.openLink = openLink
+        context.coordinator.selectionChanged = selectionChanged
+        host.openInApp = openInApp
+        host.update(document)
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView host: ReplyTextHostView, context: Context) -> CGSize? {
+        guard let width = proposal.width, width > 0, width.isFinite else { return nil }
+        return host.replySize(for: width)
+    }
+}
+
+/// 创建只读 NSTextView 会同步激活当前输入法并运行嵌套 RunLoop。
+/// 必须等 SwiftUI 的 make/update/layout 事务返回后再创建，避免重入布局图。
+final class ReplyTextHostView: NSView {
+    let coordinator: ReplyTextCoordinator
+    private var document: ReplyDocument?
+    private var measurement: ReplyTextMeasurement? = ReplyTextMeasurement()
+    var openInApp: ((URL) -> Void)? { didSet { coordinator.view?.openInApp = openInApp } }
+
+    init(coordinator: ReplyTextCoordinator) {
+        self.coordinator = coordinator
+        super.init(frame: .zero)
+        DispatchQueue.main.async { [weak self] in self?.installTextView() }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    private func installTextView() {
+        let view = ReplyNativeTextView(frame: bounds)
         view.isEditable = false; view.isSelectable = true
         view.drawsBackground = false
         view.linkTextAttributes = [:]
@@ -210,19 +243,54 @@ struct NativeReplyText: NSViewRepresentable {
         view.textContainer?.lineFragmentPadding = 0
         view.isVerticallyResizable = false; view.isHorizontallyResizable = false
         view.textContainer?.widthTracksTextView = true
-        view.delegate = context.coordinator
-        context.coordinator.view = view
-        return view
-    }
-    func updateNSView(_ view: ReplyNativeTextView, context: Context) {
-        context.coordinator.openLink = openLink
+        view.autoresizingMask = [.width, .height]
         view.openInApp = openInApp
-        context.coordinator.selectionChanged = selectionChanged
-        context.coordinator.update(document)
+        view.delegate = coordinator
+        coordinator.view = view
+        addSubview(view)
+        if let document { coordinator.update(document) }
+        measurement = nil
     }
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView view: ReplyNativeTextView, context: Context) -> CGSize? {
-        guard let width = proposal.width, width > 0, width.isFinite else { return nil }
-        return view.replySize(for: width)
+
+    func update(_ document: ReplyDocument) {
+        self.document = document
+        coordinator.update(document)
+    }
+
+    func replySize(for width: CGFloat) -> CGSize {
+        // 首次排版不依赖 NSTextView；选中文字时仍按正在显示的旧文档测量。
+        if let view = coordinator.view { return view.replySize(for: width) }
+        guard let document else { return CGSize(width: width, height: 0) }
+        return measurement!.size(document.text, width: width)
+    }
+}
+
+@MainActor private final class ReplyTextMeasurement {
+    private var sourceText: NSAttributedString?
+    private var measuredSizes: [CGFloat: CGSize] = [:]
+    private let storage = NSTextStorage()
+    private let layout = NSLayoutManager()
+    private let container = NSTextContainer(size: .zero)
+    init() {
+        container.lineFragmentPadding = 0
+        storage.addLayoutManager(layout)
+        layout.addTextContainer(container)
+    }
+    func size(_ text: NSAttributedString, width: CGFloat) -> CGSize {
+        // 测量用的 TextKit 也会整理字体属性，保存输入副本以免误判为新正文。
+        if sourceText?.isEqual(to: text) != true {
+            sourceText = text.copy() as? NSAttributedString
+            measuredSizes.removeAll(keepingCapacity: true)
+            storage.setAttributedString(text)
+        }
+        if let size = measuredSizes[width] { return size }
+        container.containerSize = CGSize(width: width, height: .greatestFiniteMagnitude)
+        layout.ensureLayout(for: container)
+        let size = CGSize(width: width, height: ceil(layout.usedRect(for: container).height))
+        // 保留少量候选宽度，兼顾 SwiftUI 的交替测量和连续调整窗口大小。
+        if measuredSizes.count >= 4 { measuredSizes.removeAll(keepingCapacity: true) }
+        measuredSizes[width] = size
+        return size
     }
 }
 
@@ -236,22 +304,10 @@ extension ReplyTextCoordinator: NSTextViewDelegate {
 
 final class ReplyNativeTextView: NSTextView {
     // 测量不能修改正在显示的容器：SwiftUI 会探测并放弃不同的候选宽度。
-    private lazy var measurement: (storage: NSTextStorage, layout: NSLayoutManager, container: NSTextContainer) = {
-        let storage = NSTextStorage()
-        let layout = NSLayoutManager()
-        let container = NSTextContainer(size: .zero)
-        container.lineFragmentPadding = 0
-        storage.addLayoutManager(layout)
-        layout.addTextContainer(container)
-        return (storage, layout, container)
-    }()
+    private let measurement = ReplyTextMeasurement()
 
     func replySize(for width: CGFloat) -> CGSize {
-        let (storage, layout, container) = measurement
-        if !storage.isEqual(to: replyStorage) { storage.setAttributedString(replyStorage) }
-        container.containerSize = CGSize(width: width, height: .greatestFiniteMagnitude)
-        layout.ensureLayout(for: container)
-        return CGSize(width: width, height: ceil(layout.usedRect(for: container).height))
+        measurement.size(replyStorage, width: width)
     }
     var openInApp: ((URL) -> Void)?
     private var menuURL: URL?
@@ -343,7 +399,7 @@ struct NativeReplyText: UIViewRepresentable {
     }
     func sizeThatFits(_ proposal: ProposedViewSize, uiView view: ReplyNativeTextView, context: Context) -> CGSize? {
         guard let width = proposal.width, width > 0, width.isFinite else { return nil }
-        return CGSize(width: width, height: ceil(view.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height))
+        return view.replySize(for: width)
     }
 }
 
@@ -409,7 +465,20 @@ final class ReplyNativeTextView: UITextView {
     var codes: [ReplyDocument.Code] = [] { didSet { rebuildButtons() } }
     private var copyButtons: [UIButton] = []
     private var codeBackgrounds: [UIView] = []
-    func invalidateReplyLayout() { invalidateIntrinsicContentSize(); setNeedsLayout() }
+    // SwiftUI 会重复试探尺寸；避免每次让 UITextView 临时改容器宽度并重新排版。
+    private var measuredSizes: [CGFloat: CGSize] = [:]
+    func replySize(for width: CGFloat) -> CGSize {
+        if let size = measuredSizes[width] { return size }
+        let size = CGSize(width: width, height: ceil(sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height))
+        if measuredSizes.count >= 4 { measuredSizes.removeAll(keepingCapacity: true) }
+        measuredSizes[width] = size
+        return size
+    }
+    func invalidateReplyLayout() {
+        measuredSizes.removeAll(keepingCapacity: true)
+        invalidateIntrinsicContentSize()
+        setNeedsLayout()
+    }
     private func rebuildButtons() {
         copyButtons.forEach { $0.removeFromSuperview() }
         codeBackgrounds.forEach { $0.removeFromSuperview() }

@@ -15,6 +15,31 @@
             "value": "Dictate a reply with the microphone and review it before sending."
           }
         }
+      },
+      "comment": "Privacy - Microphone Usage Description"
+    },
+    "CFBundleDisplayName": {
+      "comment": "Bundle display name",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Paseo"
+          }
+        }
+      }
+    },
+    "CFBundleName": {
+      "comment": "Bundle name",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "new",
+            "value": "PaseoWatch"
+          }
+        }
       }
     }
   },

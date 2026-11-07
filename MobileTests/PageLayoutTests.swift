@@ -29,6 +29,18 @@ import Testing
         try await capture(MessageSenderDetails(sender: ["id": "missing-session", "title": "用于完整展示的很长的会话名字：检查 iPhone 与 iPad 的消息来源和导航"], lookup: lookup), name: "message-source-offline", scroll: false)
     }
 
+    @Test func crossSessionReplyCard() async throws {
+        let model = try SidebarTestFixture.model(projects: 1)
+        let host = try #require(model.hosts.first)
+        let sender: JSONValue = ["id": "p0-w0-s0", "serverId": .string(host.id)]
+        let text = "Agent p0-w0-s0 (会话名称) finished.\n\nServer: \(host.id)\n\n<agent-response>\n## 检查结果\n\n已修复 **iPhone 与 iPad** 的按钮排版。\n\n- 保留真实工作区名称\n- 点击来源可以跳转\n</agent-response>"
+        try await capture(VStack(alignment: .leading, spacing: 20) {
+            CrossSessionMessageCard(message: ["event": "finished", "sender": sender], text: text)
+            CrossSessionMessageCard(message: ["event": "message", "sender": sender], text: "主动发来的消息应直接显示。\n\n" + String(repeating: "这是用于验证普通消息不会因长度被默认折叠的正文。", count: 45) + "\n\n这是消息结尾。")
+        }.environment(\.messageSender, MessageSenderLookup(host: host, model: model)).padding(16), name: "cross-session-card", scroll: true)
+
+    }
+
     @Test func pageLayoutGallery() async throws {
         let model = try SidebarTestFixture.model(projects: 2)
         let host = try #require(model.hosts.first)

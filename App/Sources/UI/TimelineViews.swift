@@ -439,6 +439,7 @@ final class MessageSenderLookup {
 /// 来源信息集中展示，菜单与恢复入口在手机和桌面保持一致。
 struct MessageSenderButton: View {
     let sender: JSONValue
+    var textAlignment: TextAlignment = .trailing
     @Environment(\.messageSender) private var lookup
     @Environment(\.openWindow) private var openWindow
     @State private var showingDetails = false
@@ -463,7 +464,7 @@ struct MessageSenderButton: View {
         } label: {
             Label("由「\(fullName)」发送", systemImage: "bubble.left.and.text.bubble.right")
                 .font(.system(size: 11)).foregroundStyle(Theme.muted)
-                .lineLimit(2).multilineTextAlignment(.trailing)
+                .lineLimit(2).multilineTextAlignment(textAlignment)
                 .padding(.vertical, 6)
                 #if os(iOS)
                 .frame(minHeight: 44)
@@ -780,12 +781,7 @@ private struct RowView: View {
             ToolGroupView(rows: [row])
         case .toolCall(_, _, _, let detail, _, let agentMessage):
             if let agentMessage, agentMessage["event"]?.stringValue == "message", let text = agentMessage["text"]?.stringValue {
-                // Official presentation: a message from another session reads as a user message with its sender.
-                let sender = messageSender?.lookup(agentMessage["sender"])
-                UserBubble(text: text, sender: sender?.name ?? agentMessage["sender"]?["title"]?.stringValue
-                           ?? agentMessage["sender"]?["id"]?.stringValue.map { String($0.prefix(7)) } ?? String(localized: "其他会话"),
-                           openSender: sender?.ref.map { ref in { messageSender?.open(ref) } },
-                           senderMetadata: agentMessage["sender"])
+                CrossSessionMessageCard(message: agentMessage, text: text)
                     .padding(.top, 16)
             } else if let agentMessage {
                 AgentMessageView(message: agentMessage)
@@ -1304,42 +1300,115 @@ struct Banner: View {
     }
 }
 
-/// Messages between agents (sub-agent finished, cross-machine messages) arrive as tool calls with `agentMessage`.
-private struct AgentMessageView: View {
-    @Environment(\.messageSender) private var messageSender
+/// 只解析结构化会话通知中已知的官方包装；普通消息和不完整包装保持原文。
+struct AgentMessageContent {
+    let introduction: String
+    let response: String?
+    let trailing: String
+
+    init(text: String, sender: JSONValue?, event: String) {
+        let cleaned = Self.introduction(text: text, sender: sender, event: event)
+        guard event != "message", cleaned != text,
+              let open = cleaned.range(of: "<agent-response>\n"),
+              let close = cleaned.range(of: "\n</agent-response>", options: .backwards),
+              open.upperBound <= close.lowerBound else {
+            introduction = cleaned.contains("<agent-response>") || cleaned.contains("</agent-response>") ? text : cleaned
+            response = nil
+            trailing = ""
+            return
+        }
+        introduction = cleaned
+        response = String(cleaned[open.upperBound..<close.lowerBound])
+        trailing = String(cleaned[close.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var note: String {
+        guard response != nil, let open = introduction.range(of: "<agent-response>\n") else { return introduction }
+        return String(introduction[..<open.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func introduction(text: String, sender: JSONValue?, event: String) -> String {
+        let reasons: [String: [String]] = ["finished": ["finished"], "errored": ["errored", "was canceled"],
+            "permission-required": ["needs permission"], "closed": ["was closed", "is unavailable"]]
+        guard let id = sender?["id"]?.stringValue, !id.isEmpty,
+              let first = text.split(separator: "\n", omittingEmptySubsequences: false).first,
+              first.hasPrefix("Agent \(id) ("),
+              reasons[event]?.contains(where: { first.hasSuffix(") \($0).") }) == true else { return text }
+        var body = String(text.dropFirst(first.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        if let server = sender?["serverId"]?.stringValue,
+           body == "Server: \(server)" || body.hasPrefix("Server: \(server)\n") {
+            body = String(body.dropFirst("Server: \(server)".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return body
+    }
+}
+
+/// 引用正文与当前会话区分；历史快照不会因来源会话继续运行而更新。
+struct CrossSessionMessageCard: View {
     let message: JSONValue
+    let text: String
     @State private var expanded = false
+    @State private var showOriginal = false
+    @Environment(\.findQuery) private var findQuery
+
+    private var event: String { message["event"]?.stringValue ?? "message" }
+    private var status: String {
+        switch event {
+        case "finished": String(localized: "来源会话已完成")
+        case "errored": String(localized: "来源会话出错或已取消")
+        case "permission-required": String(localized: "来源会话需要权限")
+        case "closed": String(localized: "来源会话已关闭")
+        default: String(localized: "来自其他会话")
+        }
+    }
 
     var body: some View {
-        let resolved = messageSender?.lookup(message["sender"])
-        let sender = resolved?.name ?? message["sender"]?["title"]?.stringValue ?? message["sender"]?["id"]?.stringValue.map { String($0.prefix(7)) } ?? String(localized: "其他会话")
-        let event = message["event"]?.stringValue ?? "message"
-        let label = switch event {
-        case "finished": String(localized: "「\(sender)」完成了")
-        case "errored": String(localized: "「\(sender)」出错")
-        case "permission-required": String(localized: "「\(sender)」需要权限")
-        case "closed": String(localized: "「\(sender)」已关闭")
-        default: String(localized: "来自「\(sender)」的消息")
-        }
-        VStack(alignment: .leading, spacing: 6) {
-            Button { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "bubble.left.and.text.bubble.right")
-                    Text(label).lineLimit(1)
-                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).rotationEffect(.degrees(expanded ? 90 : 0))
+        let content = AgentMessageContent(text: text, sender: message["sender"], event: event)
+        let completion = event == "finished"
+        let showContent = !completion || expanded || !findQuery.isEmpty
+        VStack(alignment: .leading, spacing: 10) {
+            if completion {
+                Button { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } } label: {
+                    HStack(spacing: 6) {
+                        Label(status, systemImage: "quote.bubble")
+                        Image(systemName: "chevron.right")
+                            .rotationEffect(.degrees(showContent ? 90 : 0))
+                    }
+                    .contentShape(Rectangle())
                 }
-                .font(.system(size: Theme.base)).foregroundStyle(Theme.muted)
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.muted)
+            } else {
+                Label(status, systemImage: "quote.bubble")
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.muted)
             }
-            .buttonStyle(.plain)
-            if expanded, let ref = resolved?.ref {
-                Button(sender) { messageSender?.open(ref) }
-                    .buttonStyle(.plain).foregroundStyle(Theme.accent)
-                    .lineLimit(2).padding(.leading, 20)
-            }
-            if expanded, let text = message["text"]?.stringValue {
-                MarkdownView(text: text).padding(.leading, 20)
+            if let sender = message["sender"] { MessageSenderButton(sender: sender, textAlignment: .leading) }
+            if showContent {
+                if !content.note.isEmpty { MarkdownView(text: content.note, renderMedia: false, continuousSelection: true) }
+                if let response = content.response {
+                    Text("发送时的最后回复").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                    MarkdownView(text: response, renderMedia: false, continuousSelection: true)
+                }
+                if !content.trailing.isEmpty { MarkdownView(text: content.trailing, renderMedia: false, continuousSelection: true) }
+                DisclosureGroup("原始消息", isExpanded: $showOriginal) {
+                    Text(text).font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Theme.muted).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .font(.system(size: 11)).tint(Theme.muted)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Theme.accentBright.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.accentBright.opacity(0.22), lineWidth: 1))
+    }
+}
+
+private struct AgentMessageView: View {
+    let message: JSONValue
+    var body: some View {
+        CrossSessionMessageCard(message: message, text: message["text"]?.stringValue ?? "")
     }
 }
 

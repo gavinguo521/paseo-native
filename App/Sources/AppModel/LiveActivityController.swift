@@ -41,6 +41,7 @@ final class LiveActivityController {
     private var alertToken: String?
     /// 插件已收下普通推送令牌、且那个环境配了密钥：App 不在前台时就不再自己弹本地通知，免得和插件推来的重复。
     private(set) var remoteAlertsReady = false
+    private(set) var remoteAlertsFollowOfficialPolicy = false
     private var activityToken: String?
     private var activityTokenOwner: String?
     private var watched: Set<String> = []
@@ -123,6 +124,7 @@ final class LiveActivityController {
         else { applyTask?.cancel(); applyTask = nil }
         if pusherId != lastPusherId {
             lastPusherId = pusherId
+            remoteAlertsFollowOfficialPolicy = false
             Task { await register() }
         }
     }
@@ -316,6 +318,7 @@ final class LiveActivityController {
                     lastRegistration = signature
                     // alerts：插件确实会给这台设备发普通通知（旧版插件没有这个字段 → false，照旧本地弹）。
                     remoteAlertsReady = sentAlert != nil && out["alerts"]?.boolValue == true
+                    remoteAlertsFollowOfficialPolicy = out["followsOfficialPolicy"]?.boolValue == true
                     print("live-activity registered with", pusher.label)
                 } catch {
                     print("live-activity register failed:", error)
@@ -324,6 +327,7 @@ final class LiveActivityController {
         } else {
             lastRegistration = nil
             remoteAlertsReady = false
+            remoteAlertsFollowOfficialPolicy = false
         }
         // 推送机器以外装了插件的机器都注销本设备（关掉开关时全部注销），免得几台一起推；失败的下次连上再发。
         let unregister: JSONValue = ["deviceId": .string(Self.deviceId)]

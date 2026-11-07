@@ -3,6 +3,27 @@ import Testing
 @testable import Paseo
 
 @Suite(.serialized) @MainActor struct TablePasteTests {
+    @Test func longPasteBecomesAnAttachmentBeforeTextLayout() {
+        let pb = UIPasteboard.general
+        let previous = pb.items
+        defer { pb.items = previous }
+        let view = ComposerUITextView()
+        view.text = "请检查这些日志"
+        view.selectedRange = NSRange(location: 2, length: 2)
+        let source = String(repeating: "Error: 日志内容 👨‍👩‍👧‍👦\n", count: 20000)
+        var attachment: PastedTextAttachment?
+        view.onLongText = { text in
+            guard PastedTextAttachment.shouldAttach(text) else { return false }
+            attachment = PastedTextAttachment(text)
+            return true
+        }
+        pb.string = source
+        view.paste(nil)
+        #expect(view.text == "请检查这些日志")
+        #expect(view.selectedRange == NSRange(location: 2, length: 2))
+        #expect(attachment?.data == Data(source.utf8))
+    }
+
     @Test func nativePasteReplacesSelectionAndKeepsOrdinaryTabs() {
         let pb = UIPasteboard.general
         let previous = pb.items

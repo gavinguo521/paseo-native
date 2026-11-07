@@ -39,14 +39,8 @@ struct SidebarView: View {
     #endif
 
     private static let rowsPerGroup = 8
-    /// 手机项目标题保持原来的紧凑行高；iPad 继续使用较大的操作按钮。
-    private var projectActionSize: CGFloat {
-        #if os(iOS)
-        UIDevice.current.userInterfaceIdiom == .phone ? 22 : 44
-        #else
-        22
-        #endif
-    }
+    /// 项目操作统一紧凑尺寸，避免 iPad 的按钮撑高标题并挤压项目名称。
+    private let projectActionSize: CGFloat = 22
     #if os(iOS)
     /// iPad: the sidebar has a toolbar row (sidebar toggle) — put the title there instead of a second row.
     /// By device, not size class: the sidebar column reports compact even on a full-screen iPad.

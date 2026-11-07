@@ -1144,10 +1144,12 @@ final class AppModel {
         store.onAttention = { [weak self, weak store] e in
             guard let self, let store else { return }
             let viewing = self.isFrontmost && self.destination == .agent(AgentRef(serverId: e.serverId, agentId: e.agentId))
-            guard !viewing, e.shouldNotify || !self.isFrontmost else { return }
+            guard !viewing, e.shouldNotify else { return }
             #if os(iOS)
-            // 切到后台还连着机器的那几秒：插件会推远程通知，这里不再弹本地的，免得重复。
-            if LiveActivityController.shared.remoteAlertsReady, !LiveActivityController.isForeground { return }
+            // 新 daemon 与新插件共同遵守同一次决策；旧组合仍保留后台去重。
+            let liveActivity = LiveActivityController.shared
+            if liveActivity.remoteAlertsReady, !LiveActivityController.isForeground,
+               !(e.shouldPush != nil && liveActivity.remoteAlertsFollowOfficialPolicy) { return }
             #endif
             // 需要批准且只有一个请求时，把它的 id 带进通知，按钮只处理这一个。
             let pending = store.agents[e.agentId]?.pendingPermissions ?? []

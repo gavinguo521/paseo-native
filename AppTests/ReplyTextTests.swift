@@ -91,7 +91,114 @@ import UIKit
         #expect(coordinator.pending == nil)
     }
 
+    #if os(iOS)
+    @Test func unchangedReplyDoesNotReplaceTextAfterLayout() {
+        let view = ReplyNativeTextView()
+        view.isEditable = false; view.isScrollEnabled = false
+        view.textContainerInset = .zero; view.textContainer.lineFragmentPadding = 0
+        let coordinator = ReplyTextCoordinator()
+        coordinator.view = view
+        let doc = document(String(repeating: source + "\n\n", count: 12))
+        coordinator.update(doc)
+        _ = view.replySize(for: 700)
+        let observer = ReplyStorageObserver()
+        view.textStorage.delegate = observer
+        let start = Date()
+        for _ in 0..<12 {
+            coordinator.update(doc)
+            _ = view.replySize(for: 700)
+        }
+        print("REPLY_REPEAT seconds=\(Date().timeIntervalSince(start)) edits=\(observer.edits)")
+        #expect(observer.edits == 0)
+    }
+    @Test func replyMeasurementTracksWidthContentAndFontChanges() {
+        let view = ReplyNativeTextView()
+        view.isEditable = false; view.isScrollEnabled = false
+        view.textContainerInset = .zero; view.textContainer.lineFragmentPadding = 0
+        let coordinator = ReplyTextCoordinator(); coordinator.view = view
+        let doc = document(String(repeating: "这是一段用于验证窄屏换行的连续中文正文。", count: 80) + "\n\n" + source)
+        coordinator.update(doc)
+        let wide = view.replySize(for: 700)
+        let narrow = view.replySize(for: 390)
+        #expect(narrow.height > wide.height)
+        let start = Date()
+        for _ in 0..<100 {
+            #expect(view.replySize(for: 700) == wide)
+            #expect(view.replySize(for: 390) == narrow)
+        }
+        print("REPLY_CACHED_200 seconds=\(Date().timeIntervalSince(start))")
+        let uncachedStart = Date()
+        for _ in 0..<100 {
+            _ = view.sizeThatFits(CGSize(width: 700, height: CGFloat.greatestFiniteMagnitude))
+            _ = view.sizeThatFits(CGSize(width: 390, height: CGFloat.greatestFiniteMagnitude))
+        }
+        print("REPLY_UNCACHED_200 seconds=\(Date().timeIntervalSince(uncachedStart))")
+        #expect(abs(view.sizeThatFits(CGSize(width: 700, height: CGFloat.greatestFiniteMagnitude)).height - wide.height) <= 1)
+        coordinator.update(document("短正文"))
+        let short = view.replySize(for: 700)
+        #expect(short.height < wide.height)
+        let larger = NSMutableAttributedString(attributedString: document("短正文").text)
+        larger.addAttribute(.font, value: UIFont.systemFont(ofSize: 48), range: NSRange(location: 0, length: larger.length))
+        coordinator.update(ReplyDocument(text: larger))
+        #expect(view.replySize(for: 700).height > short.height)
+        coordinator.update(ReplyDocument(text: NSAttributedString(string: "")))
+        #expect(view.replyStorage.length == 0)
+        #expect(view.replySize(for: 700).height < wide.height)
+    }
+    #endif
+
     #if os(macOS)
+    @Test func readOnlyReplyCreationDoesNotRunInsideSwiftUILayout() async throws {
+        let coordinator = ReplyTextCoordinator()
+        let host = ReplyTextHostView(coordinator: coordinator)
+        host.frame = CGRect(x: 0, y: 0, width: 700, height: 300)
+        host.update(document("初始内容"))
+        #expect(coordinator.view == nil)
+        #expect(host.replySize(for: 700).height > 0)
+        // 创建前连续更新时必须显示最后一份内容，不能丢失流式追加。
+        host.update(document(source))
+        for _ in 0..<20 where coordinator.view == nil { await Task.yield() }
+        let view = try #require(coordinator.view)
+        #expect(!view.isEditable)
+        #expect(view.isSelectable)
+        #expect(view.replyStorage.string.contains("最后一段"))
+        #expect(view.frame.width == 700)
+        view.replySelectedRange = NSRange(location: 2, length: 20)
+        coordinator.changed()
+        host.update(document("新内容"))
+        #expect(view.replyStorage.string.contains("最后一段"))
+        #expect(coordinator.pending != nil)
+    }
+
+    @Test func macReplyMeasurementReusesWidthsAndTracksContentChanges() {
+        let view = ReplyNativeTextView(frame: .zero)
+        let coordinator = ReplyTextCoordinator(); coordinator.view = view
+        let text = String(repeating: "连续中文长正文用于验证宽窄屏排版和重复测量。", count: 100)
+        coordinator.update(document(text))
+        let wide = view.replySize(for: 820)
+        let narrow = view.replySize(for: 350)
+        #expect(narrow.height > wide.height)
+        let start = Date()
+        for _ in 0..<100 {
+            #expect(view.replySize(for: 820) == wide)
+            #expect(view.replySize(for: 350) == narrow)
+        }
+        print("MAC_REPLY_MEASURE_200 seconds=\(Date().timeIntervalSince(start))")
+        view.replySelectedRange = NSRange(location: 2, length: 20)
+        coordinator.update(document("短正文"))
+        #expect(view.replySize(for: 820) == wide)
+        view.replySelectedRange = NSRange(location: 0, length: 0)
+        coordinator.changed()
+        let short = view.replySize(for: 820)
+        #expect(short.height < wide.height)
+        let larger = NSMutableAttributedString(attributedString: document("短正文").text)
+        larger.addAttribute(.font, value: NSFont.systemFont(ofSize: 48), range: NSRange(location: 0, length: larger.length))
+        coordinator.update(ReplyDocument(text: larger))
+        #expect(view.replySize(for: 820).height > short.height)
+        coordinator.update(ReplyDocument(text: NSAttributedString(string: "")))
+        #expect(view.replySize(for: 820).height < short.height)
+    }
+
     @Test func discardedWidthProbeDoesNotChangeDisplayedWrapping() throws {
         let view = ReplyNativeTextView(frame: CGRect(x: 0, y: 0, width: 820, height: 400))
         view.textContainerInset = .zero
@@ -251,3 +358,13 @@ private struct ReplyFixtureView: View {
         }
     }
 }
+
+#if os(iOS)
+@MainActor private final class ReplyStorageObserver: NSObject, @preconcurrency NSTextStorageDelegate {
+    var edits = 0
+    func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorage.EditActions,
+                     range editedRange: NSRange, changeInLength delta: Int) {
+        if editedMask.contains(.editedCharacters) { edits += 1 }
+    }
+}
+#endif

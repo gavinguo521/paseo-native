@@ -35,6 +35,7 @@ public struct AttentionEvent: Sendable {
     public let title: String
     public let body: String
     public let shouldNotify: Bool
+    public let shouldPush: Bool?
 }
 
 @MainActor @Observable
@@ -412,7 +413,8 @@ public final class HostStore: Identifiable {
             onAttention?(AttentionEvent(
                 serverId: id, agentId: p["agentId"]?.stringValue ?? "", reason: p["reason"]?.stringValue ?? "",
                 title: n?["title"]?.stringValue ?? "", body: n?["body"]?.stringValue ?? "",
-                shouldNotify: p["shouldNotify"]?.boolValue ?? false))
+                shouldNotify: p["shouldNotify"]?.boolValue ?? false,
+                shouldPush: p["shouldPush"]?.boolValue))
         default:
             handleHostPane(type, p)
         }

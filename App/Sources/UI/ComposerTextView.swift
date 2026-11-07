@@ -1,3 +1,6 @@
+/// 输入框处理的方向、补全和模式切换键。
+enum ComposerKey { case up, down, tab, shiftTab, escape }
+
 #if os(iOS)
 import PaseoKit
 import SwiftUI
@@ -11,9 +14,6 @@ enum PhoneKeyboard {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
-
-/// Hardware-keyboard keys the composer acts on besides Return (completion list, recall, permission mode).
-enum ComposerKey { case up, down, tab, shiftTab, escape }
 
 /// The iPad / iPhone composer's text field: a UITextView, not SwiftUI's vertical TextField. On iPadOS that
 /// TextField ends editing on every hardware-keyboard Return, whatever a key handler does with it: Return could
@@ -34,6 +34,7 @@ struct ComposerTextView: UIViewRepresentable {
     var onKey: ((ComposerKey) -> Bool)? = nil
     /// Pasted images (the pasteboard holds images and no text).
     var onPasteImages: (([ImageAttachment]) -> Void)? = nil
+    var onLongText: ((String) -> Bool)? = nil
     var tablePaste: TablePasteRequest? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -73,6 +74,7 @@ struct ComposerTextView: UIViewRepresentable {
         v.onReturn = onReturn
         v.onKey = onKey
         v.onPasteImages = onPasteImages
+        v.onLongText = onLongText
         if let request = tablePaste, v.lastTablePaste != request.id {
             v.lastTablePaste = request.id
             DispatchQueue.main.async { v.insertTable(request.text) }
@@ -132,6 +134,7 @@ final class ComposerUITextView: UITextView {
     var onReturn: ((Bool) -> Bool)?
     var onKey: ((ComposerKey) -> Bool)?
     var onPasteImages: (([ImageAttachment]) -> Void)?
+    var onLongText: ((String) -> Bool)?
     let placeholderLabel = UILabel()
     /// Presses we acted on: their pressesEnded must not reach the text view either.
     private var taken: Set<UIPress> = []
@@ -187,6 +190,7 @@ final class ComposerUITextView: UITextView {
     }
 
     override func paste(_ sender: Any?) {
+        if let text = UIPasteboard.general.string, onLongText?(text) == true { return }
         if let table = TableClipboard.pasted() { insertTable(table); return }
         let pb = UIPasteboard.general
         if let onPasteImages, pb.hasImages, !pb.hasStrings {
@@ -194,6 +198,200 @@ final class ComposerUITextView: UITextView {
             if !images.isEmpty { onPasteImages(images); return }
         }
         super.paste(sender)
+    }
+}
+#endif
+
+#if os(macOS)
+import AppKit
+import SwiftUI
+
+/// 独立滚动编辑器避免多行 TextField 的共享 field editor 在粘贴时排版整个草稿。
+struct MacComposerTextView: NSViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    var focused: FocusState<Bool>.Binding
+    let fontSize: CGFloat
+    let onReturn: (Bool) -> Bool
+    let onKey: (ComposerKey) -> Bool
+    let onPaste: () -> Bool
+    var onLongText: ((String) -> Bool)? = nil
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView()
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.borderType = .noBorder
+        let view = MacComposerEditor(frame: .zero)
+        view.isRichText = false
+        view.textColor = .labelColor
+        view.drawsBackground = false
+        view.allowsUndo = true
+        view.isAutomaticQuoteSubstitutionEnabled = false
+        view.isAutomaticDashSubstitutionEnabled = false
+        view.isVerticallyResizable = true
+        view.minSize = .zero
+        view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        view.isHorizontallyResizable = false
+        view.autoresizingMask = [.width]
+        view.textContainerInset = .zero
+        view.textContainer?.lineFragmentPadding = 0
+        view.textContainer?.widthTracksTextView = true
+        view.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        view.layoutManager?.allowsNonContiguousLayout = true
+        view.delegate = context.coordinator
+        scroll.documentView = view
+        return scroll
+    }
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let view = scroll.documentView as? MacComposerEditor else { return }
+        context.coordinator.parent = self
+        let font = NSFont.systemFont(ofSize: fontSize)
+        if view.appliedFontSize != fontSize {
+            view.font = font
+            view.appliedFontSize = fontSize
+        }
+        if !view.hasMarkedText(), view.string != text {
+            view.string = text
+            view.undoManager?.removeAllActions(withTarget: view)
+        }
+        view.placeholder = placeholder
+        view.onReturn = onReturn
+        view.onKey = onKey
+        view.onPaste = onPaste
+        view.onLongText = onLongText
+        view.focusChanged = { [weak coordinator = context.coordinator] active in
+            guard let coordinator else { return }
+            coordinator.wanted = active
+            coordinator.parent.focused.wrappedValue = active
+        }
+        view.needsDisplay = true
+        let want = focused.wrappedValue
+        if want, !context.coordinator.wanted {
+            DispatchQueue.main.async { [weak view] in
+                guard let view, let window = view.window else { return }
+                window.makeFirstResponder(view)
+            }
+        }
+        context.coordinator.wanted = want
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView scroll: NSScrollView, context: Context) -> CGSize? {
+        guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
+        return context.coordinator.measurement.size(text, width: width, fontSize: fontSize)
+    }
+
+    @MainActor final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: MacComposerTextView
+        var wanted = false
+        let measurement = ComposerTextMeasurement()
+        init(_ parent: MacComposerTextView) { self.parent = parent }
+        func textDidChange(_ notification: Notification) {
+            guard let view = notification.object as? MacComposerEditor else { return }
+            view.needsDisplay = true
+            guard !view.hasMarkedText() else { return }
+            if parent.text != view.string { parent.text = view.string }
+        }
+        func textDidBeginEditing(_ notification: Notification) {
+            wanted = true
+            parent.focused.wrappedValue = true
+        }
+        func textDidEndEditing(_ notification: Notification) {
+            if let view = notification.object as? NSTextView, parent.text != view.string { parent.text = view.string }
+            wanted = false
+            parent.focused.wrappedValue = false
+        }
+    }
+}
+
+/// 高度测量只布局最多 12 行；全文保留在原生编辑器中，可滚动、选中和撤销。
+@MainActor final class ComposerTextMeasurement {
+    private let storage = NSTextStorage()
+    private let layout = NSLayoutManager()
+    private let container = NSTextContainer(size: .zero)
+    private var lastText = ""
+    private var lastFont: CGFloat = 0
+    private var lastWidth: CGFloat = 0
+    private var cached: CGSize?
+    init() {
+        container.lineFragmentPadding = 0
+        storage.addLayoutManager(layout)
+        layout.addTextContainer(container)
+    }
+    func size(_ text: String, width: CGFloat, fontSize: CGFloat) -> CGSize {
+        if let cached, text == lastText, width == lastWidth, fontSize == lastFont { return cached }
+        let font = NSFont.systemFont(ofSize: fontSize)
+        let line = layout.defaultLineHeight(for: font)
+        if text != lastText || fontSize != lastFont {
+            storage.setAttributedString(NSAttributedString(string: text, attributes: [.font: font]))
+        }
+        container.containerSize = CGSize(width: width, height: ceil(line * 12))
+        layout.ensureLayout(for: container)
+        let height = max(layout.usedRect(for: container).height, layout.extraLineFragmentRect.maxY)
+        let size = CGSize(width: width, height: ceil(min(max(height, line * 3), line * 12)))
+        lastText = text; lastWidth = width; lastFont = fontSize; cached = size
+        return size
+    }
+}
+
+final class MacComposerEditor: NSTextView {
+    var appliedFontSize: CGFloat?
+    var placeholder = ""
+    var onReturn: ((Bool) -> Bool)?
+    var onKey: ((ComposerKey) -> Bool)?
+    var onPaste: (() -> Bool)?
+    var onLongText: ((String) -> Bool)?
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        if string.isEmpty, !hasMarkedText() {
+            (placeholder as NSString).draw(in: bounds, withAttributes: [
+                .font: font ?? NSFont.systemFont(ofSize: 14), .foregroundColor: NSColor.placeholderTextColor
+            ])
+        }
+    }
+    var focusChanged: ((Bool) -> Void)?
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if result { focusChanged?(true) }
+        return result
+    }
+    override func resignFirstResponder() -> Bool {
+        let result = super.resignFirstResponder()
+        if result { focusChanged?(false) }
+        return result
+    }
+    override func keyDown(with event: NSEvent) {
+        if !hasMarkedText() {
+            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            switch event.keyCode {
+            case 36, 76:
+                if !mods.contains(.shift), onReturn?(mods.contains(.command)) == true { return }
+            case 126: if onKey?(.up) == true { return }
+            case 125: if onKey?(.down) == true { return }
+            case 48: if onKey?(mods.contains(.shift) ? .shiftTab : .tab) == true { return }
+            case 53: if onKey?(.escape) == true { return }
+            default: break
+            }
+        }
+        super.keyDown(with: event)
+    }
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(paste(_:)),
+           NSPasteboard.general.availableType(from: [.html, .init(TableClipboard.tsvType), .png, .tiff, .fileURL]) != nil {
+            return true
+        }
+        return super.validateUserInterfaceItem(item)
+    }
+    override func readSelection(from pasteboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        if let text = pasteboard.string(forType: .string), onLongText?(text) == true { return true }
+        return super.readSelection(from: pasteboard, type: type)
+    }
+    override func paste(_ sender: Any?) {
+        if let text = NSPasteboard.general.string(forType: .string), onLongText?(text) == true { return }
+        if onPaste?() == true { return }
+        // 普通粘贴保持纯文本，避免网页富文本携带的字体和段落样式触发额外排版。
+        pasteAsPlainText(sender)
     }
 }
 #endif

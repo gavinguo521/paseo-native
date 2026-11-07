@@ -274,11 +274,7 @@ struct MarkdownTable<Cell: View>: View {
     let cell: (String) -> Cell
 
     private var columns: Int { rows.map(\.count).max() ?? 0 }
-    #if os(macOS)
     @State private var selectingCells = false
-    #else
-    private let selectingCells = true
-    #endif
     @State private var selection: TableCellRange?
     @State private var frames: [TableCellPosition: CGRect] = [:]
     @State private var coordinateSpace = UUID()
@@ -292,12 +288,10 @@ struct MarkdownTable<Cell: View>: View {
                         copyActions(TableCellRange(anchor: .init(row: 0, column: 0), end: .init(row: rows.count - 1, column: columns - 1)))
                     }
                 }
-                #if os(macOS)
                 Button(selectingCells ? "完成区域选择" : "选择单元格区域") {
                     selectingCells.toggle()
                     selection = nil
                 }
-                #endif
                 if let selection {
                     Menu("复制所选区域") { copyActions(selection) }
                     Button("取消选择") { self.selection = nil }
@@ -340,9 +334,7 @@ struct MarkdownTable<Cell: View>: View {
                             copied = false
                         })
                         .accessibilityAction(named: "选择单元格") {
-                            #if os(macOS)
                             selectingCells = true
-                            #endif
                             let position = TableCellPosition(row: r, column: c)
                             selection = TableCellRange(anchor: position, end: position)
                             copied = false

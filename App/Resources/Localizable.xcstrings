@@ -1286,7 +1286,8 @@
             "value": "“%@” Hit an Error"
           }
         }
-      }
+      },
+      "extractionState": "stale"
     },
     "「%@」完成了": {
       "localizations": {
@@ -1296,7 +1297,8 @@
             "value": "“%@” Finished"
           }
         }
-      }
+      },
+      "extractionState": "stale"
     },
     "「%@」已关闭": {
       "localizations": {
@@ -1306,7 +1308,8 @@
             "value": "“%@” Closed"
           }
         }
-      }
+      },
+      "extractionState": "stale"
     },
     "「%@」的子代理": {
       "localizations": {
@@ -1336,7 +1339,8 @@
             "value": "“%@” Needs Permission"
           }
         }
-      }
+      },
+      "extractionState": "stale"
     },
     "「%@」（运行中）": {
       "localizations": {
@@ -7950,7 +7954,8 @@
             "value": "Message from “%@”"
           }
         }
-      }
+      },
+      "extractionState": "stale"
     },
     "查不到最新版本": {
       "localizations": {
@@ -8346,7 +8351,8 @@
             "value": "Running sessions will be interrupted (those with “Resume After Restart” on will pick up where they left off); programs in terminals are kept."
           }
         }
-      }
+      },
+      "extractionState": "stale"
     },
     "正在运行的会话会中断，终端也会被关闭。这台 daemon 升级到 0.15 后，重启可以保留终端。": {
       "localizations": {
@@ -13026,7 +13032,153 @@
           }
         }
       }
-    }
+    },
+    "来源会话已完成": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source session finished"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来源会话已完成"
+          }
+        }
+      }
+    },
+    "来源会话出错或已取消": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source session failed or was canceled"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来源会话出错或已取消"
+          }
+        }
+      }
+    },
+    "来源会话需要权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source session needs permission"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来源会话需要权限"
+          }
+        }
+      }
+    },
+    "来源会话已关闭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source session closed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来源会话已关闭"
+          }
+        }
+      }
+    },
+    "来自其他会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From another session"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自其他会话"
+          }
+        }
+      }
+    },
+    "发送时的最后回复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latest reply when sent"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送时的最后回复"
+          }
+        }
+      }
+    },
+    "原始消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Original message"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原始消息"
+          }
+        }
+      }
+    },
+    "粘贴的文本.txt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pasted text.txt"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "粘贴的文本.txt"
+          }
+        }
+      }
+    },
+    "完整文本将作为附件发送": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The complete text will be sent as an attachment"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完整文本将作为附件发送"
+          }
+        }
+      }
+    },
+    "·": {},
+    "TXT": {}
   },
   "version": "1.0"
 }

@@ -1,6 +1,5 @@
 // Local notifications for agent attention (finished / needs permission / error).
-// The daemon's `shouldNotify` picks one present client; when this app isn't frontmost we notify anyway,
-// since the Mac app stays connected in the background.
+// daemon 的 shouldNotify 统一选择接收端，客户端不绕过跨设备通知决策。
 
 import Foundation
 import PaseoKit
