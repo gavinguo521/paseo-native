@@ -19,7 +19,9 @@ struct SelectTextSheet: View {
                     }
                 }
         }
+        #if os(macOS)
         .frame(minWidth: 560, minHeight: 420)
+        #endif
     }
 }
 

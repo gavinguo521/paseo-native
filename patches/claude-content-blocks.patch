@@ -1,0 +1,161 @@
+diff --git a/packages/server/src/server/agent/providers/claude/agent.test.ts b/packages/server/src/server/agent/providers/claude/agent.test.ts
+index a5d15bdb2..47ca9506c 100644
+--- a/packages/server/src/server/agent/providers/claude/agent.test.ts
++++ b/packages/server/src/server/agent/providers/claude/agent.test.ts
+@@ -2699,6 +2699,113 @@ describe("ClaudeAgentSession context window usage", () => {
+     return events;
+   }
+ 
++  test("emits each completed thinking block once after streaming within one message", async () => {
++    const messageId = "multi-thinking-message";
++    const texts = ["Checking the request.\n\n", "接下来检查接口。\n\n"];
++    const messages: Array<Record<string, unknown>> = [
++      createInitMessage(),
++      { type: "stream_event", event: { type: "message_start", message: { id: messageId } } },
++    ];
++    for (const [index, thinking] of texts.entries()) {
++      messages.push(
++        {
++          type: "stream_event",
++          event: {
++            type: "content_block_start",
++            index,
++            content_block: { type: "thinking", thinking: "" },
++          },
++        },
++        {
++          type: "stream_event",
++          event: {
++            type: "content_block_delta",
++            index,
++            delta: { type: "thinking_delta", thinking },
++          },
++        },
++        {
++          type: "assistant",
++          uuid: `thinking-block-${index}`,
++          message: { id: messageId, content: [{ type: "thinking", thinking }] },
++        },
++        { type: "stream_event", event: { type: "content_block_stop", index } },
++      );
++    }
++    messages.push({ type: "stream_event", event: { type: "message_stop" } }, createSuccessResult());
++    const session = await createSessionForTurns([messages]);
++    try {
++      const events = await collectStreamEvents(session);
++      const thinking = events.flatMap((event) =>
++        event.type === "timeline" && event.item.type === "reasoning" ? [event.item.text] : [],
++      );
++      expect(thinking.join("")).toBe(texts.join(""));
++    } finally {
++      await session.close();
++    }
++  });
++
++  test.each([
++    { kind: "thinking", streamed: true },
++    { kind: "thinking", streamed: false },
++    { kind: "text", streamed: true },
++    { kind: "text", streamed: false },
++  ])(
++    "preserves equal $kind blocks and missing suffixes (streamed=$streamed)",
++    async ({ kind, streamed }) => {
++      const messageId = "equal-blocks-message";
++      const text = "相同内容也属于两个独立的块。";
++      const messages: Array<Record<string, unknown>> = [
++        createInitMessage(),
++        { type: "stream_event", event: { type: "message_start", message: { id: messageId } } },
++      ];
++      for (const index of [0, 1]) {
++        if (streamed) {
++          messages.push(
++            {
++              type: "stream_event",
++              event: {
++                type: "content_block_start",
++                index,
++                content_block: { type: kind, [kind]: "" },
++              },
++            },
++            {
++              type: "stream_event",
++              event: {
++                type: "content_block_delta",
++                index,
++                delta: { type: `${kind}_delta`, [kind]: text.slice(0, -2) },
++              },
++            },
++          );
++        }
++        const completed = {
++          type: "assistant",
++          uuid: `equal-block-${index}`,
++          message: { id: messageId, content: [{ type: kind, [kind]: text }] },
++        };
++        // Replayed completion of one block is distinct from equal text in another block.
++        messages.push(completed, completed);
++      }
++      messages.push(
++        { type: "stream_event", event: { type: "message_stop" } },
++        createSuccessResult(),
++      );
++      const session = await createSessionForTurns([messages]);
++      try {
++        const events = await collectStreamEvents(session);
++        const textType = kind === "thinking" ? "reasoning" : "assistant_message";
++        const emitted = events.flatMap((event) =>
++          event.type === "timeline" && event.item.type === textType ? [event.item.text] : [],
++        );
++        expect(emitted.join("")).toBe(text + text);
++      } finally {
++        await session.close();
++      }
++    },
++  );
++
+   function createQueryFactoryForTurns(
+     turns: Array<Array<Record<string, unknown>>>,
+     options?: QueryFactoryForTurnsOptions,
+diff --git a/packages/server/src/server/agent/providers/claude/agent.ts b/packages/server/src/server/agent/providers/claude/agent.ts
+index 9b560747f..10f90138c 100644
+--- a/packages/server/src/server/agent/providers/claude/agent.ts
++++ b/packages/server/src/server/agent/providers/claude/agent.ts
+@@ -1228,6 +1228,7 @@ interface TimelineFragment {
+ 
+ interface TimelineMessageState {
+   id: string;
++  completedBlockIds: Set<string>;
+   assistantText: string;
+   reasoningText: string;
+   emittedAssistantLength: number;
+@@ -1271,8 +1272,21 @@ class TimelineAssembler {
+       return [];
+     }
+     const state = this.ensureMessageState(messageId, runId);
++    if (state.completedBlockIds.has(message.uuid)) {
++      return [];
++    }
+     const fragments = this.extractFragments(message.message?.content);
+-    return this.applyAbsoluteFragments(state, fragments);
++    const items = this.applyAbsoluteFragments(state, fragments);
++    // SDK assistant frames complete one content block, not the entire message.
++    // Keep the next block's stream separate even when it shares message.id and kind.
++    state.assistantText = "";
++    state.reasoningText = "";
++    state.emittedAssistantLength = 0;
++    state.emittedReasoningLength = 0;
++    if (message.uuid) {
++      state.completedBlockIds.add(message.uuid);
++    }
++    return items;
+   }
+ 
+   private consumeStreamEvent(
+@@ -1429,6 +1443,7 @@ class TimelineAssembler {
+     }
+     const created: TimelineMessageState = {
+       id: messageId,
++      completedBlockIds: new Set(),
+       assistantText: "",
+       reasoningText: "",
+       emittedAssistantLength: 0,

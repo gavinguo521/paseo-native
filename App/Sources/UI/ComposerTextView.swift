@@ -39,7 +39,8 @@ struct ComposerTextView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> ComposerUITextView {
-        let v = ComposerUITextView()
+        // 长草稿需要完整、稳定的滚动范围；TextKit 2 的视口估算会在滚动时改变内容高度。
+        let v = ComposerUITextView(usingTextLayoutManager: false)
         v.delegate = context.coordinator
         v.backgroundColor = .clear
         v.textColor = .label
