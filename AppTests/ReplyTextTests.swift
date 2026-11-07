@@ -1,4 +1,5 @@
 import SwiftUI
+@testable import PaseoKit
 import Testing
 @testable import Paseo
 #if os(macOS)
@@ -84,8 +85,35 @@ import UIKit
         #expect(coordinator.pending == nil)
     }
 
+    #if os(macOS)
+    @Test func discardedWidthProbeDoesNotChangeDisplayedWrapping() throws {
+        let view = ReplyNativeTextView(frame: CGRect(x: 0, y: 0, width: 820, height: 400))
+        view.textContainerInset = .zero
+        view.textContainer?.lineFragmentPadding = 0
+        view.textContainer?.widthTracksTextView = true
+        view.isHorizontallyResizable = false
+        view.isVerticallyResizable = false
+        let coordinator = ReplyTextCoordinator()
+        coordinator.view = view
+        coordinator.update(document(String(repeating: "这是用于检查正文宽度和底部状态栏重叠的长段落。", count: 20)))
+        let size = view.replySize(for: 820)
+        view.setFrameSize(size)
+        view.layoutSubtreeIfNeeded()
+        let container = try #require(view.textContainer)
+        let manager = try #require(view.layoutManager)
+        let selected = NSRange(location: 5, length: 30)
+        view.replySelectedRange = selected
+        // 已采用宽列后，父布局还可能探测一个最终没有采用的窄列。
+        _ = view.replySize(for: 350)
+        manager.ensureLayout(for: container)
+        #expect(abs(container.containerSize.width - view.bounds.width) < 1)
+        #expect(manager.usedRect(for: container).maxY <= view.bounds.height + 1)
+        #expect(view.replySelectedRange == selected)
+    }
+    #endif
+
     @Test func mountedReplyHasOneSelectionSurfaceAndFitsReadingColumn() async throws {
-        for width: CGFloat in [390, 820] {
+        for width: CGFloat in [390, 820, 1200] {
             let model = ReplyFixture(text: source)
             let content = ReplyFixtureView(model: model)
                 .environment(\.colorScheme, .light).background(Color.white)
@@ -114,7 +142,14 @@ import UIKit
             let views = surfaces(host)
             #expect(views.count == 1)
             let view = try #require(views.first)
-            #expect(view.bounds.width <= width - 31)
+            #expect(abs(view.bounds.width - (width - 32)) < 1)
+            #if os(macOS)
+            let container = try #require(view.textContainer)
+            let manager = try #require(view.layoutManager)
+            manager.ensureLayout(for: container)
+            #expect(abs(container.containerSize.width - view.bounds.width) < 1)
+            #expect(manager.usedRect(for: container).maxY <= view.bounds.height + 1)
+            #endif
             #expect(view.bounds.height > 150)
             #expect(view.isSelectable)
             #expect(!view.isEditable)
@@ -202,6 +237,11 @@ import UIKit
 private struct ReplyFixtureView: View {
     let model: ReplyFixture
     var body: some View {
-        ScrollView { MarkdownView(text: model.text, continuousSelection: true).padding(16) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                TimelineItemView(item: .row(TimelineRow(id: "reply", turnId: nil, timestamp: Date(),
+                    item: .assistantMessage(text: model.text, messageId: nil), isStreaming: false, isPending: false), footer: true))
+            }.padding(16)
+        }
     }
 }

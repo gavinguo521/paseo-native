@@ -208,7 +208,7 @@ struct NativeReplyText: NSViewRepresentable {
         view.textContainerInset = .zero
         view.textContainer?.lineFragmentPadding = 0
         view.isVerticallyResizable = false; view.isHorizontallyResizable = false
-        view.textContainer?.widthTracksTextView = false
+        view.textContainer?.widthTracksTextView = true
         view.delegate = context.coordinator
         context.coordinator.view = view
         return view
@@ -220,11 +220,8 @@ struct NativeReplyText: NSViewRepresentable {
         context.coordinator.update(document)
     }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView view: ReplyNativeTextView, context: Context) -> CGSize? {
-        guard let width = proposal.width, width > 0, width.isFinite,
-              let container = view.textContainer, let layout = view.layoutManager else { return nil }
-        container.containerSize = CGSize(width: width, height: .greatestFiniteMagnitude)
-        layout.ensureLayout(for: container)
-        return CGSize(width: width, height: ceil(layout.usedRect(for: container).height))
+        guard let width = proposal.width, width > 0, width.isFinite else { return nil }
+        return view.replySize(for: width)
     }
 }
 
@@ -237,6 +234,24 @@ extension ReplyTextCoordinator: NSTextViewDelegate {
 }
 
 final class ReplyNativeTextView: NSTextView {
+    // 测量不能修改正在显示的容器：SwiftUI 会探测并放弃不同的候选宽度。
+    private lazy var measurement: (storage: NSTextStorage, layout: NSLayoutManager, container: NSTextContainer) = {
+        let storage = NSTextStorage()
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: .zero)
+        container.lineFragmentPadding = 0
+        storage.addLayoutManager(layout)
+        layout.addTextContainer(container)
+        return (storage, layout, container)
+    }()
+
+    func replySize(for width: CGFloat) -> CGSize {
+        let (storage, layout, container) = measurement
+        if !storage.isEqual(to: replyStorage) { storage.setAttributedString(replyStorage) }
+        container.containerSize = CGSize(width: width, height: .greatestFiniteMagnitude)
+        layout.ensureLayout(for: container)
+        return CGSize(width: width, height: ceil(layout.usedRect(for: container).height))
+    }
     var openInApp: ((URL) -> Void)?
     private var menuURL: URL?
     override func menu(for event: NSEvent) -> NSMenu? {
