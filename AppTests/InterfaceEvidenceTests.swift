@@ -17,28 +17,6 @@ import Testing
         }
     }
 
-    @Test func backgroundInventoryRendersOnPhoneWidth() async throws {
-        let host = HostStore(offer: .direct(serverId: "test", endpoint: "localhost:1", useTls: false, password: nil),
-                             label: "测试", clientId: "test", appVersion: "test")
-        host.serverInfo = ServerInfo(raw: ["features": ["agentBackgroundWork": true, "agentBackgroundWorkStop": true]])
-        host.receiveBackgroundWork(["agentId": "a", "items": [
-            ["id": "1", "kind": "shell", "description": "正在验证后台任务状态", "command": "npm run verify:background-work", "canStop": true, "stopToken": "test"],
-            ["id": "2", "kind": "monitor", "description": "等待构建完成"]
-        ]])
-        try await capture(LiveBackgroundWorkPill(host: host, agentId: "a").panel, width: 390, name: "background-inventory")
-    }
-
-    @Test func baseBranchAndCommandFailureRenderOnPhoneWidth() async throws {
-        let host = HostStore(offer: .direct(serverId: "test", endpoint: "localhost:1", useTls: false, password: nil),
-                             label: "测试", clientId: "test", appVersion: "test")
-        let workspace = try #require(Workspace(["id": "w", "workspaceKind": "worktree", "workspaceDirectory": "/tmp/worktree"]))
-        try await capture(BaseBranchPicker(host: host, workspace: workspace, currentBase: "origin/main"), width: 390, name: "base-branch")
-        let model = AutocompleteModel()
-        model.error = "无法获取命令列表，请检查连接后重试。"
-        model.retry = {}
-        try await capture(SuggestionList(model: model, onPick: { _ in }), width: 390, name: "command-error")
-    }
-
     private func capture<V: View>(_ content: V, width: Int, name: String) async throws {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 620), styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

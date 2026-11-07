@@ -212,25 +212,6 @@ extension HostStore {
 
     // MARK: Git
 
-    public var supportsWorkspaceBaseBranch: Bool { serverInfo?.hasFeature("workspaceBaseBranch") == true }
-
-    /// 只修改服务端 worktree 的比较基准，不执行 checkout、merge 或 rebase。
-    public func setWorkspaceBaseBranch(_ workspace: Workspace, baseRef: String) async throws {
-        guard supportsWorkspaceBaseBranch, workspace.kind == "worktree" else {
-            throw ActionError.rejected(String(localized: "当前工作区不支持切换基准分支", bundle: .module))
-        }
-        let c = try conn()
-        let response = try await c.request("workspace.base_branch.set.request", [
-            "workspaceId": .string(workspace.id), "baseRef": .string(baseRef),
-        ])
-        guard connection === c else { throw ActionError.notConnected }
-        let payload = response["payload"]
-        guard payload?["accepted"]?.boolValue == true, payload?["error"]?.stringValue == nil else {
-            throw ActionError.rejected(payload?["error"]?.stringValue ?? String(localized: "基准分支修改失败", bundle: .module))
-        }
-        await refreshCheckoutStatus(cwd: workspace.directory)
-    }
-
     public func refreshCheckoutStatus(cwd: String) async {
         guard let r = try? await connection?.request("checkout_status_request", ["cwd": .string(cwd)]), let p = r["payload"] else { return }
         checkoutStatus[cwd] = CheckoutStatus(p)

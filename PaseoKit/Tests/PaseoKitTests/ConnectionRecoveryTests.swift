@@ -135,7 +135,7 @@ import Testing
 }
 
 /// 用请求到达作为同步点，测试不依赖真实 daemon、网络或业务数据。
-actor RecoveryTransport: FrameTransport {
+private actor RecoveryTransport: FrameTransport {
     private var incoming: [WireFrame] = []
     private var receiver: CheckedContinuation<WireFrame, Error>?
     private var closed = false

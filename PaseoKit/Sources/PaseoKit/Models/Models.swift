@@ -196,7 +196,7 @@ public struct Agent: Sendable, Identifiable {
     public var bucket: StatusBucket {
         if !pendingPermissions.isEmpty || attentionReason == "permission" { return .needsInput }
         if status == .error || attentionReason == "error" { return .failed }
-        if status == .running || (raw["backgroundWork"]?["count"]?.doubleValue ?? 0) > 0 { return .running }
+        if status == .running { return .running }
         if requiresAttention { return .attention }
         return .done
     }

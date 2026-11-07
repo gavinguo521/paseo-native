@@ -524,11 +524,7 @@ private struct ComposerTaskChips: View {
             }
             .help(todos.map { ($0.completed ? "✓ " : "○ ") + $0.text }.joined(separator: "\n"))
         }
-        if host.supportsBackgroundWork {
-            LiveBackgroundWorkPill(host: host, agentId: agentId)
-        } else {
-            backgroundTaskPill
-        }
+        backgroundTaskPill
         }
     }
     /// The current turn's task list (official composer task pill).

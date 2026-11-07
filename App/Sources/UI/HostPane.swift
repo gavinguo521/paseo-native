@@ -435,7 +435,6 @@ struct ChangesView: View {
     @State private var quickLook: URL?
     @State private var confirmMergeToBase = false
     @State private var creatingPR = false
-    @State private var choosingBaseBranch = false
     @State private var showChecks = false
     @AppStorage("git.mergeMethod") private var mergeMethod = "squash"
     @AppStorage("diff.ignoreWhitespace") private var ignoreWhitespace = false
@@ -525,9 +524,6 @@ struct ChangesView: View {
         .confirmationDialog("把「\(status?.currentBranch ?? String(localized: "当前分支"))」合并到 \(baseName)？", isPresented: $confirmMergeToBase) {
             Button("合并") { run("mergeToBase") }
         } message: { Text("在本地把这个分支合并进 \(baseName)，不会推送。") }
-        .sheet(isPresented: $choosingBaseBranch) {
-            BaseBranchPicker(host: host, workspace: workspace, currentBase: baseName)
-        }
         .sheet(isPresented: $creatingPR) {
             CreatePullRequestSheet(forge: pr?.forgeName ?? "GitHub", branch: status?.currentBranch ?? "", base: baseName) { title, body in
                 perform(String(localized: "创建 PR 中"), done: String(localized: "PR 已创建")) { try await host.createPullRequest(cwd: cwd, title: title, body: body) }
@@ -624,9 +620,6 @@ struct ChangesView: View {
 
     private var moreMenu: some View {
         Menu {
-            if workspace.kind == "worktree", host.supportsWorkspaceBaseBranch {
-                Button("切换基准分支…", systemImage: "arrow.triangle.branch") { choosingBaseBranch = true }
-            }
             Button("拉取后推送", systemImage: "arrow.up.arrow.down") { run("pullPush") }.disabled(!(status?.hasRemote ?? false))
             if status?.baseRef != nil {
                 Button("从 \(baseName) 合并", systemImage: "arrow.triangle.merge") { run("mergeFromBase") }
