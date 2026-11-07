@@ -95,7 +95,7 @@ struct LiveActivityPushSection: View {
 }
 
 /// 填 Team ID、Key ID，选 .p8 文件，交给插件验证并保存。
-private struct APNsKeySheet: View {
+struct APNsKeySheet: View {
     @Environment(\.dismiss) private var dismiss
     let host: HostStore
     /// 插件支持按环境分别存密钥（旧版插件只存一把，两个环境共用）。
@@ -148,7 +148,7 @@ private struct APNsKeySheet: View {
                 }
             }
         }
-        .frame(minWidth: 420, minHeight: 300)
+        .macOnly { $0.frame(minWidth: 420, minHeight: 300) }
         .fileImporter(isPresented: $picking, allowedContentTypes: [UTType(filenameExtension: "p8") ?? .data, .data]) { result in
             guard case .success(let url) = result else { return }
             let scoped = url.startAccessingSecurityScopedResource()

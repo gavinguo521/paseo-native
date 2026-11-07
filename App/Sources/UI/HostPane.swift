@@ -47,11 +47,11 @@ struct ListDetail<List: View, Detail: View>: View {
             if showDetail {
                 VStack(spacing: 0) {
                     HStack {
-                        Button(action: onBack) { Label("返回", systemImage: "chevron.left") }.buttonStyle(.plain)
+                        Button(action: onBack) { Label("返回", systemImage: "chevron.left").mobileTouchTarget() }.buttonStyle(.plain)
                         Spacer()
                     }
                     .font(.system(size: 12)).foregroundStyle(Theme.muted)
-                    .padding(.horizontal, 12).frame(height: 32)
+                    .padding(.horizontal, 12).frame(minHeight: 32)
                     Divider()
                     detail
                 }
@@ -174,16 +174,16 @@ struct FilesView: View {
                 .font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.muted)
                 .lineLimit(1).truncationMode(.head)
             Spacer()
-            Button { expanded = [] } label: { Image(systemName: "arrow.down.right.and.arrow.up.left") }.buttonStyle(.plain)
+            Button { expanded = [] } label: { Image(systemName: "arrow.down.right.and.arrow.up.left").mobileTouchTarget() }.buttonStyle(.plain)
                 .help("全部折叠").disabled(expanded.isEmpty)
             Menu {
                 Toggle("显示隐藏文件", isOn: $showHidden)
                 Picker("排序", selection: $sort) { Text("名称").tag("name"); Text("修改时间").tag("modified"); Text("大小").tag("size") }
-            } label: { Image(systemName: "line.3.horizontal.decrease") }
+            } label: { Image(systemName: "line.3.horizontal.decrease").mobileTouchTarget() }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-            Button { Task { await reloadAll() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.plain).help("刷新")
+            Button { Task { await reloadAll() } } label: { Image(systemName: "arrow.clockwise").mobileTouchTarget() }.buttonStyle(.plain).help("刷新")
         }
-        .padding(.horizontal, 14).frame(height: 40)
+        .padding(.horizontal, 14).frame(minHeight: 40)
     }
 
     /// Directories first, then the chosen order; dotfiles hidden unless enabled (client-side, like the official app).
@@ -469,7 +469,7 @@ struct ChangesView: View {
                         Text("并排视图").tag(true)
                     }
                     .pickerStyle(.inline)
-                } label: { Image(systemName: "slider.horizontal.3") }
+                } label: { Image(systemName: "slider.horizontal.3").mobileTouchTarget() }
                     .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
                     .help("diff 选项")
             }
@@ -607,14 +607,14 @@ struct ChangesView: View {
             }
             Spacer()
             if let busy { ProgressView().controlSize(.small); Text(busy).font(.caption).foregroundStyle(Theme.muted).lineLimit(1) }
-            Button { run("pull") } label: { Image(systemName: "arrow.down") }.buttonStyle(.plain)
+            Button { run("pull") } label: { Image(systemName: "arrow.down").mobileTouchTarget() }.buttonStyle(.plain)
                 .disabled(!hasRemote).help(hasRemote ? "拉取" : "没有远程分支，无法拉取")
-            Button { run("push") } label: { Image(systemName: "arrow.up") }.buttonStyle(.plain)
+            Button { run("push") } label: { Image(systemName: "arrow.up").mobileTouchTarget() }.buttonStyle(.plain)
                 .help(hasRemote ? (status?.aheadOfOrigin == 0 ? "推送（没有待推送的提交）" : "推送") : "推送并建立远程分支")
-            Button { run("refresh") } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.plain).help("刷新")
+            Button { run("refresh") } label: { Image(systemName: "arrow.clockwise").mobileTouchTarget() }.buttonStyle(.plain).help("刷新")
             moreMenu
         }
-        .padding(.horizontal, 14).frame(height: 40)
+        .padding(.horizontal, 14).frame(minHeight: 40)
         .disabled(busy != nil)
     }
 
@@ -646,7 +646,7 @@ struct ChangesView: View {
                     Button("创建 PR…", systemImage: "plus.square.on.square") { creatingPR = true }.disabled(pr?.unavailableReason != nil)
                 }
             }
-        } label: { Image(systemName: "ellipsis.circle") }
+        } label: { Image(systemName: "ellipsis.circle").mobileTouchTarget() }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
             .help("更多 Git 操作")
     }
@@ -1368,32 +1368,9 @@ struct ScriptsView: View {
                 Text("这个工作区没有配置脚本（仓库根的 paseo.json 里的 scripts）").foregroundStyle(Theme.muted)
             }
             ForEach(list) { s in
-                HStack(spacing: 10) {
-                    Circle().fill(s.isRunning ? (s.health == "unhealthy" ? Theme.dotWarning : Theme.dotSuccess) : Theme.extraMuted).frame(width: 8, height: 8)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(s.name).font(.system(size: 14, weight: .medium))
-                        Text([s.type == "service" ? String(localized: "服务") : String(localized: "脚本"), s.isRunning ? String(localized: "运行中") : String(localized: "已停止"),
-                              s.port.map { String(localized: "端口 \($0)") }, s.exitCode.map { String(localized: "退出码 \($0)") }].compactMap { $0 }.joined(separator: " · "))
-                            .font(.system(size: 12)).foregroundStyle(Theme.muted)
-                    }
-                    Spacer()
-                    if s.isRunning, !s.urls.isEmpty {
-                        Menu {
-                            ForEach(s.urls, id: \.url) { u in
-                                Section(u.label) {
-                                    if let openInTab { Button(String(localized: "在标签中打开 \(u.url)")) { openInTab(u.url) } }
-                                    if let url = URL(string: u.url) { Link("在系统浏览器打开", destination: url) }
-                                    Button("复制地址") { Pasteboard.copy(u.url) }
-                                }
-                            }
-                        } label: { Image(systemName: "safari") }
-                            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-                            .help("服务地址")
-                    }
-                    if let t = s.terminalId { Button("日志") { openLog(t) }.compatibleGlassButtonStyle() }
-                    if s.isRunning { Button("重启") { restart(s.name) }.compatibleGlassButtonStyle() }
-                    Button(s.isRunning ? "停止" : "启动") { act(s.isRunning ? "stop" : "start", s.name) }
-                        .compatibleGlassButtonStyle(prominent: true).tint(s.isRunning ? Theme.destructive : Theme.accent)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { scriptSummary(s); Spacer(); scriptActions(s) }
+                    VStack(alignment: .leading, spacing: 10) { scriptSummary(s); scriptActions(s) }
                 }
                 .padding(.vertical, 4)
                 if s.isRunning, let u = s.urls.first {
@@ -1403,6 +1380,42 @@ struct ScriptsView: View {
             }
         }
         .task { await host.loadScripts(workspaceId: workspace.id) }
+    }
+
+    private func scriptSummary(_ s: WorkspaceScript) -> some View {
+        HStack(spacing: 10) {
+            Circle().fill(s.isRunning ? (s.health == "unhealthy" ? Theme.dotWarning : Theme.dotSuccess) : Theme.extraMuted).frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(s.name).font(.system(size: 14, weight: .medium))
+                Text([s.type == "service" ? String(localized: "服务") : String(localized: "脚本"), s.isRunning ? String(localized: "运行中") : String(localized: "已停止"),
+                      s.port.map { String(localized: "端口 \($0)") }, s.exitCode.map { String(localized: "退出码 \($0)") }].compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+            }
+        }
+    }
+
+    private func scriptActions(_ s: WorkspaceScript) -> some View {
+        HStack(spacing: 8) {
+            if s.isRunning, !s.urls.isEmpty {
+                Menu {
+                    ForEach(s.urls, id: \.url) { u in
+                        Section(u.label) {
+                            if let openInTab { Button(String(localized: "在标签中打开 \(u.url)")) { openInTab(u.url) } }
+                            if let url = URL(string: u.url) { Link("在系统浏览器打开", destination: url) }
+                            Button("复制地址") { Pasteboard.copy(u.url) }
+                        }
+                    }
+                } label: { Image(systemName: "safari").mobileTouchTarget() }
+                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                    .help("服务地址")
+            }
+            if let t = s.terminalId { Button("日志") { openLog(t) }.compatibleGlassButtonStyle() }
+            if s.isRunning { Button("重启") { restart(s.name) }.compatibleGlassButtonStyle() }
+            Button(s.isRunning ? "停止" : "启动") { act(s.isRunning ? "stop" : "start", s.name) }
+                .compatibleGlassButtonStyle(prominent: true).tint(s.isRunning ? Theme.destructive : Theme.accent)
+        }
+        .mobileProminentControlSize()
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func restart(_ name: String) {

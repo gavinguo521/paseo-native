@@ -188,7 +188,7 @@ struct SidebarView: View {
     // MARK: Filter bar
 
     private var filterBar: some View {
-        HStack {
+        HStack(spacing: 4) {
             Menu {
                 Button { model.hostFilter = nil } label: { check(String(localized: "全部主机"), model.hostFilter == nil) }
                 Divider()
@@ -198,10 +198,12 @@ struct SidebarView: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(model.hostFilter.flatMap { model.host($0)?.label } ?? String(localized: "全部主机"))
+                        .lineLimit(1)
                     Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
                 }
+                .mobileTouchTarget()
             }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
             Spacer()
             if !hiddenNav.contains("history") { navIcon("clock.arrow.circlepath", String(localized: "会话历史"), .history) }
             if !hiddenNav.contains("schedules") { navIcon("calendar", String(localized: "计划任务"), .schedules) }
@@ -232,9 +234,9 @@ struct SidebarView: View {
                 }
             } label: {
                 Image(systemName: model.labelFilter.isEmpty ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
+                    .frame(width: 28, height: 28).mobileTouchTarget()
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-            .frame(width: 28, height: 28)
             .help("分组、排序和筛选")
             .accessibilityLabel("分组、排序和筛选")
         }
@@ -259,6 +261,7 @@ struct SidebarView: View {
                 .font(.system(size: 14))
                 .foregroundStyle(selected ? Theme.foreground : Theme.muted)
                 .frame(width: 28, height: 28)
+                .mobileTouchTarget()
                 .background(selected ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 7))
                 .contentShape(Rectangle())
         }
@@ -356,21 +359,21 @@ struct SidebarView: View {
                                 ForEach(targets, id: \.host.id) { t in Button(t.host.label) { start(t) } }
                             }
                         } label: {
-                            Image(systemName: "plus").font(.system(size: 12, weight: .medium)).frame(width: 22, height: 22).contentShape(Rectangle())
+                            Image(systemName: "plus").font(.system(size: 12, weight: .medium)).frame(width: 22, height: 22).mobileTouchTarget().contentShape(Rectangle())
                         }
                         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
                         .help("在此项目新建工作区")
                         .accessibilityLabel("在此项目新建工作区，选择机器")
                     } else if let t = targets.first {
                         Button { start(t) } label: {
-                            Image(systemName: "plus").font(.system(size: 12, weight: .medium)).frame(width: 22, height: 22).contentShape(Rectangle())
+                            Image(systemName: "plus").font(.system(size: 12, weight: .medium)).frame(width: 22, height: 22).mobileTouchTarget().contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .help("在此项目新建工作区")
                         .accessibilityLabel("在此项目新建工作区")
                     }
                     Menu { groupMenu(group, all: all, auto: auto) } label: {
-                        Image(systemName: "ellipsis").font(.system(size: 12, weight: .medium)).frame(width: 22, height: 22).contentShape(Rectangle())
+                        Image(systemName: "ellipsis").font(.system(size: 12, weight: .medium)).frame(width: 22, height: 22).mobileTouchTarget().contentShape(Rectangle())
                     }
                     .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
                     .accessibilityLabel("分组操作")
@@ -379,7 +382,7 @@ struct SidebarView: View {
                 }
             }
             .foregroundStyle(Theme.muted)
-            .frame(height: 24)
+            .frame(minHeight: 24)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
             .background(hovered ? Theme.selection.opacity(0.6) : .clear, in: RoundedRectangle(cornerRadius: 10))
@@ -673,6 +676,7 @@ struct SidebarView: View {
             .font(.system(size: 16, weight: .medium))
             .foregroundStyle(selected ? Theme.foreground : Theme.muted)
             .frame(width: 36, height: 36)
+            .mobileTouchTarget()
             .background(selected ? Theme.selection.opacity(0.8) : .clear, in: Circle())
             .contentShape(Circle())
     }

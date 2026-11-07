@@ -70,28 +70,40 @@ struct SchedulesView: View {
                         Text("按时间自动开会话做事，比如每个工作日早上 9 点整理 issue。")
                     } actions: {
                         Button("新建计划任务") { editing = .new }.compatibleGlassButtonStyle(prominent: true).tint(Theme.accent)
+                            .mobileProminentControlSize()
                     }
                 } else {
                     ContentUnavailableView("没有已结束的计划任务", systemImage: "calendar")
                 }
             }
         }
+        #if os(iOS)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                statusPicker
+                if model.hosts.count > 1 { hostPicker }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(Theme.surface0)
+        }
+        #endif
         .navigationTitle("计划任务")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar {
+            #if os(macOS)
             ToolbarItem(placement: .principal) {
-                Picker("", selection: $tab) { Text("进行中").tag(0); Text("已结束").tag(1) }.pickerStyle(.segmented).labelsHidden().frame(width: 180)
+                statusPicker.frame(width: 180)
             }
             // 分段控件自带底色，再套工具栏的玻璃胶囊就成了「胶囊里套胶囊」
             .compatibleSharedBackgroundHidden()
             if model.hosts.count > 1 {
                 ToolbarItem(placement: .primaryAction) {
-                    Picker("主机", selection: $hostFilter) {
-                        Text("全部主机").tag(String?.none)
-                        ForEach(model.hosts) { h in Text(h.label).tag(Optional(h.id)) }
-                    }
-                    .fixedSize()
+                    hostPicker.fixedSize()
                 }
             }
+            #endif
             ToolbarItem(placement: .primaryAction) { Button { refresh += 1 } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("刷新") }
             ToolbarItem(placement: .primaryAction) { Button { editing = .new } label: { Label("新建", systemImage: "plus") } }
         }
@@ -113,6 +125,22 @@ struct SchedulesView: View {
                 if let (h, s) = confirmDelete { act(h, s, "delete") }
             }
         } message: { Text("删除后无法恢复。") }
+    }
+
+    private var statusPicker: some View {
+        Picker("状态", selection: $tab) {
+            Text("进行中").tag(0)
+            Text("已结束").tag(1)
+        }.pickerStyle(.segmented).labelsHidden()
+    }
+
+    private var hostPicker: some View {
+        Picker("主机", selection: $hostFilter) {
+            Text("全部主机").tag(String?.none)
+            ForEach(model.hosts) { h in Text(h.label).tag(Optional(h.id)) }
+        }
+        .pickerStyle(.menu)
+        .lineLimit(1)
     }
 
     private func targetGone(_ item: ScheduleListItem) -> Bool {
@@ -162,14 +190,14 @@ private struct ScheduleLoadKey: Equatable {
     let refresh: Int
 }
 
-private struct ScheduleListItem: Identifiable {
+struct ScheduleListItem: Identifiable {
     let host: HostStore
     let schedule: Schedule
     // Schedule IDs belong to a daemon, not to the combined list of machines.
     var id: String { host.id + ":" + schedule.id }
 }
 
-private struct ScheduleRow: View {
+struct ScheduleRow: View {
     let item: ScheduleListItem
     let gone: Bool
     let showHost: Bool
@@ -181,7 +209,8 @@ private struct ScheduleRow: View {
                 Image(systemName: s.isHeartbeat ? "waveform.path.ecg" : "calendar.badge.clock").foregroundStyle(Theme.muted)
                 Text(s.title).font(.system(size: 14, weight: .medium)).lineLimit(1)
                 Text(badge).font(.system(size: 11, weight: .medium))
-                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .fixedSize().frame(minHeight: 28)
                     .background(badgeColor.opacity(0.15), in: Capsule()).foregroundStyle(badgeColor)
             }
             Text(target).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
@@ -244,7 +273,7 @@ enum ScheduleFormTarget: Identifiable {
     var id: String { if case .edit(_, let s) = self { s.id } else { "new" } }
 }
 
-private struct ScheduleForm: View {
+struct ScheduleForm: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let target: ScheduleFormTarget

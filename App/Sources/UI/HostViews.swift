@@ -139,7 +139,10 @@ struct HostsView: View {
             .formStyle(.grouped)
             .toolbar {
                 #if os(iOS)
-                if let tabPicker { ToolbarItem(placement: .principal) { SettingsTabPicker(tab: tabPicker) } }
+                if let tabPicker {
+                    ToolbarItem(placement: .principal) { SettingsTabPicker(tab: tabPicker) }
+                        .compatibleSharedBackgroundHidden()
+                }
                 #endif
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
             }
@@ -159,10 +162,10 @@ struct TextReportSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(title).font(.headline)
+                Text(title).font(.headline).lineLimit(1)
                 Spacer()
-                Button("复制") { Pasteboard.copy(text) }
-                Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button { Pasteboard.copy(text) } label: { Text("复制").mobileTouchTarget() }
+                Button { dismiss() } label: { Text("完成").mobileTouchTarget() }.keyboardShortcut(.cancelAction)
             }
             .padding(12)
             Divider()

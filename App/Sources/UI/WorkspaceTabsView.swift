@@ -226,6 +226,7 @@ struct WorkspaceTabsView: View {
                 Label("没有打开的标签", systemImage: "rectangle.stack")
             } actions: {
                 Button("新会话") { perform(.newAgent) }.compatibleGlassButtonStyle(prominent: true).tint(Theme.accent)
+                    .mobileProminentControlSize()
             }
             .navigationTitle(workspace?.name ?? String(localized: "工作区"))
         }

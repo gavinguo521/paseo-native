@@ -713,25 +713,32 @@ struct PermissionCard: View {
                 detailPreview(detail)
             }
             if let error { Text(error).font(.caption).foregroundStyle(Theme.destructive) }
-            HStack(spacing: 8) {
-                Spacer()
-                ForEach(buttons, id: \.id) { action in
-                    Button {
-                        respond(action)
-                    } label: {
-                        Label(action.label, systemImage: action.behavior == "deny" ? "xmark" : "checkmark")
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(action.behavior == "deny" ? nil : Theme.accent)
-                    .if(action.behavior != "deny" && action.variant != "secondary") { $0.buttonStyle(.borderedProminent) }
-                    .disabled(busy)
-                }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { Spacer(minLength: 0); permissionButtons(expanded: false) }
+                VStack(spacing: 8) { permissionButtons(expanded: true) }
             }
         }
         .padding(14)
         .background(Theme.surface1, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.dotWarning.opacity(0.5)))
         .phoneFeedback(.success, trigger: answered)
+    }
+
+    private func permissionButtons(expanded: Bool) -> some View {
+        ForEach(buttons, id: \.id) { action in
+            Button {
+                respond(action)
+            } label: {
+                Label(action.label, systemImage: action.behavior == "deny" ? "xmark" : "checkmark")
+                    .fixedSize(horizontal: !expanded, vertical: true)
+                    .frame(maxWidth: expanded ? .infinity : nil)
+            }
+            .buttonStyle(.bordered)
+            .tint(action.behavior == "deny" ? nil : Theme.accent)
+            .if(action.behavior != "deny" && action.variant != "secondary") { $0.buttonStyle(.borderedProminent) }
+            .mobileProminentControlSize()
+            .disabled(busy)
+        }
     }
 
     private var buttons: [PermissionAction] {

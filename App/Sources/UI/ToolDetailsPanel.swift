@@ -90,18 +90,18 @@ struct ToolDetailsPanel: View {
             HStack(spacing: 10) {
                 Text("工具详情").font(.headline)
                 Spacer()
-                Button { move(-1) } label: { Image(systemName: "chevron.left") }
+                Button { move(-1) } label: { Image(systemName: "chevron.left").mobileTouchTarget() }
                     .disabled(neighbor(-1) == nil).accessibilityLabel("上一条")
-                Button { move(1) } label: { Image(systemName: "chevron.right") }
+                Button { move(1) } label: { Image(systemName: "chevron.right").mobileTouchTarget() }
                     .disabled(neighbor(1) == nil).accessibilityLabel("下一条")
-                Button { selectedID = nil } label: { Image(systemName: "xmark") }.accessibilityLabel("关闭")
+                Button { selectedID = nil } label: { Image(systemName: "xmark").mobileTouchTarget() }.accessibilityLabel("关闭")
             }.buttonStyle(.borderless).padding(14)
             Divider()
             if let row {
                 HStack {
                     Text(row.item.toolSummary).font(.caption).lineLimit(2)
                     Spacer()
-                    Button { Pasteboard.copy(ToolDetailsSelection.text(row)) } label: { Image(systemName: "doc.on.doc") }
+                    Button { Pasteboard.copy(ToolDetailsSelection.text(row)) } label: { Image(systemName: "doc.on.doc").mobileTouchTarget() }
                         .accessibilityLabel("复制详情")
                 }.padding(12)
                 ScrollView {

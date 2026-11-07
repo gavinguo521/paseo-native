@@ -70,7 +70,7 @@ struct SessionOverview: View {
                             Text($0).tag(Optional($0))
                         }
                     }
-                } label: { Label("筛选", systemImage: "line.3.horizontal.decrease") }
+                } label: { Label("筛选", systemImage: "line.3.horizontal.decrease").fixedSize().mobileTouchTarget() }
                 if hostID != nil || provider != nil {
                     Button("重置") { hostID = nil; provider = nil }
                 }

@@ -184,7 +184,8 @@ struct WorkspacePicker: View {
             .font(.system(size: 13))
             .foregroundStyle(Theme.muted)
             .padding(.horizontal, 14)
-            .frame(height: 32)
+            .frame(minHeight: 32)
+            .mobileTouchTarget()
             .compatibleGlassEffect(in: Capsule(), interactive: true)
         }
         // Height only: a long workspace name truncates instead of widening the page past a phone screen.
@@ -407,9 +408,10 @@ struct HistoryView: View {
                         ForEach(projects, id: \.self) { Text($0).tag(String?.some($0)) }
                     }
                 } label: {
-                    Label("筛选", systemImage: project != nil || statusFilter != StatusFilter.all.rawValue
-                          ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .foregroundStyle(project != nil || statusFilter != StatusFilter.all.rawValue ? Theme.accent : Theme.foreground)
                 }
+                .accessibilityLabel("分组和筛选")
                 .help("分组和筛选")
             }
         }
@@ -440,17 +442,17 @@ struct HistoryView: View {
                 Spacer()
                 if item.agent.archivedAt != nil {
                     // 文字标签（同官方「已归档」徽标），比原来的小图标好找
-                    Label("已归档", systemImage: "archivebox")
-                        .font(.caption2).foregroundStyle(Theme.muted)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Theme.selection, in: Capsule())
-                        .help("已归档，打开时恢复")
+                    ArchivedSessionBadge()
                 }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .padding(.vertical, 2)
+        #if os(iOS)
+        // 不让尾部状态标签成为系统推断分隔线起点的依据。
+        .alignmentGuide(.listRowSeparatorLeading) { _ in showProject && host != nil ? 26 : 0 }
+        #endif
         .contextMenu {
             let ref = AgentRef(serverId: item.serverId, agentId: item.agent.id)
             Button("打开", systemImage: "arrow.up.forward.app") { Task { await open(item.serverId, item.agent) } }
@@ -556,6 +558,21 @@ struct SettingsView: View {
         // Same size for both tabs, so switching doesn't make the sheet jump.
         .frame(width: 600, height: 640)
         #endif
+    }
+}
+
+struct ArchivedSessionBadge: View {
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "archivebox")
+            Text("已归档")
+        }
+        .font(.caption).foregroundStyle(Theme.muted)
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .frame(minHeight: 28)
+        .background(Theme.selection, in: Capsule())
+        .fixedSize()
+        .help("已归档，打开时恢复")
     }
 }
 
@@ -748,7 +765,10 @@ struct PreferencesView: View {
                           defaultFilename: "Paseo-诊断-" + Date().formatted(.iso8601.year().month().day()) + ".txt") { _ in diagnostics = nil }
             .toolbar {
                 #if os(iOS)
-                if let tabPicker { ToolbarItem(placement: .principal) { SettingsTabPicker(tab: tabPicker) } }
+                if let tabPicker {
+                    ToolbarItem(placement: .principal) { SettingsTabPicker(tab: tabPicker) }
+                        .compatibleSharedBackgroundHidden()
+                }
                 #endif
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
             }

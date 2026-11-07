@@ -2,6 +2,26 @@ import SwiftUI
 
 /// Keep the existing Liquid Glass appearance on newer systems, with standard surfaces on iOS 18.
 extension View {
+    /// 自绘按钮的标签要占有真实触控区域，不能只扩大外层容器。
+    @ViewBuilder
+    func mobileTouchTarget() -> some View {
+        #if os(iOS)
+        frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+        #else
+        self
+        #endif
+    }
+
+    /// 空状态中的主要操作在触屏上使用完整尺寸，避免继承系统的紧凑按钮尺寸。
+    @ViewBuilder
+    func mobileProminentControlSize() -> some View {
+        #if os(iOS)
+        controlSize(.large)
+        #else
+        self
+        #endif
+    }
+
     @ViewBuilder
     func compatibleGlassEffect<S: InsettableShape>(in shape: S, interactive: Bool = false) -> some View {
         if #available(iOS 26.0, macOS 26.0, *) {

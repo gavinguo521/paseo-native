@@ -152,14 +152,14 @@ struct AddProjectView: View {
     private var header: some View {
         HStack(spacing: 10) {
             if stack.count > 1 {
-                Button { stack.removeLast() } label: { Image(systemName: "chevron.left") }.buttonStyle(.plain).keyboardShortcut(.cancelAction)
+                Button { stack.removeLast() } label: { Image(systemName: "chevron.left").mobileTouchTarget() }.buttonStyle(.plain).keyboardShortcut(.cancelAction)
                     .accessibilityLabel("返回")
             }
             Text(title).font(.headline)
             if let host, page != .host { Text(host.label).font(.system(size: 12)).foregroundStyle(Theme.muted) }
             Spacer()
             if let busy { ProgressView().controlSize(.small); Text(busy).font(.system(size: 12)).foregroundStyle(Theme.muted) }
-            Button("关闭") { dismiss() }
+            Button { dismiss() } label: { Text("关闭").mobileTouchTarget() }
         }
         .padding(14)
     }
@@ -690,6 +690,18 @@ struct ImportSessionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            #if os(iOS)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("导入会话").font(.headline)
+                    Spacer()
+                    Button { dismiss() } label: { Text("关闭").mobileTouchTarget() }
+                }
+                TextField("搜索", text: $query).textFieldStyle(.roundedBorder)
+                if cwd != nil { Toggle("只看当前目录", isOn: $onlyHere) }
+            }
+            .padding(12)
+            #else
             HStack(spacing: 10) {
                 Text("导入会话").font(.headline)
                 TextField("搜索", text: $query).textFieldStyle(.roundedBorder).frame(maxWidth: 240)
@@ -698,6 +710,7 @@ struct ImportSessionView: View {
                 Button("关闭") { dismiss() }.keyboardShortcut(.cancelAction)
             }
             .padding(12)
+            #endif
             Divider()
             Group {
                 if let error { Text(error).foregroundStyle(Theme.destructive).padding() }

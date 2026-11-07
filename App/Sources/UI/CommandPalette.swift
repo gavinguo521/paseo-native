@@ -210,7 +210,7 @@ struct CommandPalette: View {
                 if let page {
                     Button { self.page = nil; query = "" } label: {
                         Label(page.title, systemImage: "chevron.left").font(.system(size: 12))
-                            .padding(.horizontal, 8).frame(height: 24).background(Theme.surface2, in: Capsule())
+                            .padding(.horizontal, 8).frame(minHeight: 24).mobileTouchTarget().background(Theme.surface2, in: Capsule())
                     }
                     .buttonStyle(.plain)
                 } else {
@@ -222,6 +222,10 @@ struct CommandPalette: View {
                     .font(.system(size: 17))
                     .focused($focused)
                     .onSubmit { run(list) }
+                #if os(iOS)
+                Button { dismiss() } label: { Image(systemName: "xmark").mobileTouchTarget() }
+                    .accessibilityLabel("关闭")
+                #endif
             }
             .padding(16)
             Divider()
@@ -236,14 +240,26 @@ struct CommandPalette: View {
                             Button { index = i; run(list) } label: {
                                 HStack(spacing: 10) {
                                     Image(systemName: item.systemImage).frame(width: 20).foregroundStyle(Theme.muted)
+                                    #if os(iOS)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(item.title).lineLimit(2)
+                                        if !item.subtitle.isEmpty {
+                                            Text(item.subtitle).font(.caption).foregroundStyle(Theme.muted).lineLimit(1)
+                                        }
+                                    }
+                                    #else
                                     Text(item.title).lineLimit(1)
+                                    #endif
                                     if let b = item.bucket, b != .done { StatusDot(bucket: b) }
                                     Spacer()
+                                    #if os(macOS)
                                     Text(item.subtitle).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.head)
+                                    #endif
                                     if item.page != nil { Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(Theme.extraMuted) }
                                 }
                                 .padding(.horizontal, 12)
-                                .frame(height: 34)
+                                .frame(minHeight: 34)
+                                .mobileTouchTarget()
                                 .background(i == index ? Theme.surface2 : .clear, in: RoundedRectangle(cornerRadius: 8))
                                 .contentShape(Rectangle())
                             }
