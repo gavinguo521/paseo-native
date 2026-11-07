@@ -181,6 +181,61 @@ private func text(_ row: TimelineRow) -> String {
 
     private let bgOutput = "Command running in background with ID: bx4fb0hjb. Output is being written to: /tmp/x.output"
 
+    @Test func sourceReadsAndSearchResultsAreNotBackgroundTasks() {
+        let outputs = [
+            "/// 输出是「Command running in background with ID: …」的命令行。",
+            "    private let bgOutput = \"\(bgOutput)\"",
+            "BackgroundTasks.swift:24:/// 输出是「Command running in background with ID: …」的命令行。",
+            "// source header\n\(bgOutput)\n// source footer",
+        ]
+        var t = AgentTimeline()
+        t.applyPage(page("tail", outputs.enumerated().map { index, output in
+            entry(index + 1, bash("read_\(index)", "sed -n '1,280p' BackgroundTasks.swift", output: output))
+        }, start: 1, end: outputs.count))
+        #expect(t.backgroundTasks(sessionEnded: false).isEmpty)
+    }
+
+    @Test func otherToolsCannotCreateClaudeBackgroundTasks() {
+        var t = AgentTimeline()
+        t.applyPage(page("tail", [entry(1,
+            ["type": "tool_call", "callId": "codex-read", "name": "exec_command", "status": "completed",
+             "detail": ["type": "shell", "command": "cat example.txt", "output": .string(bgOutput), "exitCode": 0]])
+        ], start: 1, end: 1))
+        #expect(t.backgroundTasks(sessionEnded: false).isEmpty)
+    }
+
+    @Test func backgroundReceiptRequiresValidIDAndCompleteOutput() {
+        #expect(AgentBackgroundTask.taskId(fromOutput: "\n\(bgOutput)\n", toolName: "Bash") == "bx4fb0hjb")
+        #expect(AgentBackgroundTask.taskId(fromOutput: "Command running in background with ID: task_1-2.", toolName: "Bash") == "task_1-2")
+        let invalid = [
+            "Command running in background with ID:",
+            "Command running in background with ID: …",
+            "Command running in background with ID: \"example\"",
+            "Command running in background with ID: task invalid",
+            "Command running in background with ID: task. Output is being written to:",
+            "\(bgOutput)\nmore source code",
+        ]
+        for output in invalid {
+            #expect(AgentBackgroundTask.taskId(fromOutput: output, toolName: "Bash") == nil)
+        }
+    }
+
+    @Test func multilineReceiptKeepsKnownCwdNoticeAndPairsCompletion() {
+        let first = "Command running in background with ID: b202t0ccr. Output is being written to: /tmp/tasks/b202t0ccr.output. You will be notified when it completes. To check interim output, use Read on that file path."
+        let cwd = "Session cwd remains /workspace/sample project; directory changes made by the backgrounded command do not apply to subsequent commands."
+        for newline in ["\n", "\r\n"] {
+            #expect(AgentBackgroundTask.taskId(fromOutput: first + newline + cwd, toolName: "Bash") == "b202t0ccr")
+        }
+        for extra in ["more source code", "Session cwd remains ; directory changes made by the backgrounded command do not apply to subsequent commands.", cwd + "\nmore source code", cwd + " unexpected suffix"] {
+            #expect(AgentBackgroundTask.taskId(fromOutput: first + "\n" + extra, toolName: "Bash") == nil)
+        }
+        var timeline = AgentTimeline()
+        timeline.applyPage(page("tail", [entry(1, bash("multiline", "build", output: first + "\n" + cwd))], start: 1, end: 1))
+        #expect(timeline.backgroundTasks(sessionEnded: false).first?.state == .running)
+        _ = timeline.applyStream(stream(2, notification(toolUseId: "multiline", taskId: "b202t0ccr", status: "completed", summary: "done")))
+        #expect(timeline.backgroundTasks(sessionEnded: false).first?.state == .completed)
+    }
+
     @Test func runningUntilNotificationArrives() {
         var t = AgentTimeline()
         t.applyPage(page("tail", [

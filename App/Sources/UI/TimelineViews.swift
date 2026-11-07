@@ -774,8 +774,8 @@ struct ToolGroupView: View {
 
     /// 单条后台命令（Bash 的 run_in_background）：标成「后台运行」，它在这里立刻完成，真正的进度看输入框上方的后台任务。
     private var isBackground: Bool {
-        guard rows.count == 1, case .toolCall(_, _, _, .shell(_, _, let output?, _), _, _) = rows[0].item else { return false }
-        return AgentBackgroundTask.taskId(fromOutput: output) != nil
+        guard rows.count == 1, case .toolCall(_, let name, _, .shell(_, _, let output?, _), _, _) = rows[0].item else { return false }
+        return AgentBackgroundTask.taskId(fromOutput: output, toolName: name) != nil
     }
 
     /// "N 项操作" like the reference design; the running one names what it is doing.
@@ -828,6 +828,7 @@ struct ToolDetailView: View {
     let row: TimelineRow
     let showHeader: Bool
     var fullContent = false
+    @State private var previewHeight: CGFloat = 0
 
     @ViewBuilder var body: some View {
         if fullContent {
@@ -842,6 +843,20 @@ struct ToolDetailView: View {
     }
 
     private var preview: some View {
+        ScrollView(.vertical) {
+            previewContent
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onGeometryChange(for: CGFloat.self) { ceil($0.size.height) } action: { previewHeight = $0 }
+        }
+        // Measure without a height proposal: short blocks stay compact and long diffs cannot
+        // draw over later messages. The same viewport is used on iOS and macOS.
+        .frame(height: min(previewHeight, 400), alignment: .top)
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+        .clipped()
+    }
+
+    private var previewContent: some View {
         VStack(alignment: .leading, spacing: 4) {
             if showHeader {
                 Text(row.item.toolSummary).font(.system(size: Theme.code)).foregroundStyle(Theme.muted).lineLimit(1)
@@ -860,7 +875,6 @@ struct ToolDetailView: View {
                 EmptyView()
             }
         }
-        .frame(maxHeight: 400, alignment: .top)
     }
 
     @ViewBuilder private func detailView(_ d: ToolCallDetail) -> some View {

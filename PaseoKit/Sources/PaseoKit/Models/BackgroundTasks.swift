@@ -40,14 +40,36 @@ public struct AgentBackgroundTask: Sendable, Identifiable, Equatable {
     /// 时间线里那条命令的行 id（`AgentTimeline` 用 "tool-<callId>"）。
     public var rowId: String { "tool-\(id)" }
 
-    private static let marker = "running in background with ID:"
+    private static let prefix = "Command running in background with ID: "
+    private static let taskIDCharacters = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 
-    /// 后台命令的任务 id，不是后台命令返回 nil。
-    public static func taskId(fromOutput output: String) -> String? {
-        guard let r = output.range(of: marker) else { return nil }
-        let rest = output[r.upperBound...].drop { $0 == " " }
-        let id = rest.prefix { !$0.isWhitespace && $0 != "." && $0 != "," }
-        return id.isEmpty ? nil : String(id)
+    /// 只识别 Claude Bash 工具的完整后台启动回执。源码、搜索结果和其他工具的普通输出不是任务状态。
+    public static func taskId(fromOutput output: String, toolName: String) -> String? {
+        guard toolName == "Bash" else { return nil }
+        let receipt = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lines = receipt.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard let first = lines.first, first.hasPrefix(prefix), lines.count <= 2 else { return nil }
+        if lines.count == 2 {
+            // Claude 的真实回执可附带 cwd 提示；不放行任意后续输出，避免源码再次误报。
+            let cwdPrefix = "Session cwd remains "
+            let cwdSuffix = "; directory changes made by the backgrounded command do not apply to subsequent commands."
+            let notice = lines[1]
+            guard notice.hasPrefix(cwdPrefix), notice.hasSuffix(cwdSuffix),
+                  notice.count > cwdPrefix.count + cwdSuffix.count,
+                  !notice.dropFirst(cwdPrefix.count).dropLast(cwdSuffix.count).trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        }
+        let rest = first.dropFirst(prefix.count)
+        let id = rest.prefix { taskIDCharacters.contains($0) }
+        guard !id.isEmpty else { return nil }
+        let suffix = rest.dropFirst(id.count)
+        if !suffix.isEmpty && suffix != "." {
+            let pathPrefix = ". Output is being written to: "
+            guard suffix.hasPrefix(pathPrefix),
+                  !suffix.dropFirst(pathPrefix.count).trimmingCharacters(in: .whitespaces).isEmpty,
+                  !suffix.contains(where: \.isNewline) else { return nil }
+        }
+        return String(id)
     }
 
     static func state(for end: BackgroundTaskEnd) -> State {
@@ -64,9 +86,9 @@ extension AgentTimeline {
     /// 只看已加载的部分：更早、还没加载的历史里开始的后台命令不在其中。
     public func backgroundTasks(sessionEnded: Bool) -> [AgentBackgroundTask] {
         rows.compactMap { row -> AgentBackgroundTask? in
-            guard case .toolCall(let callId, _, _, let detail, _, _) = row.item,
+            guard case .toolCall(let callId, let name, _, let detail, _, _) = row.item,
                   case .shell(let command, _, let output, _) = detail,
-                  let output, let taskId = AgentBackgroundTask.taskId(fromOutput: output) else { return nil }
+                  let output, let taskId = AgentBackgroundTask.taskId(fromOutput: output, toolName: name) else { return nil }
             let end = backgroundTaskEnds[callId] ?? backgroundTaskEnds[taskId]
             let state: AgentBackgroundTask.State = end.map(AgentBackgroundTask.state(for:)) ?? (sessionEnded ? .interrupted : .running)
             return AgentBackgroundTask(id: callId, taskId: taskId, command: command, startedAt: row.timestamp, state: state,
