@@ -524,7 +524,11 @@ private struct ComposerTaskChips: View {
             }
             .help(todos.map { ($0.completed ? "✓ " : "○ ") + $0.text }.joined(separator: "\n"))
         }
-        backgroundTaskPill
+        if host.supportsBackgroundWork {
+            LiveBackgroundWorkPill(host: host, agentId: agentId)
+        } else {
+            backgroundTaskPill
+        }
         }
     }
     /// The current turn's task list (official composer task pill).
@@ -1307,7 +1311,7 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
     /// Hardware Return in ComposerTextView (input method not composing, no ⇧): ↩ sends, ⌘↩ the other send;
     /// with 「⌘↩ 发送」 set, ↩ types a newline. False = let the text view type the newline.
     private func hardwareReturn(_ command: Bool) -> Bool {
-        if let a = autocomplete, a.isActive { onPick?(a.items[a.index]); return true }
+        if let a = autocomplete, a.isActive { if let selected = a.selected { onPick?(selected) }; return true }
         if sendKey == "cmdEnter" {
             guard command else { return false }
             onSubmit()
@@ -1330,9 +1334,9 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
             return false
         }
         switch key {
-        case .up: a.index = max(0, a.index - 1)
-        case .down: a.index = min(a.items.count - 1, a.index + 1)
-        case .tab: onPick?(a.items[a.index])
+        case .up: a.moveSelection(-1)
+        case .down: a.moveSelection(1)
+        case .tab: if let selected = a.selected { onPick?(selected) }
         case .shiftTab: return false
         case .escape: a.dismiss()
         }
@@ -1380,7 +1384,7 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                             if inputMethodComposing() { return .ignored }
                             // ⇧↩ 换行：自己在光标处插入换行。交还给系统的话，多行 TextField 在 macOS 上把 ⇧↩ 当成结束输入，换不了行。
                             if press.modifiers.contains(.shift) { insertNewlineAtCursor(); return .handled }
-                            if let a = autocomplete, a.isActive { onPick?(a.items[a.index]); return .handled }
+                            if let a = autocomplete, a.isActive { if let selected = a.selected { onPick?(selected) }; return .handled }
                             if sendKey == "cmdEnter" {
                                 // ↩ inserts a newline; ⌘↩ sends.
                                 guard press.modifiers.contains(.command) else { insertNewlineAtCursor(); return .handled }
@@ -1468,9 +1472,9 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                         return .ignored
                     }
                     switch press.key {
-                    case .upArrow: a.index = max(0, a.index - 1)
-                    case .downArrow: a.index = min(a.items.count - 1, a.index + 1)
-                    case .tab: onPick?(a.items[a.index])
+                    case .upArrow: a.moveSelection(-1)
+                    case .downArrow: a.moveSelection(1)
+                    case .tab: if let selected = a.selected { onPick?(selected) }
                     default: a.dismiss()
                     }
                     return .handled

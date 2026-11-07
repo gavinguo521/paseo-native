@@ -45,7 +45,7 @@ public final class HostStore: Identifiable {
     public private(set) var state: ConnectionState = .idle {
         didSet { if state != oldValue { AppLog.shared.record("连接", label + "：" + String(describing: state)) } }
     }
-    public private(set) var serverInfo: ServerInfo?
+    public internal(set) var serverInfo: ServerInfo?
     public internal(set) var agents: [String: Agent] = [:]
     public private(set) var workspaces: [String: Workspace] = [:]
     public private(set) var projects: [String: Project] = [:]
@@ -71,6 +71,10 @@ public final class HostStore: Identifiable {
     public internal(set) var daemonConfig: JSONValue?
     /// Provider-internal subagents by parent agent id.
     public internal(set) var providerSubagents: [String: [ProviderSubagent]] = [:]
+    public internal(set) var backgroundWork: [String: [AgentBackgroundWork]] = [:]
+    public internal(set) var backgroundWorkErrors: [String: String] = [:]
+    public internal(set) var backgroundWorkLoading: Set<String> = []
+    @ObservationIgnored var backgroundWorkRequests: [String: UUID] = [:]
     /// Finished provider subagents the user cleared from the composer pill (this client only, like the official app).
     public internal(set) var hiddenProviderSubagents: Set<String> = []
     /// Timelines of provider subagents open in a tab, keyed "parentAgentId/subagentId".
@@ -160,6 +164,7 @@ public final class HostStore: Identifiable {
         timelineSubscriptionId = nil
         providerSubagentSubscriptionId = nil
         Task { await c?.close() }
+        resetBackgroundWork()
         state = .idle
     }
 
@@ -236,6 +241,7 @@ public final class HostStore: Identifiable {
                 guard !Task.isCancelled, connection === c else { await c.close(); return }
                 state = .connected
                 scheduleTimelineSync()
+                for id in openAgents { Task { await refreshBackgroundWork(id) } }
                 startHeartbeat()
                 for await message in c.events { handle(message) }
                 guard !Task.isCancelled, connection === c else { return }
@@ -245,6 +251,7 @@ public final class HostStore: Identifiable {
                 timelineSyncTask = nil
                 latencyMs = nil
                 connection = nil
+                resetBackgroundWork()
                 subscriptionIds.removeAll()
                 timelineSubscriptionId = nil
                 providerSubagentSubscriptionId = nil
@@ -295,19 +302,18 @@ public final class HostStore: Identifiable {
         binaryTask?.cancel()
         binaryTask = Task { for await frame in stream { self.handleBinary(frame) } }
         resetHostPaneStreams()
+        resetBackgroundWork()
         providerSubagentSubscriptionId = nil
         // `agent.provider_subagents.update` is not here: the daemon sends it for every step of every subagent on the
         // host (~0.9 KB/s with a few running). A separate subscription carries it only while a watched session
         // has live subagents; see HostStore+HostPane.swift "Provider subagent pushes".
+        var eventTypes = ["agent_permission_request", "agent_permission_resolved", "agent_attention_required", "project.update",
+                          "checkout_status_update", "script_status_update", "terminal_attention_required", "workspace_setup_progress",
+                          "status.daemon_config_changed", "status.plugin_catalog_changed", "status.plugin_settings_changed",
+                          "providers_snapshot_update"]
+        if supportsBackgroundWork { eventTypes.append("agent.background_work.update") }
         let events = try await c.request("session.events.set_subscription.request", [
-            "events": ["agent_permission_request", "agent_permission_resolved", "agent_attention_required", "project.update",
-                       "checkout_status_update", "script_status_update", "terminal_attention_required", "workspace_setup_progress",
-                       "status.daemon_config_changed",
-                       "status.plugin_catalog_changed", "status.plugin_settings_changed",
-                       // Model lists arrive after the daemon finishes probing providers; without this the composer
-                       // kept showing raw model ids ("claude-opus-5-5") from an early, model-less snapshot.
-                       "providers_snapshot_update"],
-            "notifications": true,
+            "events": .array(eventTypes.map(JSONValue.string)), "notifications": true,
         ])
         track(events)
         // Model names for every session: the composer's model picker used to load these, but on an iPhone the picker
@@ -376,6 +382,8 @@ public final class HostStore: Identifiable {
         if let sub = p["subscriptionId"]?.stringValue, !subscriptionIds.contains(sub), sub != timelineSubscriptionId,
            !terminalStreamSubs.values.contains(sub) { return }
         switch type {
+        case "agent.background_work.update":
+            receiveBackgroundWork(p)
         case "agent_update":
             if p["kind"]?.stringValue == "remove" {
                 if let id = p["agentId"]?.stringValue { agents[id] = nil }
@@ -425,6 +433,7 @@ public final class HostStore: Identifiable {
         focusedAgentId = agentId
         sendHeartbeat()
         timelineWatchers[agentId, default: 0] += 1
+        Task { await refreshBackgroundWork(agentId) }
         recentTimelines.removeAll { $0 == agentId }
         recentTimelines.append(agentId)
         timelineInterestRevision += 1
@@ -733,8 +742,16 @@ public final class HostStore: Identifiable {
 
     /// Slash commands and skills for autocomplete (cached 60 s per agent like the official app).
     public func listCommands(_ agentId: String) async -> [Command] {
-        if let c = commandCache[agentId], Date().timeIntervalSince(c.at) < 60 { return c.list }
-        guard let r = try? await connection?.request("list_commands_request", ["agentId": .string(agentId)]) else { return commandCache[agentId]?.list ?? [] }
+        (try? await fetchCommands(agentId)) ?? commandCache[agentId]?.list ?? []
+    }
+
+    /// 菜单需要区分请求失败和确实没有命令；重试时绕过缓存。
+    public func fetchCommands(_ agentId: String, forceRefresh: Bool = false) async throws -> [Command] {
+        if !forceRefresh, let c = commandCache[agentId], Date().timeIntervalSince(c.at) < 60 { return c.list }
+        let r = try await conn().request("list_commands_request", ["agentId": .string(agentId)])
+        if let error = r["payload"]?["error"]?.stringValue {
+            throw DaemonConnectionError.rpc(requestType: "list_commands_request", code: nil, message: error)
+        }
         let list = (r["payload"]?["commands"]?.arrayValue ?? []).compactMap { c -> Command? in
             guard let name = c["name"]?.stringValue else { return nil }
             return Command(name: name, description: c["description"]?.stringValue ?? "", argumentHint: c["argumentHint"]?.stringValue ?? "",
@@ -817,8 +834,13 @@ public final class HostStore: Identifiable {
 
     /// Remote branches first (they are the default base), then local ones. Official: new-workspace-picker-item.ts.
     public func branchSuggestions(cwd: String, query: String) async -> [BranchOption] {
-        guard let r = try? await connection?.request("branch_suggestions_request", ["cwd": .string(cwd), "query": .string(query), "limit": 20]) else { return [] }
+        (try? await fetchBranchSuggestions(cwd: cwd, query: query)) ?? []
+    }
+
+    public func fetchBranchSuggestions(cwd: String, query: String) async throws -> [BranchOption] {
+        let r = try await conn().request("branch_suggestions_request", ["cwd": .string(cwd), "query": .string(query), "limit": 20])
         let p = r["payload"]
+        if let error = p?["error"]?.stringValue { throw ActionError.rejected(error) }
         if let details = p?["branchDetails"]?.arrayValue, !details.isEmpty {
             var remote: [BranchOption] = [], local: [BranchOption] = []
             for d in details {

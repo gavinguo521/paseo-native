@@ -43,21 +43,33 @@ final class AutocompleteModel {
     var items: [Suggestion] = []
     var index = 0
     var trigger: AutocompleteTrigger?
-    private var task: Task<Void, Never>?
+    private(set) var task: Task<Void, Never>?
+    var loading = false
+    var error: String?
+    var retry: (() -> Void)?
+    var selected: Suggestion? { items.indices.contains(index) ? items[index] : nil }
 
-    var isActive: Bool { trigger != nil && !items.isEmpty }
+    func moveSelection(_ delta: Int) {
+        guard !items.isEmpty else { return }
+        index = min(items.count - 1, max(0, index + delta))
+    }
 
-    func update(text: String, host: HostStore, agentId: String?, cwd: String?) {
+    var isActive: Bool { trigger != nil && (loading || error != nil || !items.isEmpty) }
+
+    func update(text: String, host: HostStore, agentId: String?, cwd: String?, forceRefresh: Bool = false) {
         let t = AutocompleteTrigger.detect(text)
-        guard t != trigger else { return }
+        guard t != trigger || forceRefresh else { return }
         trigger = t
         task?.cancel()
-        guard let t else { items = []; return }
+        items = []; index = 0; loading = false; error = nil; retry = nil
+        guard let t else { return }
+        if case .command = t { loading = true }
+        retry = { [weak self] in self?.update(text: text, host: host, agentId: agentId, cwd: cwd, forceRefresh: true) }
         task = Task {
             switch t {
             case .command(let q, _, let atStart):
                 var list: [Suggestion] = []
-                if atStart, agentId != nil {
+                if atStart, agentId != nil, !q.isEmpty {
                     list += [
                         Suggestion(id: "/new", title: "/new", detail: String(localized: "在这个工作区开新会话（沿用模型和模式）"), systemImage: "plus.bubble", insert: "", local: "new"),
                         Suggestion(id: "/clear", title: "/clear", detail: String(localized: "归档并开新会话（沿用模型和模式）"), systemImage: "square.and.pencil", insert: "", local: "clear"),
@@ -66,11 +78,24 @@ final class AutocompleteModel {
                         Suggestion(id: "/q", title: "/q", detail: String(localized: "归档这个会话"), systemImage: "archivebox", insert: "", local: "exit"),
                     ]
                 }
-                let commands = agentId != nil ? await host.listCommands(agentId!) : []
-                list += commands.filter { atStart || $0.isSkill }.map {
+                let commands: [HostStore.Command]
+                do {
+                    if let agentId { commands = try await host.fetchCommands(agentId, forceRefresh: forceRefresh) }
+                    else { commands = [] }
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    self.loading = false
+                    self.error = String(describing: error)
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                let providerItems = commands.filter { (atStart || $0.isSkill) &&
+                    !(host.agents[agentId ?? ""]?.provider == "claude" && $0.name.hasPrefix("__")) }.map {
                     Suggestion(id: "/" + $0.name, title: "/" + $0.name + ($0.argumentHint.isEmpty ? "" : " " + $0.argumentHint),
                                detail: $0.description, systemImage: $0.isSkill ? "sparkles" : "command", insert: "/" + $0.name + " ")
                 }
+                list = providerItems + list
+                loading = false
                 let ql = q.lowercased()
                 let filtered = ql.isEmpty ? list : list.filter { $0.id.lowercased().contains(ql) }
                 guard !Task.isCancelled else { return }
@@ -101,7 +126,7 @@ final class AutocompleteModel {
 
     func dismiss() {
         task?.cancel()
-        items = []
+        items = []; index = 0; loading = false; error = nil; retry = nil
         trigger = nil
     }
 }
@@ -114,6 +139,15 @@ struct SuggestionList: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
+                    if model.loading {
+                        HStack { ProgressView().controlSize(.small); Text("正在加载命令…"); Spacer() }.padding(12)
+                    } else if let error = model.error {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("加载命令失败").font(.headline)
+                            Text(error).font(.caption).textSelection(.enabled)
+                            Button("重试") { model.retry?() }
+                        }.padding(12)
+                    }
                     ForEach(Array(model.items.enumerated()), id: \.element.id) { i, s in
                         Button { onPick(s) } label: {
                             HStack(spacing: 10) {

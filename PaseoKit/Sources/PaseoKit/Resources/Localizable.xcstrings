@@ -1,6 +1,36 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "基准分支修改失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to change the base branch"
+          }
+        }
+      }
+    },
+    "当前工作区不支持切换基准分支": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This workspace does not support changing its base branch"
+          }
+        }
+      }
+    },
+    "当前任务不支持单独停止": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This task cannot be stopped individually"
+          }
+        }
+      }
+    },
     "%@ 未登录，PR 功能不可用": {
       "localizations": {
         "en": {
