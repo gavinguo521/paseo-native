@@ -10,9 +10,13 @@ import UIKit
 
 @Suite(.serialized) @MainActor struct ReplyTextTests {
     private let source = """
+    ---
+
     ## 原位选择长回复
 
     第一段包含**粗体**、*强调*和中文 👨‍👩‍👧‍👦，从这里开始选择。
+
+    ---
 
     第二段包含 [文件](App/Sources/UI/Theme.swift:12) 和 [网页](https://example.com)。
 
@@ -36,6 +40,8 @@ import UIKit
     @Test func richDocumentKeepsContentLinksAndCodeAcrossParagraphs() throws {
         let doc = document(source)
         #expect(!doc.text.string.contains("**"))
+        #expect(!doc.text.string.contains("─"))
+        #expect(document("---\n\n第一段\n\n---\n\n第二段\n\n---").text.string == "第一段\n\n第二段")
         #expect(doc.text.string.contains("👨‍👩‍👧‍👦"))
         #expect(doc.text.string.contains("列表第一项"))
         #expect(doc.text.string.contains("引用也属于同一选区"))

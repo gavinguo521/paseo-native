@@ -127,6 +127,8 @@ struct ReplyDocument {
             result.append(text)
         }
         for (index, block) in blocks.enumerated() {
+            // 分隔符不占文字行，跨段复制时也不混入装饰字符。
+            if case .rule = block { continue }
             if result.length > 0 { append("\n\n") }
             switch block {
             case .heading(let level, let text): append(text, size: Theme.content + CGFloat(max(0, 4 - level)) * 1.5, bold: true)
@@ -138,7 +140,6 @@ struct ReplyDocument {
                     let offset = CGFloat(item.indent) * 14
                     append(item.marker + "  " + item.text, indent: offset + 20, first: offset)
                 }
-            case .rule: append("────────", muted: true)
             case .code(let language, let code):
                 let start = result.length
                 // 标题行给复制按钮留出位置；代码在阅读列内换行，不引入嵌套滚动。
