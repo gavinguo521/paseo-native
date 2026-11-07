@@ -73,6 +73,10 @@ struct PaseoApp: App {
         #endif
         .commands { AppCommands(model: model) }
         #if os(macOS)
+        WindowGroup("会话", for: AgentRef.self) { $ref in
+            if let ref { MessageSessionWindow(initial: ref).environment(model) }
+        }
+        .defaultSize(width: 900, height: 760)
         MenuBarExtra(isInserted: $menuBarExtra) {
             MenuBarContent().environment(model)
         } label: {
@@ -183,6 +187,37 @@ final class PushDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         print("remote notifications register failed:", error)
+    }
+}
+#endif
+
+#if os(macOS)
+private struct MessageSessionWindow: View {
+    @Environment(AppModel.self) private var model
+    @State private var current: AgentRef
+    @State private var returnPath: [(ref: AgentRef, reading: TimelineReadingState)] = []
+    @State private var reading = TimelineReadingState()
+    init(initial: AgentRef) { _current = State(initialValue: initial) }
+    var body: some View {
+        VStack(spacing: 0) {
+            if !returnPath.isEmpty {
+                Button("返回来源会话", systemImage: "arrow.uturn.backward") {
+                    let source = returnPath.removeLast()
+                    source.reading.restoreOnNextAppearance = true
+                    reading = source.reading
+                    current = source.ref
+                }.padding(10)
+            }
+            if let host = model.host(current.serverId) {
+                AgentView(host: host, agentId: current.agentId, workspace: model.workspace(of: current),
+                          reading: reading, messageNavigation: { target in
+                    guard target != current else { return }
+                    returnPath.append((current, reading))
+                    reading = TimelineReadingState()
+                    current = target
+                }).id(current)
+            } else { Text("发送方主机尚未添加") }
+        }.frame(minWidth: 480, minHeight: 400)
     }
 }
 #endif

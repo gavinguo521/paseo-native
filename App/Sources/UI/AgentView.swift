@@ -8,6 +8,7 @@ struct AgentView: View {
     let host: HostStore
     let agentId: String
     let workspace: Workspace?
+    var messageNavigation: (@MainActor (AgentRef) -> Void)?
     @AppStorage("timelineDetail") private var timelineDetail = TimelineDetail.collapseTurns.rawValue
     @AppStorage("autoExpandReasoning") private var autoExpandReasoning = true
     @AppStorage("restoreSessionReadingPosition") private var restoreSessionReadingPosition = false
@@ -37,12 +38,13 @@ struct AgentView: View {
     /// One older page at a time.
     @State private var loadingOlder = false
 
-    init(host: HostStore, agentId: String, workspace: Workspace?, reading: TimelineReadingState = TimelineReadingState(), displayCache: DisplayItemCache = DisplayItemCache()) {
+    init(host: HostStore, agentId: String, workspace: Workspace?, reading: TimelineReadingState = TimelineReadingState(), displayCache: DisplayItemCache = DisplayItemCache(), messageNavigation: (@MainActor (AgentRef) -> Void)? = nil) {
         self.host = host; self.agentId = agentId; self.workspace = workspace
+        self.messageNavigation = messageNavigation
         _reading = State(initialValue: reading)
         _displayCache = State(initialValue: displayCache)
         let restore = reading.shouldRestorePosition(
-            enabled: UserDefaults.standard.bool(forKey: "restoreSessionReadingPosition"),
+            enabled: reading.restoreOnNextAppearance || UserDefaults.standard.bool(forKey: "restoreSessionReadingPosition"),
             liveFirstRowID: host.timelines[agentId]?.rows.first?.id)
         _atBottom = State(initialValue: !restore)
         _restoreOffset = State(initialValue: restore ? max(0, reading.offset) : nil)
@@ -278,7 +280,7 @@ struct AgentView: View {
             return try? await host.readFile(cwd: dir, path: name, maxBytes: 20 * 1024 * 1024).data
         }
         let titles = AgentTitleLookup { id in host.agents[id]?.displayTitle ?? host.agents.first { $0.key.hasPrefix(id) }?.value.displayTitle }
-        return TimelineEnvironment(actions: actions, fileReader: reader, agentTitle: titles)
+        return TimelineEnvironment(actions: actions, fileReader: reader, agentTitle: titles, messageSender: MessageSenderLookup(host: host, model: model, navigate: messageNavigation))
     }
 
     /// `paseo-file:` links open the file in a tab of this workspace; relative paths are relative to the agent's cwd.
@@ -466,6 +468,7 @@ struct AgentView: View {
                     .environment(\.hostFileReader, env?.fileReader)
                     .environment(\.findQuery, finding ? findQuery : "")
                     .environment(\.agentTitle, env?.agentTitle)
+                    .environment(\.messageSender, env?.messageSender)
                     .environment(\.pluginContext, pluginContext)
                     if hasNewerHistoryRows, let id = reading.historyWindow?.rows.last?.id {
                         Button("加载更多") { showMessage(id, preferLatest: true) }.frame(maxWidth: .infinity)
@@ -601,12 +604,13 @@ struct AgentView: View {
         .environment(\.hostFileReader, env?.fileReader)
         .onAppear {
             SessionSwitchTrace.mark(agentId, "appear")
-            if !restoreSessionReadingPosition {
+            if !restoreSessionReadingPosition && !reading.restoreOnNextAppearance {
                 restoreOffset = nil
                 prependGeometry = nil
                 userScrolled = false
                 returnToLatest()
             } else { renderWindow.pin(allDisplayItems) }
+            reading.restoreOnNextAppearance = false
             if env == nil { env = makeEnvironment() }
             host.openTimeline(agentId)
             host.clearAttention(agentId)
@@ -657,6 +661,7 @@ struct TimelineEnvironment {
     let actions: TimelineActions
     let fileReader: HostFileReader
     let agentTitle: AgentTitleLookup
+    let messageSender: MessageSenderLookup
 }
 
 /// While running: elapsed time. Official: agent-stream/turn-footer.tsx.

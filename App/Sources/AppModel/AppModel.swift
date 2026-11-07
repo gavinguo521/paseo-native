@@ -109,7 +109,10 @@ struct SessionGroup: Identifiable {
 final class AppModel {
     private(set) var hosts: [HostStore] = []
     var destination: Destination? {
-        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(destination), forKey: "destination") }
+        didSet {
+            UserDefaults.standard.set(try? JSONEncoder().encode(destination), forKey: "destination")
+            if let last = messageReturnPath.last, destination != .agent(last.target) { messageReturnPath.removeAll() }
+        }
     }
     /// nil = all hosts.
     var hostFilter: String? {
@@ -642,6 +645,28 @@ final class AppModel {
         let all = visibleHosts.flatMap { h in h.workspaces.values.map { (h.id, $0) } }
         return all.max { ($0.1.activityAt ?? .distantPast) < ($1.1.activityAt ?? .distantPast) }
             .map { WorkspaceRef(serverId: $0.0, workspaceId: $0.1.id) }
+    }
+
+    var messageReturnPath: [(source: AgentRef, target: AgentRef)] = []
+
+    func openMessageSender(_ ref: AgentRef) {
+        if case .agent(let source) = destination, source != ref {
+            messageReturnPath.append((source, ref))
+        }
+        open(ref)
+        revealDetail += 1
+    }
+
+    var messageReturnSource: AgentRef? {
+        guard let last = messageReturnPath.last, destination == .agent(last.target) else { return nil }
+        return last.source
+    }
+
+    func returnToMessageSource() {
+        guard let source = messageReturnSource else { return }
+        messageReturnPath.removeLast()
+        readingState(for: source).restoreOnNextAppearance = true
+        open(source)
     }
 
     func open(_ ref: AgentRef) {

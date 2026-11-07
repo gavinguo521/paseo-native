@@ -400,7 +400,165 @@ final class AgentTitleLookup {
     init(_ lookup: @escaping @MainActor (String) -> String?) { self.lookup = lookup }
 }
 
+struct MessageSender {
+    let name: String
+    let ref: AgentRef?
+
+    @MainActor static func resolve(_ sender: JSONValue?, host: HostStore?) -> MessageSender {
+        let id = sender?["id"]?.stringValue ?? ""
+        // 会话 ID 只在所属主机内唯一；短 ID 也必须唯一匹配才能导航。
+        let matches = id.isEmpty || host?.agents[id] != nil ? [] : (host?.agents.values.filter { $0.id == id || $0.id.hasPrefix(id) } ?? [])
+        let agent = host?.agents[id] ?? (matches.count == 1 ? matches.first : nil)
+        let title = agent?.displayTitle ?? sender?["title"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+            ?? (id.isEmpty ? String(localized: "其他会话") : String(id.prefix(7)))
+        let workspace = agent?.workspaceId.flatMap { host?.workspaces[$0] }
+        let workspaceName = workspace.flatMap { $0.name.isEmpty ? nil : $0.name }
+        return MessageSender(name: workspaceName.map { "\($0) / \(title)" } ?? title,
+                             ref: host.flatMap { host in agent.map { AgentRef(serverId: host.id, agentId: $0.id) } })
+    }
+}
+
+final class MessageSenderLookup {
+    let lookup: @MainActor (JSONValue?) -> MessageSender
+    let open: @MainActor (AgentRef) -> Void
+    let sourceHost: @MainActor (JSONValue?) -> HostStore?
+    let currentHostID: String
+    let showHistory: @MainActor () -> Void
+    init(host: HostStore, model: AppModel, navigate: (@MainActor (AgentRef) -> Void)? = nil) {
+        currentHostID = host.id
+        sourceHost = { sender in sender?["serverId"]?.stringValue.map { model.host($0) } ?? host }
+        lookup = { sender in
+            let source = sender?["serverId"]?.stringValue.map { model.host($0) } ?? host
+            return MessageSender.resolve(sender, host: source)
+        }
+        open = navigate ?? { model.openMessageSender($0) }
+        showHistory = { model.destination = .history; model.revealDetail += 1 }
+    }
+}
+
+/// 来源信息集中展示，菜单与恢复入口在手机和桌面保持一致。
+struct MessageSenderButton: View {
+    let sender: JSONValue
+    @Environment(\.messageSender) private var lookup
+    @Environment(\.openWindow) private var openWindow
+    @State private var showingDetails = false
+
+    private var source: MessageSender? { lookup?.lookup(sender) }
+    private var host: HostStore? { lookup?.sourceHost(sender) }
+    private var fullName: String {
+        let name = source?.name ?? sender["title"]?.stringValue ?? sender["id"]?.stringValue ?? String(localized: "其他会话")
+        if let host, host.id != lookup?.currentHostID { return "\(host.label) · \(name)" }
+        return name
+    }
+    private var link: URL? {
+        guard let ref = source?.ref else { return nil }
+        return PaseoActivityLink.url(serverId: ref.serverId, agentId: ref.agentId)
+    }
+
+    var body: some View {
+        Button {
+            if let ref = source?.ref, host?.state == .connected, host?.agents[ref.agentId]?.archivedAt == nil {
+                lookup?.open(ref)
+            } else { showingDetails = true }
+        } label: {
+            Label("由「\(fullName)」发送", systemImage: "bubble.left.and.text.bubble.right")
+                .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                .lineLimit(2).multilineTextAlignment(.trailing)
+                .padding(.vertical, 6)
+                #if os(iOS)
+                .frame(minHeight: 44)
+                #endif
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).help(fullName)
+        .contextMenu {
+            Button("查看完整名称与状态") { showingDetails = true }
+            if let link {
+                Button("复制会话链接", systemImage: "link") { Pasteboard.copy(link.absoluteString) }
+            }
+            #if os(macOS)
+            if let ref = source?.ref {
+                Button("在新窗口打开", systemImage: "macwindow.badge.plus") { openWindow(value: ref) }
+            }
+            #endif
+        }
+        .sheet(isPresented: $showingDetails) {
+            MessageSenderDetails(sender: sender, lookup: lookup)
+        }
+    }
+}
+
+struct MessageSenderDetails: View {
+    let sender: JSONValue
+    let lookup: MessageSenderLookup?
+    @Environment(\.dismiss) private var dismiss
+    @State private var fetched: Agent?
+    @State private var error: String?
+    @State private var loading = false
+    private var host: HostStore? { lookup?.sourceHost(sender) }
+    private var source: MessageSender? { lookup?.lookup(sender) }
+    private var agent: Agent? { fetched ?? source?.ref.flatMap { host?.agents[$0.agentId] } }
+
+    private var fetchedName: String? {
+        guard let fetched else { return nil }
+        let workspace = fetched.workspaceId.flatMap { host?.workspaces[$0] }
+        return workspace.flatMap { $0.name.isEmpty ? nil : $0.name }.map { "\($0) / \(fetched.displayTitle)" } ?? fetched.displayTitle
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(fetchedName ?? source?.name ?? sender["title"]?.stringValue ?? sender["id"]?.stringValue ?? String(localized: "其他会话"))
+                        .font(.headline).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    if let host { Text(host.label).foregroundStyle(Theme.muted) }
+                    if host == nil {
+                        Text("发送方主机尚未添加。请先从侧栏添加对应主机。")
+                    } else if host?.state != .connected {
+                        Text("发送方主机未连接，连接后可以查看会话。")
+                        Button("连接主机") { host?.reconnectNow() }
+                    } else if let agent {
+                        Text(agent.archivedAt == nil ? "会话可访问" : "这个会话已归档")
+                        Button(agent.archivedAt == nil ? "打开会话" : "在历史中查找") {
+                            guard let host else { return }
+                            if agent.archivedAt != nil { lookup?.showHistory() }
+                            else { lookup?.open(AgentRef(serverId: host.id, agentId: agent.id)) }
+                            dismiss()
+                        }
+                        if let url = host.flatMap({ PaseoActivityLink.url(serverId: $0.id, agentId: agent.id) }) {
+                            Button("复制会话链接", systemImage: "link") { Pasteboard.copy(url.absoluteString) }
+                        }
+                    } else if !loading && error == nil {
+                        Text("会话不在当前列表中，可以向主机查询。")
+                    }
+                    if let error { Text(error).foregroundStyle(Theme.destructive).textSelection(.enabled) }
+                    if loading { ProgressView() }
+                    if host?.state == .connected {
+                        Button("重新查询") { Task { await refresh() } }.disabled(loading)
+                    }
+                    Button("查看会话历史") { lookup?.showHistory(); dismiss() }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(20)
+            }
+            .navigationTitle("消息来源")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("关闭") { dismiss() } } }
+        }
+        .frame(minWidth: 300, idealWidth: 440, minHeight: 320)
+        .task(id: host?.state == .connected) {
+            if agent == nil { await refresh() }
+        }
+    }
+
+    private func refresh() async {
+        guard !loading, let host, host.state == .connected, let id = sender["id"]?.stringValue else { return }
+        loading = true; error = nil
+        defer { loading = false }
+        do { fetched = try await host.fetchAgentSnapshot(source?.ref?.agentId ?? id) }
+        catch { self.error = String(localized: "无法查询会话：\(String(describing: error))") }
+    }
+}
+
 extension EnvironmentValues {
+    @Entry var messageSender: MessageSenderLookup? = nil
     @Entry var sentImages: [String: [ImageAttachment]] = [:]
     @Entry var messageImagesConnected = false
     @Entry var timelineActions = TimelineActions()
@@ -456,9 +614,18 @@ struct UserBubble: View {
     var pending = false
     /// Another session sent this (official "Sent by …").
     var sender: String? = nil
+    var openSender: (() -> Void)? = nil
+    var senderMetadata: JSONValue? = nil
     @State private var expanded = false
     @State private var markdownCache = MarkdownRenderCache()
     @Environment(\.findQuery) private var findQuery
+
+    private func senderLabel(_ name: String) -> some View {
+        Label("由「\(name)」发送", systemImage: "bubble.left.and.text.bubble.right")
+            .font(.system(size: 11)).foregroundStyle(Theme.muted)
+            .lineLimit(2).multilineTextAlignment(.trailing)
+            .contentShape(Rectangle())
+    }
 
     private static let foldLines = 14
     private var hasTable: Bool { markdownCache.blocks(text).contains { if case .table = $0 { true } else { false } } }
@@ -466,9 +633,16 @@ struct UserBubble: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
-            if let sender {
-                Label("由「\(sender)」发送", systemImage: "bubble.left.and.text.bubble.right")
-                    .font(.system(size: 11)).foregroundStyle(Theme.muted)
+            if let senderMetadata {
+                MessageSenderButton(sender: senderMetadata)
+            } else if let sender {
+                if let openSender {
+                    Button(action: openSender) { senderLabel(sender) }
+                        .buttonStyle(.plain)
+                        .help(sender)
+                } else {
+                    senderLabel(sender)
+                }
             }
             HStack {
                 Spacer(minLength: 64)
@@ -544,6 +718,7 @@ struct TurnInfo {
 }
 
 private struct RowView: View {
+    @Environment(\.messageSender) private var messageSender
     let row: TimelineRow
     let footer: Bool
     var turn: TurnInfo? = nil
@@ -606,8 +781,11 @@ private struct RowView: View {
         case .toolCall(_, _, _, let detail, _, let agentMessage):
             if let agentMessage, agentMessage["event"]?.stringValue == "message", let text = agentMessage["text"]?.stringValue {
                 // Official presentation: a message from another session reads as a user message with its sender.
-                UserBubble(text: text, sender: agentMessage["sender"]?["title"]?.stringValue
-                           ?? agentMessage["sender"]?["id"]?.stringValue.map { String($0.prefix(7)) } ?? String(localized: "其他会话"))
+                let sender = messageSender?.lookup(agentMessage["sender"])
+                UserBubble(text: text, sender: sender?.name ?? agentMessage["sender"]?["title"]?.stringValue
+                           ?? agentMessage["sender"]?["id"]?.stringValue.map { String($0.prefix(7)) } ?? String(localized: "其他会话"),
+                           openSender: sender?.ref.map { ref in { messageSender?.open(ref) } },
+                           senderMetadata: agentMessage["sender"])
                     .padding(.top, 16)
             } else if let agentMessage {
                 AgentMessageView(message: agentMessage)
@@ -1128,11 +1306,13 @@ struct Banner: View {
 
 /// Messages between agents (sub-agent finished, cross-machine messages) arrive as tool calls with `agentMessage`.
 private struct AgentMessageView: View {
+    @Environment(\.messageSender) private var messageSender
     let message: JSONValue
     @State private var expanded = false
 
     var body: some View {
-        let sender = message["sender"]?["title"]?.stringValue ?? message["sender"]?["id"]?.stringValue.map { String($0.prefix(7)) } ?? String(localized: "其他会话")
+        let resolved = messageSender?.lookup(message["sender"])
+        let sender = resolved?.name ?? message["sender"]?["title"]?.stringValue ?? message["sender"]?["id"]?.stringValue.map { String($0.prefix(7)) } ?? String(localized: "其他会话")
         let event = message["event"]?.stringValue ?? "message"
         let label = switch event {
         case "finished": String(localized: "「\(sender)」完成了")
@@ -1151,6 +1331,11 @@ private struct AgentMessageView: View {
                 .font(.system(size: Theme.base)).foregroundStyle(Theme.muted)
             }
             .buttonStyle(.plain)
+            if expanded, let ref = resolved?.ref {
+                Button(sender) { messageSender?.open(ref) }
+                    .buttonStyle(.plain).foregroundStyle(Theme.accent)
+                    .lineLimit(2).padding(.leading, 20)
+            }
             if expanded, let text = message["text"]?.stringValue {
                 MarkdownView(text: text).padding(.leading, 20)
             }

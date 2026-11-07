@@ -21,6 +21,50 @@ import Testing
         try await capture(MacSuggestionComposerFixture(), width: 720, name: "suggestion-composer")
     }
 
+    @Test func messageSenderNamesAndNavigation() async throws {
+        let model = try SidebarTestFixture.model(projects: 1)
+        let host = try #require(model.hosts.first)
+        let lookup = MessageSenderLookup(host: host, model: model)
+        let sender: JSONValue = ["id": "p0-w0-s0", "title": "过时的标题"]
+        let resolved = lookup.lookup(sender)
+        #expect(resolved.name == "项目 0 的工作区 0 会话 0")
+        let ref = try #require(resolved.ref)
+        let origin = AgentRef(serverId: host.id, agentId: "p0-w0-s1")
+        model.open(origin)
+        let reading = model.readingState(for: origin)
+        reading.hasPosition = true
+        reading.atBottom = false
+        reading.offset = 230
+        lookup.open(ref)
+        #expect(model.destination == .agent(ref))
+        #expect(model.messageReturnSource == origin)
+        model.returnToMessageSource()
+        #expect(model.destination == .agent(origin))
+        #expect(reading.restoreOnNextAppearance)
+        #expect(reading.offset == 230)
+        #expect(reading.shouldRestorePosition(enabled: reading.restoreOnNextAppearance, liveFirstRowID: nil))
+        #expect(model.messageReturnSource == nil)
+        lookup.open(ref)
+        model.destination = .history
+        #expect(model.messageReturnPath.isEmpty)
+        model.open(origin)
+        let url = try #require(PaseoActivityLink.url(serverId: ref.serverId, agentId: ref.agentId))
+        #expect(PaseoActivityLink.parse(url)?.agentId == ref.agentId)
+        var windowTarget: AgentRef?
+        let windowLookup = MessageSenderLookup(host: host, model: model, navigate: { windowTarget = $0 })
+        windowLookup.open(ref)
+        #expect(windowTarget == ref)
+        #expect(model.destination == .agent(origin))
+        #expect(lookup.lookup(["id": "p0-w0-s"]).ref == nil)
+        let remote = lookup.lookup(["id": "p0-w0-s0", "serverId": "unknown-host", "title": "远程会话"])
+        #expect(remote.ref == nil)
+        #expect(remote.name == "远程会话")
+        #expect(lookup.lookup(["id": "missing-session"]).name == "missing")
+        for width in [390, 960] {
+            try await capture(UserBubble(text: "这是来自另一个工作区会话的消息。", sender: "客户端界面优化工作区 / 检查 iPhone、iPad 和 Mac 的输入栏与会话跳转体验", openSender: { lookup.open(ref) }).padding(16), width: width, name: "message-sender")
+        }
+    }
+
     private func capture<V: View>(_ content: V, width: Int, name: String) async throws {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 620), styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

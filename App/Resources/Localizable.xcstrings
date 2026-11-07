@@ -12856,6 +12856,176 @@
           }
         }
       }
+    },
+    "会话不在当前列表中，可以向主机查询。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This session is not in the current list. You can look it up on the host."
+          }
+        }
+      }
+    },
+    "会话可访问": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session available"
+          }
+        }
+      }
+    },
+    "发送方主机尚未添加": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sender host has not been added"
+          }
+        }
+      }
+    },
+    "发送方主机尚未添加。请先从侧栏添加对应主机。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The sender host has not been added. Add it from the sidebar first."
+          }
+        }
+      }
+    },
+    "发送方主机未连接，连接后可以查看会话。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The sender host is offline. Connect to view the session."
+          }
+        }
+      }
+    },
+    "在历史中查找": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Find in History"
+          }
+        }
+      }
+    },
+    "在新窗口打开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open in New Window"
+          }
+        }
+      }
+    },
+    "复制会话链接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Session Link"
+          }
+        }
+      }
+    },
+    "无法查询会话：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to look up session: %@"
+          }
+        }
+      }
+    },
+    "来源会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source Session"
+          }
+        }
+      }
+    },
+    "查看会话历史": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Session History"
+          }
+        }
+      }
+    },
+    "查看完整名称与状态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Full Name and Status"
+          }
+        }
+      }
+    },
+    "消息来源": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message Source"
+          }
+        }
+      }
+    },
+    "返回：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back to: %@"
+          }
+        }
+      }
+    },
+    "返回来源会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back to Source Session"
+          }
+        }
+      }
+    },
+    "连接主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect to Host"
+          }
+        }
+      }
+    },
+    "重新查询": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try Again"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

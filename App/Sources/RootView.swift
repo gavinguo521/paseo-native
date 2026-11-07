@@ -58,7 +58,15 @@ struct RootView: View {
             SidebarView(showSettings: $showSettings, showAddHost: $showAddHost)
         } detail: {
             // Theme sizes are read statically; rebuilding on change applies them.
-            detail.id("\(fontStep)-\(contentWidth)")
+            VStack(spacing: 0) {
+                if let source = model.messageReturnSource {
+                    Button { model.returnToMessageSource() } label: {
+                        Label("返回：\(model.host(source.serverId)?.agents[source.agentId]?.displayTitle ?? String(localized: "来源会话"))", systemImage: "arrow.uturn.backward")
+                            .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                    }.buttonStyle(.plain)
+                }
+                detail.id("\(fontStep)-\(contentWidth)")
+            }
         }
         .modifier(CompactColumnFollower(destination: model.destination, reveal: model.revealDetail, column: $compactColumn))
         .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)

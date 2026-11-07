@@ -20,6 +20,15 @@ import Testing
         try await capture(NavigationStack { ProjectsView() }.environment(model), name: "projects-live", scroll: false, waitForRows: true)
     }
 
+    @Test func messageSourceLayout() async throws {
+        let model = try SidebarTestFixture.model(projects: 1)
+        let host = try #require(model.hosts.first)
+        let lookup = MessageSenderLookup(host: host, model: model)
+        try await capture(UserBubble(text: "请检查这个工作区的会话。", senderMetadata: ["id": "p0-w0-s0"])
+            .environment(\.messageSender, lookup).padding(16), name: "message-source", scroll: false)
+        try await capture(MessageSenderDetails(sender: ["id": "missing-session", "title": "用于完整展示的很长的会话名字：检查 iPhone 与 iPad 的消息来源和导航"], lookup: lookup), name: "message-source-offline", scroll: false)
+    }
+
     @Test func pageLayoutGallery() async throws {
         let model = try SidebarTestFixture.model(projects: 2)
         let host = try #require(model.hosts.first)

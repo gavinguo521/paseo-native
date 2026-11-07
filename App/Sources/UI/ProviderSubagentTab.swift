@@ -86,6 +86,7 @@ struct ProviderSubagentTab: View {
                 .environment(\.timelineActions, env?.actions ?? TimelineActions())
                 .environment(\.hostFileReader, env?.fileReader)
                 .environment(\.agentTitle, env?.agentTitle)
+                .environment(\.messageSender, env?.messageSender)
                 if running {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
@@ -151,7 +152,7 @@ struct ProviderSubagentTab: View {
             return try? await host.readFile(cwd: dir, path: name, maxBytes: 20 * 1024 * 1024).data
         }
         let titles = AgentTitleLookup { id in host.agents[id]?.displayTitle ?? host.agents.first { $0.key.hasPrefix(id) }?.value.displayTitle }
-        return TimelineEnvironment(actions: TimelineActions(), fileReader: reader, agentTitle: titles)
+        return TimelineEnvironment(actions: TimelineActions(), fileReader: reader, agentTitle: titles, messageSender: MessageSenderLookup(host: host, model: model))
     }
 
     /// `paseo-file:` links open the file in a tab of this workspace; relative paths are relative to the parent's cwd.

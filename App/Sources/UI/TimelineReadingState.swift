@@ -3,6 +3,7 @@ import SwiftUI
 
 /// 只在本次运行中保留阅读位置，不持久化聊天内容。
 @Observable @MainActor final class TimelineReadingState {
+    @ObservationIgnored var restoreOnNextAppearance = false
     var expanded: [String: Bool] = [:]
     var historyWindow: AgentTimeline?
     @ObservationIgnored var offset: CGFloat = 0
