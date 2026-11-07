@@ -119,6 +119,10 @@ import Testing
         try await capture(single.padding(), name: "single-workspace-title", scroll: false)
     }
 
+    @Test func suggestionPlaceholderGallery() async throws {
+        try await capture(SuggestionComposerFixture(), name: "suggestion-composer", scroll: false)
+    }
+
     @Test func compactControlsRetainReadableSize() throws {
         let badge = UIHostingController(rootView: ArchivedSessionBadge())
         let size = badge.sizeThatFits(in: CGSize(width: 390, height: 100))
@@ -151,6 +155,19 @@ import Testing
                 DispatchQueue.main.async { continuation.resume() }
             }
             controller.view.layoutIfNeeded()
+        }
+        if name == "suggestion-composer" {
+            func inspect(_ view: UIView) {
+                if let editor = view as? ComposerUITextView {
+                    #expect(editor.placeholderLabel.superview === editor)
+                    #expect(editor.placeholderLabel.text?.contains("请继续检查") == true)
+                    #expect(!editor.placeholderLabel.isHidden)
+                    #expect(editor.placeholderLabel.frame.width > 100)
+                    #expect(editor.placeholderLabel.frame.height > 0)
+                }
+                view.subviews.forEach(inspect)
+            }
+            inspect(controller.view)
         }
         if waitForRows {
             func hasRows(_ view: UIView) -> Bool {
@@ -221,4 +238,20 @@ import Testing
         }
     }
     return try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+}
+
+private struct SuggestionComposerFixture: View {
+    @State private var text = ""
+    @State private var images: [ImageAttachment] = []
+    @State private var placeholder = "发送消息"
+    @FocusState private var focused: Bool
+    var body: some View {
+        VStack {
+            Spacer()
+            ComposerShell(text: $text, images: $images, focused: $focused, error: nil, placeholder: placeholder) {
+                Button("用这句") { text = placeholder }
+            } controls: { Text("模型") } trailing: { Image(systemName: "paperplane.fill") } onSubmit: {}
+        }.padding()
+        .task { placeholder = "请继续检查输入栏的显示效果，并确认 iPhone、iPad 和 Mac 上都能看到下一句建议。" }
+    }
 }

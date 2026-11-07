@@ -17,6 +17,10 @@ import Testing
         }
     }
 
+    @Test func suggestionPlaceholderRendersOnMac() async throws {
+        try await capture(MacSuggestionComposerFixture(), width: 720, name: "suggestion-composer")
+    }
+
     private func capture<V: View>(_ content: V, width: Int, name: String) async throws {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 620), styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -31,5 +35,21 @@ import Testing
         let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
         view.cacheDisplay(in: view.bounds, to: bitmap)
         try #require(bitmap.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: "/tmp/paseo-\(name)-\(width).png"))
+    }
+}
+
+private struct MacSuggestionComposerFixture: View {
+    @State private var text = ""
+    @State private var images: [ImageAttachment] = []
+    @State private var placeholder = "发送消息"
+    @FocusState private var focused: Bool
+    var body: some View {
+        VStack {
+            Spacer()
+            ComposerShell(text: $text, images: $images, focused: $focused, error: nil, placeholder: placeholder) {
+                EmptyView()
+            } controls: { Text("模型") } trailing: { Image(systemName: "paperplane.fill") } onSubmit: {}
+        }.padding()
+        .task { placeholder = "请继续检查输入栏的显示效果，并确认 iPhone、iPad 和 Mac 上都能看到下一句建议。　（Tab 采用）" }
     }
 }

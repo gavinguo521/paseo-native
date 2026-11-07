@@ -40,7 +40,14 @@ struct ComposerTextView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> ComposerUITextView {
         // 长草稿需要完整、稳定的滚动范围；TextKit 2 的视口估算会在滚动时改变内容高度。
-        let v = ComposerUITextView(usingTextLayoutManager: false)
+        // UIKit 的 usingTextLayoutManager 工厂入口不会初始化 Swift 子类的存储属性。
+        // 显式提供 TextKit 1 文本容器，走子类正常的初始化路径。
+        let storage = NSTextStorage()
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: .zero)
+        storage.addLayoutManager(layout)
+        layout.addTextContainer(container)
+        let v = ComposerUITextView(frame: .zero, textContainer: container)
         v.delegate = context.coordinator
         v.backgroundColor = .clear
         v.textColor = .label
