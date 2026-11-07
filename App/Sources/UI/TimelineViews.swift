@@ -583,7 +583,7 @@ private struct RowView: View {
             .padding(.top, 16)
         case .assistantMessage(let text, let messageId):
             VStack(alignment: .leading, spacing: 8) {
-                MarkdownView(text: text)
+                MarkdownView(text: text, continuousSelection: true)
                 if footer {
                     // One line when it fits; otherwise the speed moves to a second line. A footer wider than the column
                     // widened the whole timeline on iPhone, pushing every reply against the left edge until the next layout.

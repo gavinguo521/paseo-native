@@ -33,12 +33,17 @@ struct TimelineBottomFollow: ViewModifier {
     @Binding var position: ScrollPosition
     var enabled: Bool
     @State private var phase: ScrollPhase = .idle
+    @State private var selectingText = false
 
     func body(content: Content) -> some View {
         content
-            .defaultScrollAnchor(following && enabled ? .bottom : .top, for: .sizeChanges)
+            .onPreferenceChange(ReplySelectionPreference.self) { selected in
+                selectingText = selected
+                if selected { following = false }
+            }
+            .defaultScrollAnchor(following && enabled && !selectingText ? .bottom : .top, for: .sizeChanges)
             .onScrollGeometryChange(for: TimelineFollowGeometry.self) { TimelineFollowGeometry($0) } action: { old, new in
-                guard enabled else { return }
+                guard enabled, !selectingText else { return }
                 // isPositionedByUser 兼容没有连续滚动 phase 的滚轮/键盘移动。
                 let userDriven = phase == .interacting || phase == .decelerating ||
                     (position.isPositionedByUser && old.height == new.height && old.viewport == new.viewport)
@@ -50,7 +55,7 @@ struct TimelineBottomFollow: ViewModifier {
             }
             .onScrollPhaseChange { _, next, context in
                 phase = next
-                if enabled, following, next == .idle, !TimelineFollowGeometry(context.geometry).nearBottom {
+                if enabled, !selectingText, following, next == .idle, !TimelineFollowGeometry(context.geometry).nearBottom {
                     position.scrollTo(edge: .bottom)
                 }
             }

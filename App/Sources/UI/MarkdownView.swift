@@ -11,13 +11,21 @@ struct MarkdownView: View {
     let text: String
     // 用户粘贴的表格只做本地排版，不因同条消息含图片或图表而加载外部资源。
     var renderMedia = true
+    var continuousSelection = false
     @State private var renderCache = MarkdownRenderCache()
     @Environment(\.findQuery) private var findQuery
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ForEach(Array(renderCache.blocks(text).enumerated()), id: \.offset) { _, block in
-                view(for: block)
+            if continuousSelection {
+                ForEach(ReplyTextSection.split(renderCache.blocks(text))) { section in
+                    if section.isText { ReplyTextView(blocks: section.blocks) }
+                    else { view(for: section.blocks[0]) }
+                }
+            } else {
+                ForEach(Array(renderCache.blocks(text).enumerated()), id: \.offset) { _, block in
+                    view(for: block)
+                }
             }
         }
         .textSelection(.enabled)

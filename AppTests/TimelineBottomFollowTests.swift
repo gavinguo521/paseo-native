@@ -84,12 +84,24 @@ import Testing
         #expect(await settle { model.geometry?.nearBottom == true })
         model.height = 7000
         #expect(await settle { model.geometry?.height == 7000 && model.geometry?.nearBottom == true })
+        model.selectingText = true
+        #expect(await settle { !model.following })
+        let selectedOffset = try #require(model.geometry?.offset)
+        model.height = 7600
+        #expect(await settle { model.geometry?.height == 7600 })
+        #expect(abs((model.geometry?.offset ?? -1000) - selectedOffset) < 2)
+        model.selectingText = false
+        model.height = 8000
+        #expect(await settle { model.geometry?.height == 8000 })
+        #expect(!model.following)
+        #expect(abs((model.geometry?.offset ?? -1000) - selectedOffset) < 2)
     }
 }
 
 @Observable @MainActor private final class FollowFixture {
     var height: CGFloat = 1000
     var following = true
+    var selectingText = false
     var position = ScrollPosition(edge: .bottom)
     var geometry: TimelineFollowGeometry?
 }
@@ -99,6 +111,7 @@ private struct FollowFixtureView: View {
     var body: some View {
         ScrollView {
             Color.clear.frame(height: model.height)
+                .preference(key: ReplySelectionPreference.self, value: model.selectingText)
         }
         .scrollPosition($model.position)
         .defaultScrollAnchor(.bottom)
