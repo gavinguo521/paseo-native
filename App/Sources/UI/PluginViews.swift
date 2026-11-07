@@ -210,6 +210,14 @@ struct UsageFooterButton<Fallback: View>: View {
         }
     }
 
+    private var pollingActive: Bool {
+        #if os(iOS)
+        model.appActive
+        #else
+        true
+        #endif
+    }
+
     @ViewBuilder private var content: some View {
         if let host {
             Button { showPopover.toggle() } label: {
@@ -238,7 +246,8 @@ struct UsageFooterButton<Fallback: View>: View {
                                   openUsagePage: { showPopover = false; openUsagePage() })
                     .compactPopover()
             }
-            .task(id: host.id + model.connectionKey) {
+            .task(id: host.id + model.connectionKey + (pollingActive ? ":active" : ":inactive")) {
+                guard pollingActive else { return }
                 if reportsServerId != host.id { reports = []; fetchedAt = nil; hidden = []; reportsServerId = host.id }
                 #if DEBUG
                 if model.debugSheet == "usageReset" { Task { try? await Task.sleep(for: .seconds(3)); showPopover = true } }

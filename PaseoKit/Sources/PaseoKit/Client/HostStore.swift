@@ -1179,8 +1179,15 @@ public final class HostStore: Identifiable {
                 try? await Task.sleep(for: .seconds(15))
                 if Task.isCancelled { return }
                 sendHeartbeat()
+                #if os(iOS)
+                // 连通性由 DaemonConnection 的保活单独负责；延迟数字不需要每 15 秒测速。
+                guard appVisible else { continue }
+                heartbeatTicks += 1
+                if heartbeatTicks % 4 == 0 { await measureLatency() }
+                #else
                 await measureLatency()
                 heartbeatTicks += 1
+                #endif
                 if heartbeatTicks % 2 == 0 { pollIdleProviderSubagents() }
             }
         }

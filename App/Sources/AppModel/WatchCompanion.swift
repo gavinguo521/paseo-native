@@ -16,6 +16,7 @@ final class WatchCompanion: NSObject, WCSessionDelegate {
     private var session: WCSession?
     private var pages: [String: WatchSessionPage] = [:]
     private var publishTask: Task<Void, Never>?
+    private var overviewDelivery = WatchOverviewDelivery()
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Paseo", category: "Watch")
     private let ledger = WatchActionLedger(file: URL.applicationSupportDirectory.appending(path: "watch-actions.json"))
 
@@ -83,7 +84,11 @@ final class WatchCompanion: NSObject, WCSessionDelegate {
 
     private func publish() {
         guard let session, session.activationState == .activated, session.isWatchAppInstalled else { return }
-        do { try session.updateApplicationContext([WatchEnvelope.key: try WatchEnvelope(payload: .overview(overview())).encoded()]) }
+        do {
+            try overviewDelivery.send(overview()) { next in
+                try session.updateApplicationContext([WatchEnvelope.key: try WatchEnvelope(payload: .overview(next)).encoded()])
+            }
+        }
         catch { logger.debug("Watch context not delivered: \(String(describing: error), privacy: .public)") }
     }
 
@@ -345,11 +350,13 @@ final class WatchCompanion: NSObject, WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: (any Error)?) {
-        Task { @MainActor in self.schedulePublish() }
+        Task { @MainActor in self.overviewDelivery = WatchOverviewDelivery(); self.schedulePublish() }
     }
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
     nonisolated func sessionDidDeactivate(_ session: WCSession) { session.activate() }
-    nonisolated func sessionWatchStateDidChange(_ session: WCSession) { Task { @MainActor in self.schedulePublish() } }
+    nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
+        Task { @MainActor in self.overviewDelivery = WatchOverviewDelivery(); self.schedulePublish() }
+    }
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
         guard let data = message[WatchEnvelope.key] as? Data else { replyHandler([:]); return }
         // WCSession owns this callback across queues. The box is immutable and invoked exactly once.
@@ -372,6 +379,17 @@ final class WatchCompanion: NSObject, WCSessionDelegate {
                 reply.send([WatchEnvelope.key: (try? fallback.encoded()) ?? Data()])
             }
         }
+    }
+}
+
+/// 相同预览不重复交给 WatchConnectivity；失败不记成功，换表或重新激活时重新发送。
+struct WatchOverviewDelivery {
+    private var last: WatchOverview?
+
+    mutating func send(_ overview: WatchOverview, using transport: (WatchOverview) throws -> Void) rethrows {
+        guard overview != last else { return }
+        try transport(overview)
+        last = overview
     }
 }
 

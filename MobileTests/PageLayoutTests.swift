@@ -96,7 +96,7 @@ import Testing
     }
 
     private func capture<V: View>(_ content: V, name: String, scroll: Bool, waitForRows: Bool = false, waitForSpinner: Bool = false) async throws {
-        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let scene = try await layoutTestScene()
         let window = UIWindow(windowScene: scene)
         window.frame = scene.screen.bounds
         let controller = UIHostingController(rootView: content.environment(\.colorScheme, .light))
@@ -170,4 +170,16 @@ import Testing
             }
         }
     }
+}
+
+/// 测试宿主的场景连接与 Swift Testing 启动可能先后交错；等待实际场景，不固定 sleep。
+@MainActor func layoutTestScene() async throws -> UIWindowScene {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+    while UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first == nil,
+          ContinuousClock.now < deadline {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+    }
+    return try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
 }

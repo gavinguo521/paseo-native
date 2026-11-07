@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import Testing
+import PaseoWatchBridge
 @testable import PaseoKit
 @testable import Paseo
 
@@ -26,8 +27,8 @@ import Testing
         }
     }
 
-    @Test func runningRingStopsWhenDisabledAndDetached() throws {
-        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+    @Test func runningRingStopsWhenDisabledAndDetached() async throws {
+        let scene = try await layoutTestScene()
         let window = UIWindow(windowScene: scene)
         let view = SpinningRingView()
         window.addSubview(view)
@@ -39,6 +40,23 @@ import Testing
         #expect(spins())
         view.removeFromSuperview()
         #expect(!spins())
+    }
+
+    @Test func watchOverviewSkipsDuplicatesButRetriesFailures() throws {
+        var delivery = WatchOverviewDelivery()
+        let first = WatchOverview(hosts: [.init(id: "host", name: "测试主机")])
+        var sent = 0
+        for _ in 0..<100 { delivery.send(first) { _ in sent += 1 } }
+        #expect(sent == 1)
+        let changed = WatchOverview(hosts: [.init(id: "host", name: "新名称")])
+        enum Failure: Error { case offline }
+        do { try delivery.send(changed) { _ in throw Failure.offline }; Issue.record("发送失败必须抛出") }
+        catch Failure.offline {} catch { Issue.record("意外错误：\(error)") }
+        delivery.send(changed) { _ in sent += 1 }
+        #expect(sent == 2)
+        delivery = WatchOverviewDelivery()
+        delivery.send(changed) { _ in sent += 1 }
+        #expect(sent == 3)
     }
 
     @Test func activitySummaryCost() throws {
