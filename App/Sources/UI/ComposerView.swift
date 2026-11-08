@@ -143,9 +143,14 @@ struct ComposerView: View {
 
     private func sendSuggestion(_ s: NextInputSuggestion) {
         sending = true
+        // 先收起占位文字，不等消息进了会话才消失（见 send）。
+        suggestion = nil
         Task {
-            do { try await NextInputSource.send(s, host: host, agentId: agentId); suggestion = nil }
-            catch { self.error = String(localized: "发送建议失败：\(error)") }
+            do { try await NextInputSource.send(s, host: host, agentId: agentId) }
+            catch {
+                self.error = String(localized: "发送建议失败：\(error)")
+                if suggestion == nil { suggestion = s }
+            }
             sending = false
         }
     }
@@ -321,6 +326,8 @@ struct ComposerView: View {
         let files = uploads.compactMap(\.file).map(\.attachment)
         let sentUploads = uploads
         text = ""
+        // 和文字一起清掉：否则清空后到消息进会话之间，上一轮的建议会作为占位文字在输入框里闪一下。
+        suggestion = nil
         images = []
         uploads = []
         if running && behavior == .queue && (agent?.pendingPermissions.isEmpty ?? true) {
@@ -1509,7 +1516,9 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                         ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 2) { controls } }
                         #endif
                         Spacer(minLength: 8)
-                        HStack(spacing: 8) { trailing }
+                        // 发送 / 停止按钮（32pt）比「+」高：按钮出现、消失时整行不能跟着变高。否则按发送后按钮消失、
+                        // 输入框矮 4pt，会话内容先往下掉再随新消息上移（用户报告「发消息时图片往下拉闪一下」）。
+                        HStack(spacing: 8) { trailing }.frame(minHeight: 32)
                     }
                 }
                 .padding(.horizontal, 8)

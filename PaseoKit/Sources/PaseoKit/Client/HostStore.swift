@@ -108,6 +108,8 @@ public final class HostStore: Identifiable {
 
     /// Called for `agent_attention_required`; the app decides whether to show a local notification.
     @ObservationIgnored public var onAttention: (@MainActor (AttentionEvent) -> Void)?
+    /// 用户刚操作过（发消息、回到 App）：App 据此马上上报在用状态，不等下一次定时上报。
+    @ObservationIgnored public var onUserActivity: (@MainActor () -> Void)?
 
     @ObservationIgnored private let clientId: String
     @ObservationIgnored private let appVersion: String
@@ -130,6 +132,8 @@ public final class HostStore: Identifiable {
     @ObservationIgnored private var focusedAgentId: String?
     @ObservationIgnored var focusedTerminalId: String?
     @ObservationIgnored private var appVisible = true
+    /// Mac 窗口退到别的 App 后面时场景仍是 active；告诉 daemon 的「看得见」要再看是不是最前面的 App。
+    @ObservationIgnored private var frontmost = true
     @ObservationIgnored private var visibilityChangedAt = Date()
     @ObservationIgnored private var lastActivityAt = Date()
 
@@ -1158,7 +1162,7 @@ public final class HostStore: Identifiable {
         guard visible != appVisible else { return }
         appVisible = visible
         visibilityChangedAt = Date()
-        if visible { lastActivityAt = Date() }
+        if visible { lastActivityAt = Date(); onUserActivity?() }
         sendHeartbeat()
         if visible {
             if state == .connected, let c = connection {
@@ -1170,7 +1174,20 @@ public final class HostStore: Identifiable {
         }
     }
 
-    public func noteActivity() { lastActivityAt = Date() }
+    public func noteActivity() { lastActivityAt = Date(); onUserActivity?() }
+
+    /// 上次操作的时间（同心跳里的 lastActivityAt）。
+    public var userActivityAt: Date { lastActivityAt }
+
+    /// Mac：App 是否在最前面（NSApp.isActive）。切进切出都算用户刚在这台电脑上操作过。
+    public func setFrontmost(_ value: Bool) {
+        guard value != frontmost else { return }
+        frontmost = value
+        visibilityChangedAt = Date()
+        lastActivityAt = Date()
+        onUserActivity?()
+        sendHeartbeat()
+    }
 
     private func startHeartbeat() {
         heartbeatTask?.cancel()
@@ -1217,7 +1234,7 @@ public final class HostStore: Identifiable {
             "focusedAgentId": focusedAgentId.map(JSONValue.string) ?? .null,
             "focusedTerminalId": focusedTerminalId.map(JSONValue.string) ?? .null,
             "lastActivityAt": .string(iso.string(from: lastActivityAt)),
-            "appVisible": .bool(appVisible),
+            "appVisible": .bool(appVisible && frontmost),
             "appVisibilityChangedAt": .string(iso.string(from: visibilityChangedAt)),
         ]
         Task { try? await c.send("client_heartbeat", params) }

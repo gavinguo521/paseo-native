@@ -133,7 +133,13 @@ enum MainWindow {
 
 /// Right-click on the Dock icon: the same lists as the menu bar panel.
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
-    var model: AppModel? { didSet { Self.debugModel = model } }
+    var model: AppModel? {
+        didSet {
+            Self.debugModel = model
+            // 窗口出来前的激活通知会错过，这里补一次当前状态。
+            model?.setFrontmost(NSApp.isActive)
+        }
+    }
     static var debugModel: AppModel?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -142,6 +148,15 @@ enum MainWindow {
 
     func applicationWillTerminate(_ notification: Notification) {
         model?.flushDrafts()
+    }
+
+    // 窗口退到别的 App 后面时场景仍是 active；daemon 要知道你其实没在看，才会让这台 Mac 弹通知。
+    func applicationDidBecomeActive(_ notification: Notification) {
+        model?.setFrontmost(true)
+    }
+
+    func applicationDidResignActive(_ notification: Notification) {
+        model?.setFrontmost(false)
     }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {

@@ -857,6 +857,23 @@ final class AppModel {
 
     private var started = false
 
+    #if os(macOS)
+    private var lastInputNotedAt = Date.distantPast
+
+    /// 同一段操作 20 秒内只记一次，免得每次滚动都触发上报。
+    private func noteUserInput() {
+        let now = Date()
+        guard now.timeIntervalSince(lastInputNotedAt) >= 20 else { return }
+        lastInputNotedAt = now
+        hosts.forEach { $0.noteActivity() }
+    }
+
+    /// AppDelegate 在 App 切到最前 / 退到别的 App 后面时调用。
+    func setFrontmost(_ frontmost: Bool) {
+        hosts.forEach { $0.setFrontmost(frontmost) }
+    }
+    #endif
+
     /// 只跑一次：iOS 上实时活动的推送令牌可能在后台把 App 唤醒，那时窗口还没出来就要先连上机器。
     func start() {
         guard !started else { return }
@@ -870,6 +887,14 @@ final class AppModel {
         NotificationManager.shared.isHostConnected = { [weak self] id in self?.host(id)?.state == .connected }
         hosts.forEach { $0.start() }
         hosts.filter { $0.label == Self.unnamedHost }.forEach { adoptHostname($0) }
+        PresenceReporter.shared.start(model: self)
+        #if os(macOS)
+        // 在窗口里点、敲键盘、滚动都算在用：坐在 Mac 前看会话时，daemon 和推送插件都不该把通知推到手机。
+        _ = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]) { [weak self] event in
+            MainActor.assumeIsolated { self?.noteUserInput() }
+            return event
+        }
+        #endif
         Task { [weak self] in
             while true {
                 try? await Task.sleep(for: .seconds(60))
@@ -1141,15 +1166,20 @@ final class AppModel {
 
     private func makeStore(_ offer: PairingOffer, label: String) -> HostStore {
         let store = HostStore(offer: offer, label: label, clientId: clientId, appVersion: appVersion)
+        store.onUserActivity = { PresenceReporter.shared.reportSoon() }
+        #if os(macOS)
+        store.setFrontmost(NSApp?.isActive ?? true)
+        #endif
         store.onAttention = { [weak self, weak store] e in
             guard let self, let store else { return }
             let viewing = self.isFrontmost && self.destination == .agent(AgentRef(serverId: e.serverId, agentId: e.agentId))
             guard !viewing, e.shouldNotify else { return }
             #if os(iOS)
-            // 新 daemon 与新插件共同遵守同一次决策；旧组合仍保留后台去重。
+            // 新插件按官方规则推送（有设备在用就不推，交给 daemon 选中的设备），被选中时后台也要自己弹；
+            // 旧插件不看在用状态、照推，后台就不再弹本地的，免得重复。
             let liveActivity = LiveActivityController.shared
             if liveActivity.remoteAlertsReady, !LiveActivityController.isForeground,
-               !(e.shouldPush != nil && liveActivity.remoteAlertsFollowOfficialPolicy) { return }
+               !liveActivity.remoteAlertsFollowOfficialPolicy { return }
             #endif
             // 需要批准且只有一个请求时，把它的 id 带进通知，按钮只处理这一个。
             let pending = store.agents[e.agentId]?.pendingPermissions ?? []
