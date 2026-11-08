@@ -195,6 +195,8 @@ extension DisplayItem {
         var reasoning: Bool
     }
     private var turns: [String: (TurnKey, [DisplayItem])] = [:]
+    /// 要默认折叠的「来源会话已完成」卡片（行 id），随 items 一起算。
+    private(set) var foldedCompletions: Set<String> = []
 
     func items(_ timeline: AgentTimeline?, lastTurnActive: Bool, collapse: Bool, separateReasoning: Bool) -> [DisplayItem] {
         let k = (revision: timeline?.revision ?? -1, lastTurnActive: lastTurnActive, collapse: collapse,
@@ -224,11 +226,30 @@ extension DisplayItem {
             items += built
         }
         turns = next
+        foldedCompletions = Self.foldedCompletions(rows)
         positions = nil
         visibilityReads = 0
         key = k
         return items
     }
+    /// 来源会话这一轮发过主动消息时，完成通知里的最后回复多半只是收尾，折叠；没发过时最后回复就是它交来的结果，展开。
+    /// 「这一轮」= 同一来源上一次完成之后。会话 id 只在所属主机内唯一，所以带上 serverId。
+    static func foldedCompletions(_ rows: [TimelineRow]) -> Set<String> {
+        var messaged: Set<String> = []
+        var folded: Set<String> = []
+        for row in rows {
+            guard case .toolCall(_, _, _, _, _, let message?) = row.item,
+                  let id = message["sender"]?["id"]?.stringValue, !id.isEmpty else { continue }
+            let source = (message["sender"]?["serverId"]?.stringValue ?? "") + ":" + id
+            switch message["event"]?.stringValue ?? "message" {
+            case "message": messaged.insert(source)
+            case "finished": if messaged.remove(source) != nil { folded.insert(row.id) }
+            default: break
+            }
+        }
+        return folded
+    }
+
     /// 可见 ID 通常只有一屏；按已有显示顺序找锚点，不在每次滚动时扫描整段历史。
     func firstVisibleID(in ids: [String]) -> String? {
         guard !ids.isEmpty else { return nil }
@@ -440,6 +461,8 @@ final class MessageSenderLookup {
 struct MessageSenderButton: View {
     let sender: JSONValue
     var textAlignment: TextAlignment = .trailing
+    /// 跨会话卡片的标题：把来源名放进整句（如「…」发来消息），名字用强调色表示可点；nil 时是用户消息下的「由…发送」。
+    var phrase: ((String) -> String)? = nil
     @Environment(\.messageSender) private var lookup
     @Environment(\.openWindow) private var openWindow
     @State private var showingDetails = false
@@ -462,14 +485,24 @@ struct MessageSenderButton: View {
                 lookup?.open(ref)
             } else { showingDetails = true }
         } label: {
-            Label("由「\(fullName)」发送", systemImage: "bubble.left.and.text.bubble.right")
-                .font(.system(size: 11)).foregroundStyle(Theme.muted)
-                .lineLimit(2).multilineTextAlignment(textAlignment)
-                .padding(.vertical, 6)
-                #if os(iOS)
-                .frame(minHeight: 44)
-                #endif
-                .contentShape(Rectangle())
+            if let phrase {
+                Text(Self.sentence(phrase(fullName), name: fullName))
+                    .font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.foreground)
+                    .lineLimit(2).multilineTextAlignment(textAlignment)
+                    #if os(iOS)
+                    .frame(minHeight: 32)
+                    #endif
+                    .contentShape(Rectangle())
+            } else {
+                Label("由「\(fullName)」发送", systemImage: "bubble.left.and.text.bubble.right")
+                    .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                    .lineLimit(2).multilineTextAlignment(textAlignment)
+                    .padding(.vertical, 6)
+                    #if os(iOS)
+                    .frame(minHeight: 44)
+                    #endif
+                    .contentShape(Rectangle())
+            }
         }
         .buttonStyle(.plain).help(fullName)
         .contextMenu {
@@ -486,6 +519,15 @@ struct MessageSenderButton: View {
         .sheet(isPresented: $showingDetails) {
             MessageSenderDetails(sender: sender, lookup: lookup)
         }
+    }
+}
+
+extension MessageSenderButton {
+    /// 整句里只给来源名上强调色。
+    static func sentence(_ text: String, name: String) -> AttributedString {
+        var out = AttributedString(text)
+        if let range = out.range(of: name) { out[range].foregroundColor = Theme.accentBright }
+        return out
     }
 }
 
@@ -568,6 +610,8 @@ extension EnvironmentValues {
     @Entry var agentTitle: AgentTitleLookup? = nil
     /// Text being searched in the session; every occurrence is highlighted.
     @Entry var findQuery: String = ""
+    /// DisplayItemCache.foldedCompletions：默认折叠的完成卡片。
+    @Entry var foldedCompletions: Set<String> = []
     @Entry var hostFileReader: HostFileReader? = nil
 }
 
@@ -720,6 +764,7 @@ struct TurnInfo {
 
 private struct RowView: View {
     @Environment(\.messageSender) private var messageSender
+    @Environment(\.foldedCompletions) private var foldedCompletions
     let row: TimelineRow
     let footer: Bool
     var turn: TurnInfo? = nil
@@ -781,10 +826,11 @@ private struct RowView: View {
             ToolGroupView(rows: [row])
         case .toolCall(_, _, _, let detail, _, let agentMessage):
             if let agentMessage, agentMessage["event"]?.stringValue == "message", let text = agentMessage["text"]?.stringValue {
-                CrossSessionMessageCard(message: agentMessage, text: text)
+                CrossSessionMessageCard(message: agentMessage, text: text, timestamp: row.timestamp)
                     .padding(.top, 16)
             } else if let agentMessage {
-                AgentMessageView(message: agentMessage)
+                CrossSessionMessageCard(message: agentMessage, text: agentMessage["text"]?.stringValue ?? "",
+                                        foldable: foldedCompletions.contains(row.id), timestamp: row.timestamp)
             } else if case .plan(let text) = detail, case .toolCall(_, _, let status, _, _, _) = row.item {
                 PlanCard(text: text, status: status)
             } else {
@@ -818,8 +864,8 @@ private struct RowView: View {
 struct ToolGroupView: View {
     let rows: [TimelineRow]
     @Environment(\.toolDetailsAction) private var details
-    @AppStorage("autoExpandReasoning") private var autoExpandReasoning = true
-    @AppStorage("timelineDetail") private var timelineDetail = TimelineDetail.collapseTurns.rawValue
+    @AppStorage("autoExpandReasoning", store: AppDefaults.store) private var autoExpandReasoning = true
+    @AppStorage("timelineDetail", store: AppDefaults.store) private var timelineDetail = TimelineDetail.collapseTurns.rawValue
     @State private var userExpanded: Bool?
     @Environment(\.timelineReadingState) private var reading
     private var expansionKey: String { "tools-" + (rows.first?.id ?? "") }
@@ -1344,71 +1390,141 @@ struct AgentMessageContent {
 }
 
 /// 引用正文与当前会话区分；历史快照不会因来源会话继续运行而更新。
+/// 标题一句话说清「谁 · 做了什么 · 几点」。主动消息和不折叠的完成通知是卡片；折叠的完成通知只是一行状态，
+/// 下面带最后回复第一行的预览，点开才变成卡片。原始消息、复制在右上角「⋯」里。
 struct CrossSessionMessageCard: View {
     let message: JSONValue
     let text: String
+    /// 完成通知是否默认折叠（来源这一轮已主动发过消息时）；否则和主动消息一样直接显示。
+    var foldable = true
+    var timestamp: Date? = nil
     @State private var expanded = false
-    @State private var showOriginal = false
+    @State private var showingAll = false
+    @State private var showingOriginal = false
     @Environment(\.findQuery) private var findQuery
 
     private var event: String { message["event"]?.stringValue ?? "message" }
-    private var status: String {
+    private var canFold: Bool { event == "finished" && foldable }
+    /// 直接展开的完成 / 状态通知很长时先限高，免得一条通知占满屏；主动消息和用户点开的折叠通知显示全文。
+    private static let clippedHeight: CGFloat = 280
+    private func clips(_ content: AgentMessageContent) -> Bool {
+        guard event != "message", !(canFold && expanded), !showingAll, findQuery.isEmpty else { return false }
+        let body = [content.note, content.response ?? "", content.trailing].joined(separator: "\n")
+        return body.count > 600 || body.split(whereSeparator: \.isNewline).count > 12
+    }
+
+    /// 需要你处理的（需要权限、出错）用醒目的颜色。
+    private var icon: (name: String, color: Color) {
         switch event {
-        case "finished": String(localized: "来源会话已完成")
-        case "errored": String(localized: "来源会话出错或已取消")
-        case "permission-required": String(localized: "来源会话需要权限")
-        case "closed": String(localized: "来源会话已关闭")
-        default: String(localized: "来自其他会话")
+        case "finished": ("checkmark.circle.fill", Theme.dotSuccess)
+        case "errored": ("xmark.circle.fill", Theme.dotDanger)
+        case "permission-required": ("exclamationmark.triangle.fill", Theme.dotWarning)
+        case "closed": ("minus.circle.fill", Theme.extraMuted)
+        default: ("quote.bubble.fill", Theme.accentBright)
+        }
+    }
+
+    private func phrase(_ name: String) -> String {
+        switch event {
+        case "finished": String(localized: "「\(name)」已完成")
+        case "errored": String(localized: "「\(name)」出错或已取消")
+        case "permission-required": String(localized: "「\(name)」需要权限")
+        case "closed": String(localized: "「\(name)」已关闭")
+        default: String(localized: "「\(name)」发来消息")
         }
     }
 
     var body: some View {
         let content = AgentMessageContent(text: text, sender: message["sender"], event: event)
-        let completion = event == "finished"
-        let showContent = !completion || expanded || !findQuery.isEmpty
-        VStack(alignment: .leading, spacing: 10) {
-            if completion {
-                Button { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } } label: {
-                    HStack(spacing: 6) {
-                        Label(status, systemImage: "quote.bubble")
-                        Image(systemName: "chevron.right")
-                            .rotationEffect(.degrees(showContent ? 90 : 0))
+        Group {
+            if canFold && !expanded && findQuery.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    header
+                    Button { withAnimation(.snappy(duration: 0.2)) { expanded = true } } label: {
+                        HStack(spacing: 4) {
+                            Text(Self.preview(content)).lineLimit(1)
+                            Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                        }
+                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .padding(.leading, 21)
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.muted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16).padding(.vertical, 4)
             } else {
-                Label(status, systemImage: "quote.bubble")
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.muted)
-            }
-            if let sender = message["sender"] { MessageSenderButton(sender: sender, textAlignment: .leading) }
-            if showContent {
-                if !content.note.isEmpty { MarkdownView(text: content.note, renderMedia: false, continuousSelection: true) }
-                if let response = content.response {
-                    Text("发送时的最后回复").font(.system(size: 11)).foregroundStyle(Theme.muted)
-                    MarkdownView(text: response, renderMedia: false, continuousSelection: true)
+                let clipped = clips(content)
+                VStack(alignment: .leading, spacing: 12) {
+                    header
+                    VStack(alignment: .leading, spacing: 12) {
+                        if !content.note.isEmpty { MarkdownView(text: content.note, renderMedia: false, continuousSelection: true) }
+                        if let response = content.response {
+                            Text("最后回复").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                            MarkdownView(text: response, renderMedia: false, continuousSelection: true)
+                        }
+                        if !content.trailing.isEmpty { MarkdownView(text: content.trailing, renderMedia: false, continuousSelection: true) }
+                    }
+                    .frame(maxHeight: clipped ? Self.clippedHeight : nil, alignment: .top)
+                    .clipped()
+                    .mask {
+                        if clipped {
+                            LinearGradient(stops: [.init(color: .black, location: 0.7), .init(color: .clear, location: 1)],
+                                           startPoint: .top, endPoint: .bottom)
+                        } else { Rectangle() }
+                    }
+                    if clipped || showingAll {
+                        Button(showingAll ? "收起" : "显示全部") { withAnimation(.snappy(duration: 0.2)) { showingAll.toggle() } }
+                            .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accentBright)
+                    }
                 }
-                if !content.trailing.isEmpty { MarkdownView(text: content.trailing, renderMedia: false, continuousSelection: true) }
-                DisclosureGroup("原始消息", isExpanded: $showOriginal) {
-                    Text(text).font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(Theme.muted).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .font(.system(size: 11)).tint(Theme.muted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(Theme.accentBright.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.accentBright.opacity(0.22), lineWidth: 1))
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Theme.accentBright.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.accentBright.opacity(0.22), lineWidth: 1))
+        .sheet(isPresented: $showingOriginal) { SelectTextSheet(text: text) }
     }
-}
 
-private struct AgentMessageView: View {
-    let message: JSONValue
-    var body: some View {
-        CrossSessionMessageCard(message: message, text: message["text"]?.stringValue ?? "")
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: icon.name).font(.system(size: 13)).foregroundStyle(icon.color)
+            if let sender = message["sender"] {
+                MessageSenderButton(sender: sender, textAlignment: .leading, phrase: phrase)
+            } else {
+                Text(phrase(String(localized: "其他会话"))).font(.system(size: 13, weight: .medium))
+            }
+            if let timestamp {
+                Text(formatTimestamp(timestamp)).font(.system(size: 12)).foregroundStyle(Theme.extraMuted)
+                    .lineLimit(1).fixedSize()
+            }
+            Spacer(minLength: 8)
+            if canFold && expanded && findQuery.isEmpty {
+                Button("收起") { withAnimation(.snappy(duration: 0.2)) { expanded = false } }
+                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.muted)
+            }
+            Menu {
+                Button("复制内容", systemImage: "doc.on.doc") {
+                    let content = AgentMessageContent(text: text, sender: message["sender"], event: event)
+                    Pasteboard.copy(content.response ?? content.note)
+                }
+                Button("查看原始消息", systemImage: "doc.plaintext") { showingOriginal = true }
+            } label: {
+                Image(systemName: "ellipsis").frame(width: 28, height: 20).contentShape(Rectangle())
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .foregroundStyle(Theme.muted)
+            .accessibilityLabel("消息操作")
+        }
+    }
+
+    /// 折叠时的预览：最后回复（没有就是说明）的第一行纯文本。
+    static func preview(_ content: AgentMessageContent) -> String {
+        let plain = MarkdownBlock.plainText(content.response ?? content.note)
+        let line = plain.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty }
+        return line.map { String(localized: "最后回复：\($0)") } ?? String(localized: "查看最后回复")
     }
 }
 

@@ -16,9 +16,9 @@ final class PresenceReporter {
     private static let window: TimeInterval = 180
 
     static let deviceId: String = {
-        if let id = UserDefaults.standard.string(forKey: "presence.deviceId") { return id }
+        if let id = AppDefaults.store.string(forKey: "presence.deviceId") { return id }
         let id = UUID().uuidString.lowercased()
-        UserDefaults.standard.set(id, forKey: "presence.deviceId")
+        AppDefaults.store.set(id, forKey: "presence.deviceId")
         return id
     }()
 

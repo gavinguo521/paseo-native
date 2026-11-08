@@ -9,9 +9,9 @@ struct AgentView: View {
     let agentId: String
     let workspace: Workspace?
     var messageNavigation: (@MainActor (AgentRef) -> Void)?
-    @AppStorage("timelineDetail") private var timelineDetail = TimelineDetail.collapseTurns.rawValue
-    @AppStorage("autoExpandReasoning") private var autoExpandReasoning = true
-    @AppStorage("restoreSessionReadingPosition") private var restoreSessionReadingPosition = false
+    @AppStorage("timelineDetail", store: AppDefaults.store) private var timelineDetail = TimelineDetail.collapseTurns.rawValue
+    @AppStorage("autoExpandReasoning", store: AppDefaults.store) private var autoExpandReasoning = true
+    @AppStorage("restoreSessionReadingPosition", store: AppDefaults.store) private var restoreSessionReadingPosition = false
     private var collapseTurns: Bool { timelineDetail == TimelineDetail.collapseTurns.rawValue }
     @State private var toolDetailID: String?
     @State private var atBottom = true
@@ -44,7 +44,7 @@ struct AgentView: View {
         _reading = State(initialValue: reading)
         _displayCache = State(initialValue: displayCache)
         let restore = reading.shouldRestorePosition(
-            enabled: reading.restoreOnNextAppearance || UserDefaults.standard.bool(forKey: "restoreSessionReadingPosition"),
+            enabled: reading.restoreOnNextAppearance || AppDefaults.store.bool(forKey: "restoreSessionReadingPosition"),
             liveFirstRowID: host.timelines[agentId]?.rows.first?.id)
         _atBottom = State(initialValue: !restore)
         _restoreOffset = State(initialValue: restore ? max(0, reading.offset) : nil)
@@ -469,6 +469,7 @@ struct AgentView: View {
                     .environment(\.findQuery, finding ? findQuery : "")
                     .environment(\.agentTitle, env?.agentTitle)
                     .environment(\.messageSender, env?.messageSender)
+                    .environment(\.foldedCompletions, displayCache.foldedCompletions)
                     .environment(\.pluginContext, pluginContext)
                     if hasNewerHistoryRows, let id = reading.historyWindow?.rows.last?.id {
                         Button("加载更多") { showMessage(id, preferLatest: true) }.frame(maxWidth: .infinity)

@@ -297,8 +297,8 @@ struct HistoryView: View {
     @State private var query = ""
     @State private var results: [Item] = []
     @State private var loading = false
-    @AppStorage("history.grouping") private var grouping = Grouping.date.rawValue
-    @AppStorage("history.status") private var statusFilter = StatusFilter.all.rawValue
+    @AppStorage("history.grouping", store: AppDefaults.store) private var grouping = Grouping.date.rawValue
+    @AppStorage("history.status", store: AppDefaults.store) private var statusFilter = StatusFilter.all.rawValue
     @State private var project: String?
     /// Next page per host; empty once everything is loaded.
     @State private var cursors: [String: String] = [:]
@@ -592,13 +592,13 @@ struct SettingsTabPicker: View {
 struct PreferencesView: View {
     var tabPicker: Binding<Int>? = nil
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("sendBehavior") private var sendBehavior = SendBehavior.steer.rawValue
-    @AppStorage("notifications") private var notifications = true
-    @AppStorage("autoExpandReasoning") private var autoExpandReasoning = true
-    @AppStorage("timelineDetail") private var timelineDetail = TimelineDetail.collapseTurns.rawValue
-    @AppStorage("sendKey") private var sendKey = "enter"
-    @AppStorage("selectionAutoCopy") private var selectionAutoCopy = true
-    @AppStorage("restoreSessionReadingPosition") private var restoreSessionReadingPosition = false
+    @AppStorage("sendBehavior", store: AppDefaults.store) private var sendBehavior = SendBehavior.steer.rawValue
+    @AppStorage("notifications", store: AppDefaults.store) private var notifications = true
+    @AppStorage("autoExpandReasoning", store: AppDefaults.store) private var autoExpandReasoning = true
+    @AppStorage("timelineDetail", store: AppDefaults.store) private var timelineDetail = TimelineDetail.collapseTurns.rawValue
+    @AppStorage("sendKey", store: AppDefaults.store) private var sendKey = "enter"
+    @AppStorage("selectionAutoCopy", store: AppDefaults.store) private var selectionAutoCopy = true
+    @AppStorage("restoreSessionReadingPosition", store: AppDefaults.store) private var restoreSessionReadingPosition = false
 
     /// Official defaultSend descriptions / commandEnterDescriptions (zh-CN).
     private var sendHint: String {
@@ -617,14 +617,14 @@ struct PreferencesView: View {
         case .queue: String(localized: "Agent 运行时，Enter 会排队。⌘+Enter 会提交。")
         }
     }
-    @AppStorage("appearance") private var appearance = "system"
-    @AppStorage("fontStep") private var fontStep = 0
-    @AppStorage("contentWidth") private var contentWidth = 820
-    @AppStorage("notifications.sound") private var notificationSound = true
-    @AppStorage("dockBadge") private var dockBadge = true
-    @AppStorage("menuBarExtra") private var menuBarExtra = true
-    @AppStorage("liveActivity") private var liveActivity = true
-    @AppStorage("terminal.fontSize") private var terminalFontSize = 12.0
+    @AppStorage("appearance", store: AppDefaults.store) private var appearance = "system"
+    @AppStorage("fontStep", store: AppDefaults.store) private var fontStep = 0
+    @AppStorage("contentWidth", store: AppDefaults.store) private var contentWidth = 820
+    @AppStorage("notifications.sound", store: AppDefaults.store) private var notificationSound = true
+    @AppStorage("dockBadge", store: AppDefaults.store) private var dockBadge = true
+    @AppStorage("menuBarExtra", store: AppDefaults.store) private var menuBarExtra = true
+    @AppStorage("liveActivity", store: AppDefaults.store) private var liveActivity = true
+    @AppStorage("terminal.fontSize", store: AppDefaults.store) private var terminalFontSize = 12.0
     @Environment(AppModel.self) private var model
     @State private var permission = String(localized: "检查中…")
     @State private var diagnostics: DiagnosticsFile?

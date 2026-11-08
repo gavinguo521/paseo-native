@@ -12,7 +12,7 @@ struct ProviderSubagentTab: View {
     let subagentId: String
     @State private var env: TimelineEnvironment?
     @State private var loadingOlder = false
-    @AppStorage("autoExpandReasoning") private var autoExpandReasoning = true
+    @AppStorage("autoExpandReasoning", store: AppDefaults.store) private var autoExpandReasoning = true
 
     private var key: String { HostStore.providerSubagentKey(parentAgentId, subagentId) }
     private var subagent: ProviderSubagent? { host.providerSubagents[parentAgentId]?.first { $0.id == subagentId } }

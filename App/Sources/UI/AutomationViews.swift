@@ -507,7 +507,7 @@ struct UsageView: View {
     @State private var reports: [String: [UsageReport]] = [:]
     @State private var errors: [String: String] = [:]
     @State private var loading: Set<String> = []
-    @AppStorage("usageDisplay") private var displayRemaining = false
+    @AppStorage("usageDisplay", store: AppDefaults.store) private var displayRemaining = false
 
     var body: some View {
         ScrollView {

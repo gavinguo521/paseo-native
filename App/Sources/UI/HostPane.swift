@@ -80,8 +80,8 @@ struct FilesView: View {
     @State private var error: String?
     @State private var opened: FileEntry?
     @State private var quickLook: URL?
-    @AppStorage("files.showHidden") private var showHidden = false
-    @AppStorage("files.sort") private var sort = "name"
+    @AppStorage("files.showHidden", store: AppDefaults.store) private var showHidden = false
+    @AppStorage("files.sort", store: AppDefaults.store) private var sort = "name"
 
     private struct Row: Identifiable { let entry: FileEntry; let depth: Int; var id: String { entry.id } }
 
@@ -436,9 +436,9 @@ struct ChangesView: View {
     @State private var confirmMergeToBase = false
     @State private var creatingPR = false
     @State private var showChecks = false
-    @AppStorage("git.mergeMethod") private var mergeMethod = "squash"
-    @AppStorage("diff.ignoreWhitespace") private var ignoreWhitespace = false
-    @AppStorage("diff.split") private var splitDiff = false
+    @AppStorage("git.mergeMethod", store: AppDefaults.store) private var mergeMethod = "squash"
+    @AppStorage("diff.ignoreWhitespace", store: AppDefaults.store) private var ignoreWhitespace = false
+    @AppStorage("diff.split", store: AppDefaults.store) private var splitDiff = false
 
     private var cwd: String { workspace.directory }
     private var diff: CheckoutDiff? { host.diffs[cwd] }
@@ -1240,7 +1240,7 @@ struct TerminalHost: NSViewRepresentable {
 
     func makeNSView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero)
-        let size = UserDefaults.standard.double(forKey: "terminal.fontSize")
+        let size = AppDefaults.store.double(forKey: "terminal.fontSize")
         view.font = NSFont.monospacedSystemFont(ofSize: size > 0 ? size : 12, weight: .regular)
         context.coordinator.attach(view)
         return view
@@ -1259,7 +1259,7 @@ struct TerminalHost: UIViewRepresentable {
 
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero)
-        let size = UserDefaults.standard.double(forKey: "terminal.fontSize")
+        let size = AppDefaults.store.double(forKey: "terminal.fontSize")
         view.font = UIFont.monospacedSystemFont(ofSize: size > 0 ? size : 12, weight: .regular)
         context.coordinator.attach(view)
         return view

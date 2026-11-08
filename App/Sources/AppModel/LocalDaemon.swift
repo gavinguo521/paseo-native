@@ -304,14 +304,14 @@ final class LocalDaemon {
     private func relinkCLI() throws {
         let fm = FileManager.default
         if let old = try? fm.destinationOfSymbolicLink(atPath: cliLink.path), old != wrapper.path {
-            UserDefaults.standard.set(old, forKey: "localDaemon.previousCLILink")
+            AppDefaults.store.set(old, forKey: "localDaemon.previousCLILink")
         }
         try fm.createDirectory(at: cliLink.deletingLastPathComponent(), withIntermediateDirectories: true)
         if (try? fm.attributesOfItem(atPath: cliLink.path)) != nil { try fm.removeItem(at: cliLink) }
         try fm.createSymbolicLink(at: cliLink, withDestinationURL: wrapper)
     }
 
-    var previousCLILink: String? { UserDefaults.standard.string(forKey: "localDaemon.previousCLILink") }
+    var previousCLILink: String? { AppDefaults.store.string(forKey: "localDaemon.previousCLILink") }
 
     /// ~/.local/bin/paseo 只在指向本 App 的命令行时才改：指回改之前记下的目标（还存在的话），否则指向官方 App 包里的命令行，
     /// 都没有就去掉这个链接。用户自己改过的链接不动。
@@ -322,7 +322,7 @@ final class LocalDaemon {
             .first { $0 != wrapper.path && fm.isExecutableFile(atPath: $0) }
         try fm.removeItem(at: cliLink)
         if let target { try fm.createSymbolicLink(at: cliLink, withDestinationURL: URL(filePath: target)) }
-        UserDefaults.standard.removeObject(forKey: "localDaemon.previousCLILink")
+        AppDefaults.store.removeObject(forKey: "localDaemon.previousCLILink")
     }
 
     // MARK: Node

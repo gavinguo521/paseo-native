@@ -194,6 +194,56 @@ import Testing
         }
     }
 
+    private func agentMessageRow(_ id: String, event: String, sender: JSONValue, text: String) -> TimelineRow {
+        TimelineRow(id: id, turnId: nil, timestamp: Date(),
+                    item: .toolCall(callId: id, name: "paseo", status: "completed", detail: .unknown(.null),
+                                    error: nil, agentMessage: ["event": .string(event), "sender": sender, "text": .string(text)]),
+                    isStreaming: false, isPending: false)
+    }
+
+    @Test func completionFoldsOnlyAfterDirectMessage() async throws {
+        let helper: JSONValue = ["id": "helper", "serverId": "studio"]
+        let other: JSONValue = ["id": "helper", "serverId": "mini"]
+        let finished = { (id: String) in "Agent \(id) (助手) finished.\n\n<agent-response>\n结果\n</agent-response>" }
+        let rows = [
+            agentMessageRow("m1", event: "message", sender: helper, text: "主动发来的结果"),
+            agentMessageRow("f1", event: "finished", sender: helper, text: finished("helper")),
+            // 同一来源下一轮没再主动发消息：最后回复就是结果，展开。
+            agentMessageRow("f2", event: "finished", sender: helper, text: finished("helper")),
+            // 另一台机器上同 id 的会话不算同一来源。
+            agentMessageRow("f3", event: "finished", sender: other, text: finished("helper")),
+            agentMessageRow("e1", event: "errored", sender: helper, text: "Agent helper (助手) errored."),
+        ]
+        #expect(DisplayItemCache.foldedCompletions(rows) == ["f1"])
+        #expect(DisplayItemCache.foldedCompletions([rows[0], rows[4], rows[1]]) == ["f1"])
+
+        let sender: JSONValue = ["id": "8179073", "serverId": "studio", "title": "给 Mac mini 加密传测网 RDS/SSH 配置"]
+        let reply = "打包、加密和清理都做完了，下面是回报。\n\n**打包的文件（共 5 个）**\n- `dgbj-test-rds.cnf`\n- `ssh-config-dgbj-test`\n\n**说明**\n- **私钥口令：** 没有口令。"
+        let completion = "Agent 8179073 (给 Mac mini 加密传测网 RDS/SSH 配置) finished.\n\nServer: studio\n\n<agent-response>\n\(reply)\n</agent-response>"
+        let direct = [agentMessageRow("d-msg", event: "message", sender: sender, text: "测网配置已经加密好，密文在下面：\n\n```\n-----BEGIN AGE ENCRYPTED FILE-----\n...\n```"),
+                      agentMessageRow("d-done", event: "finished", sender: sender, text: completion.replacingOccurrences(of: reply, with: "已把密文发给你的会话。"))]
+        let onlyDone = [agentMessageRow("o-done", event: "finished", sender: sender, text: completion)]
+        let longReply = reply + "\n- **外部代理：** 不依赖 ssh-agent。\n- **跳板：** 没有 ProxyJump。\n- **known_hosts：** 已存进 `known_hosts-dgbj-test`。\n\n**密文（age）**\n\n```\n-----BEGIN AGE ENCRYPTED FILE-----\n" + String(repeating: "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBkblFyMTFMTGE2dm1nanBG\n", count: 30) + "-----END AGE ENCRYPTED FILE-----\n```"
+        let longDone = [agentMessageRow("l-done", event: "finished", sender: sender, text: completion.replacingOccurrences(of: reply, with: longReply))]
+        let statuses = [
+            agentMessageRow("s-err", event: "errored", sender: sender, text: "Agent 8179073 (给 Mac mini 加密传测网 RDS/SSH 配置) errored.\n\nServer: studio\n\n<agent-response>\n连接测网服务器超时，没能打包。\n</agent-response>"),
+            agentMessageRow("s-perm", event: "permission-required", sender: sender, text: "Agent 8179073 (给 Mac mini 加密传测网 RDS/SSH 配置) needs permission.\n\nServer: studio\n\n<agent-response>\n要读取 ~/.ssh/config，需要你批准。\n</agent-response>"),
+            agentMessageRow("s-closed", event: "closed", sender: sender, text: "Agent 8179073 (给 Mac mini 加密传测网 RDS/SSH 配置) was closed."),
+        ]
+        for (name, rows) in [("with-direct-message", direct), ("completion-only", onlyDone), ("completion-long", longDone), ("statuses", statuses)] {
+            try await capture(VStack(alignment: .leading, spacing: 20) {
+                ForEach(rows) { TimelineItemView(item: .row($0, footer: false)) }
+            }
+            .environment(\.foldedCompletions, DisplayItemCache.foldedCompletions(rows))
+            .padding(16).frame(maxHeight: .infinity, alignment: .top), width: 800, name: "completion-\(name)")
+            try await capture(VStack(alignment: .leading, spacing: 20) {
+                ForEach(rows) { TimelineItemView(item: .row($0, footer: false)) }
+            }
+            .environment(\.foldedCompletions, DisplayItemCache.foldedCompletions(rows))
+            .padding(16).frame(maxHeight: .infinity, alignment: .top), width: 390, name: "completion-\(name)-dark", dark: true)
+        }
+    }
+
     private func capture<V: View>(_ content: V, width: Int, name: String, dark: Bool = false) async throws {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 620), styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

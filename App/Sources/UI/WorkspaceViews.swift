@@ -127,7 +127,7 @@ struct AddProjectView: View {
     @State private var busy: String?
     @State private var error: String?
     /// Last parent used for cloning, per machine (official keeps it in memory too).
-    @AppStorage("addProject.lastCloneParent") private var lastCloneParent = ""
+    @AppStorage("addProject.lastCloneParent", store: AppDefaults.store) private var lastCloneParent = ""
 
     private var host: HostStore? { serverId.flatMap { model.host($0) } }
     private var page: Page { stack.last ?? .host }

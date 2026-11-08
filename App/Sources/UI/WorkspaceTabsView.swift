@@ -12,9 +12,9 @@ struct WorkspaceTabsView: View {
     let ref: WorkspaceRef
     @State private var pendingClose: [WorkspaceTab] = []
     @State private var showScripts = false
-    @AppStorage("explorer.visible") private var explorerVisible = false
-    @AppStorage("explorer.tab") private var explorerTab = "changes"
-    @AppStorage("explorer.width") private var explorerWidth: Double = 360
+    @AppStorage("explorer.visible", store: AppDefaults.store) private var explorerVisible = false
+    @AppStorage("explorer.tab", store: AppDefaults.store) private var explorerTab = "changes"
+    @AppStorage("explorer.width", store: AppDefaults.store) private var explorerWidth: Double = 360
     @State private var error: String?
     @State private var showSetupLog = false
     @State private var askingURL = false

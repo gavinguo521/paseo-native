@@ -25,7 +25,7 @@ import AppKit
     }
 
     private static func copyIfSelected(in view: NSView) {
-        guard UserDefaults.standard.object(forKey: defaultsKey) as? Bool ?? true,
+        guard AppDefaults.store.object(forKey: defaultsKey) as? Bool ?? true,
               let window = view.window, window.firstResponder === view else { return }
         if let tv = view as? NSTextView { guard !tv.isEditable else { return } }
         else if view is NSTextInputClient { return }

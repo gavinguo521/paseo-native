@@ -14,12 +14,12 @@ struct RootView: View {
     @State private var importing = false
     @State private var addingProject = false
     @State private var showShortcuts = false
-    @AppStorage("appearance") private var appearance = "system"
-    @AppStorage("fontStep") private var fontStep = 0
-    @AppStorage("contentWidth") private var contentWidth = 820
-    @AppStorage("dockBadge") private var dockBadge = true
+    @AppStorage("appearance", store: AppDefaults.store) private var appearance = "system"
+    @AppStorage("fontStep", store: AppDefaults.store) private var fontStep = 0
+    @AppStorage("contentWidth", store: AppDefaults.store) private var contentWidth = 820
+    @AppStorage("dockBadge", store: AppDefaults.store) private var dockBadge = true
     /// Machines already asked about companion plugins (comma-separated server ids).
-    @AppStorage("companions.asked") private var companionsAsked = ""
+    @AppStorage("companions.asked", store: AppDefaults.store) private var companionsAsked = ""
     @State private var companionPrompt: CompanionPrompt?
 
     private var companionKey: String {

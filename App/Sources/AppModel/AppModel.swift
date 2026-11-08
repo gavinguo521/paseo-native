@@ -110,29 +110,29 @@ final class AppModel {
     private(set) var hosts: [HostStore] = []
     var destination: Destination? {
         didSet {
-            UserDefaults.standard.set(try? JSONEncoder().encode(destination), forKey: "destination")
+            AppDefaults.store.set(try? JSONEncoder().encode(destination), forKey: "destination")
             if let last = messageReturnPath.last, destination != .agent(last.target) { messageReturnPath.removeAll() }
         }
     }
     /// nil = all hosts.
     var hostFilter: String? {
-        didSet { UserDefaults.standard.set(hostFilter, forKey: "hostFilter") }
+        didSet { AppDefaults.store.set(hostFilter, forKey: "hostFilter") }
     }
     /// 手动排序：项目分组的顺序（SessionGroup.id），以及每个项目里工作区行的顺序（rowKey），只存在本机（同官方）。
-    var projectOrder: [String] = UserDefaults.standard.stringArray(forKey: "sidebar.projectOrder") ?? [] {
-        didSet { UserDefaults.standard.set(projectOrder, forKey: "sidebar.projectOrder") }
+    var projectOrder: [String] = AppDefaults.store.stringArray(forKey: "sidebar.projectOrder") ?? [] {
+        didSet { AppDefaults.store.set(projectOrder, forKey: "sidebar.projectOrder") }
     }
-    var workspaceOrder: [String: [String]] = (UserDefaults.standard.dictionary(forKey: "sidebar.workspaceOrder") as? [String: [String]]) ?? [:] {
-        didSet { UserDefaults.standard.set(workspaceOrder, forKey: "sidebar.workspaceOrder") }
+    var workspaceOrder: [String: [String]] = (AppDefaults.store.dictionary(forKey: "sidebar.workspaceOrder") as? [String: [String]]) ?? [:] {
+        didSet { AppDefaults.store.set(workspaceOrder, forKey: "sidebar.workspaceOrder") }
     }
     /// 侧栏一行（一个工作区，或没有工作区的会话）在手动排序里的标识。
     static func rowKey(serverId: String, agent: Agent) -> String { serverId + ":" + (agent.workspaceId ?? "agent:" + agent.id) }
 
     var sort: SidebarSort = .updated {
-        didSet { UserDefaults.standard.set(sort.rawValue, forKey: "sidebarSort") }
+        didSet { AppDefaults.store.set(sort.rawValue, forKey: "sidebarSort") }
     }
-    var grouping: SidebarGrouping = SidebarGrouping(rawValue: UserDefaults.standard.string(forKey: "sidebarGrouping") ?? "") ?? .project {
-        didSet { UserDefaults.standard.set(grouping.rawValue, forKey: "sidebarGrouping") }
+    var grouping: SidebarGrouping = SidebarGrouping(rawValue: AppDefaults.store.string(forKey: "sidebarGrouping") ?? "") ?? .project {
+        didSet { AppDefaults.store.set(grouping.rawValue, forKey: "sidebarGrouping") }
     }
     var search = ""
     /// Lowercased label names; "" means "unlabelled". Empty set = no filter.
@@ -141,18 +141,18 @@ final class AppModel {
     var revealDetail = 0
     /// Projects merged by hand across machines when their names differ ("Acme web app" on one machine is
     /// "web-app" on another): "serverId|project name" → the sidebar group it joins. Local to this app.
-    var projectAliases: [String: String] = (UserDefaults.standard.dictionary(forKey: "projectAliases") as? [String: String]) ?? [:] {
-        didSet { UserDefaults.standard.set(projectAliases, forKey: "projectAliases") }
+    var projectAliases: [String: String] = (AppDefaults.store.dictionary(forKey: "projectAliases") as? [String: String]) ?? [:] {
+        didSet { AppDefaults.store.set(projectAliases, forKey: "projectAliases") }
     }
     /// 侧边栏里展开了子会话的行（顶层行用 rowKey，子会话行用 "serverId|agentId"），本机记住
-    var expandedSessionRows: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "expandedSessionRows") ?? []) {
-        didSet { UserDefaults.standard.set(Array(expandedSessionRows), forKey: "expandedSessionRows") }
+    var expandedSessionRows: Set<String> = Set(AppDefaults.store.stringArray(forKey: "expandedSessionRows") ?? []) {
+        didSet { AppDefaults.store.set(Array(expandedSessionRows), forKey: "expandedSessionRows") }
     }
     /// Messages waiting for the current turn to end, per agent (client-side, like the official queue track).
     var queue: [String: [QueuedMessage]] = [:]
 
     /// Unsent composer text per agent, kept across switching sessions and relaunches.
-    @ObservationIgnored private(set) var composerDrafts: [String: String] = UserDefaults.standard.dictionary(forKey: "composerDrafts") as? [String: String] ?? [:]
+    @ObservationIgnored private(set) var composerDrafts: [String: String] = AppDefaults.store.dictionary(forKey: "composerDrafts") as? [String: String] ?? [:]
     @ObservationIgnored private var draftSaveTask: Task<Void, Never>?
     @ObservationIgnored private var draftsDirty = false
     @ObservationIgnored let sessionDisplayCaches = SessionDisplayCaches()
@@ -181,7 +181,7 @@ final class AppModel {
         draftSaveTask?.cancel()
         draftSaveTask = nil
         guard draftsDirty else { return }
-        UserDefaults.standard.set(composerDrafts, forKey: "composerDrafts")
+        AppDefaults.store.set(composerDrafts, forKey: "composerDrafts")
         draftsDirty = false
     }
     /// Which settings page opens next (0 通用, 1 机器).
@@ -234,7 +234,7 @@ final class AppModel {
     }
     /// Workspace a new chat goes into; remembered across launches.
     var draftWorkspace: WorkspaceRef? {
-        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(draftWorkspace), forKey: "draftWorkspace") }
+        didSet { AppDefaults.store.set(try? JSONEncoder().encode(draftWorkspace), forKey: "draftWorkspace") }
     }
 
     private static let hostsKey: String = {
@@ -276,11 +276,11 @@ final class AppModel {
         }
         #endif
         // Stable across launches: the daemon resumes the logical session by clientId.
-        if let id = UserDefaults.standard.string(forKey: "clientId") {
+        if let id = AppDefaults.store.string(forKey: "clientId") {
             clientId = id
         } else {
             clientId = "cid_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-            UserDefaults.standard.set(clientId, forKey: "clientId")
+            AppDefaults.store.set(clientId, forKey: "clientId")
         }
         if let data = Keychain.load(Self.hostsKey), let stored = try? JSONDecoder().decode([StoredHost].self, from: data) {
             hosts = stored.map { makeStore($0.offer, label: $0.label) }
@@ -292,7 +292,7 @@ final class AppModel {
             try? addHost(link: link, label: ProcessInfo.processInfo.environment["PASEO_LABEL"] ?? "本机", password: nil)
         }
         #endif
-        let d = UserDefaults.standard
+        let d = AppDefaults.store
         if let data = d.data(forKey: "destination") { destination = try? JSONDecoder().decode(Destination.self, from: data) }
         if let data = d.data(forKey: "workspaceTabs"), let t = try? JSONDecoder().decode([String: WorkspaceTabState].self, from: data) {
             tabState = t
@@ -758,7 +758,7 @@ final class AppModel {
 
     /// Per workspace ("serverId:workspaceId"), remembered across launches.
     var tabState: [String: WorkspaceTabState] = [:] {
-        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(tabState), forKey: "workspaceTabs") }
+        didSet { AppDefaults.store.set(try? JSONEncoder().encode(tabState), forKey: "workspaceTabs") }
     }
 
     private func key(_ ws: WorkspaceRef) -> String { ws.serverId + ":" + ws.workspaceId }

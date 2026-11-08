@@ -362,7 +362,7 @@ final class WatchCompanion: NSObject, WCSessionDelegate {
         // WCSession owns this callback across queues. The box is immutable and invoked exactly once.
         let reply = WatchReply(replyHandler)
         Task { @MainActor in
-            UserDefaults.standard.set(["event": "received", "time": Date().timeIntervalSince1970,
+            AppDefaults.store.set(["event": "received", "time": Date().timeIntervalSince1970,
                                        "applicationState": UIApplication.shared.applicationState.rawValue], forKey: "watch.transportStatus")
             let response: WatchEnvelope
             do {
@@ -371,7 +371,7 @@ final class WatchCompanion: NSObject, WCSessionDelegate {
             } catch { response = WatchEnvelope(payload: .failure(String(localized: "请更新 iPhone 和手表上的 Paseo 后重试"))) }
             do {
                 reply.send([WatchEnvelope.key: try response.encoded()])
-                UserDefaults.standard.set(["event": "replied", "time": Date().timeIntervalSince1970,
+                AppDefaults.store.set(["event": "replied", "time": Date().timeIntervalSince1970,
                                            "applicationState": UIApplication.shared.applicationState.rawValue], forKey: "watch.transportStatus")
             }
             catch {

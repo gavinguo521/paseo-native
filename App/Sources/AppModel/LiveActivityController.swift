@@ -23,7 +23,7 @@ final class LiveActivityController {
     static let enabledKey = "liveActivity"
     /// 用户在设置里指定的推送机器（serverId）；没指定或那台没装插件时用列表里第一台装了插件的。
     static let pusherKey = "liveActivity.pusher"
-    static var enabled: Bool { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }
+    static var enabled: Bool { AppDefaults.store.object(forKey: enabledKey) as? Bool ?? true }
 
     /// 每次更新后多久算过时；App 在前台时每隔 refreshInterval 续一次。
     private let staleAfter: TimeInterval = 15 * 60
@@ -56,9 +56,9 @@ final class LiveActivityController {
 
     /// 每台设备一个，插件按它区分 iPhone / iPad。
     static let deviceId: String = {
-        if let id = UserDefaults.standard.string(forKey: "liveActivity.deviceId") { return id }
+        if let id = AppDefaults.store.string(forKey: "liveActivity.deviceId") { return id }
         let id = UUID().uuidString.lowercased()
-        UserDefaults.standard.set(id, forKey: "liveActivity.deviceId")
+        AppDefaults.store.set(id, forKey: "liveActivity.deviceId")
         return id
     }()
 
@@ -101,7 +101,7 @@ final class LiveActivityController {
     }
 
     /// 用户关了「通知我」时不把普通推送令牌交给插件（发 null 清掉）。
-    private static var notificationsEnabled: Bool { UserDefaults.standard.object(forKey: "notifications") as? Bool ?? true }
+    private static var notificationsEnabled: Bool { AppDefaults.store.object(forKey: "notifications") as? Bool ?? true }
 
     /// 设置里开关变化或回到前台时调用。
     func sync() {
@@ -260,7 +260,7 @@ final class LiveActivityController {
     /// 选推送机器：用户指定的那台（装了插件且在线），否则列表里第一台装了插件的。
     static func pusher(_ model: AppModel) -> HostStore? {
         let candidates = model.hosts.filter { $0.state == .connected && $0.isPluginRunning(pluginId) }
-        if let chosen = UserDefaults.standard.string(forKey: pusherKey), let h = candidates.first(where: { $0.id == chosen }) { return h }
+        if let chosen = AppDefaults.store.string(forKey: pusherKey), let h = candidates.first(where: { $0.id == chosen }) { return h }
         return candidates.first
     }
 

@@ -10,8 +10,8 @@ struct SidebarView: View {
     @Binding var showSettings: Bool
     @Binding var showAddHost: Bool
     /// Collapsed sidebar groups, kept across launches (official sidebar remembers them too).
-    @State private var collapsed: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "sidebar.collapsed") ?? []) {
-        didSet { UserDefaults.standard.set(Array(collapsed).sorted(), forKey: "sidebar.collapsed") }
+    @State private var collapsed: Set<String> = Set(AppDefaults.store.stringArray(forKey: "sidebar.collapsed") ?? []) {
+        didSet { AppDefaults.store.set(Array(collapsed).sorted(), forKey: "sidebar.collapsed") }
     }
     @State private var expandedAll: Set<String> = []
     /// 仅 DEBUG 截图用（PASEO_HOVER_GROUP）：让这个分组标题显示成悬停状态。日常悬停状态在每个标题自己的 HoverReader 里。
@@ -30,7 +30,7 @@ struct SidebarView: View {
     @State private var removingProject: (name: String, targets: [ProjectEditTarget])?
     @State private var removeError: String?
     /// Comma-separated nav rows hidden from the sidebar (official sidebar navigation settings).
-    @AppStorage("sidebar.hiddenNav") private var hiddenNavRaw = ""
+    @AppStorage("sidebar.hiddenNav", store: AppDefaults.store) private var hiddenNavRaw = ""
     private var hiddenNav: Set<String> { Set(hiddenNavRaw.split(separator: ",").map(String.init)) }
     /// Holding ⌘ shows the ⌘1…9 targets (official row shortcut badges).
     @State private var commandHeld = false

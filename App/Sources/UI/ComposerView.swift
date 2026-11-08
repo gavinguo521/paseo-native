@@ -60,7 +60,7 @@ struct ComposerView: View {
     let host: HostStore
     let agentId: String
     let workspace: Workspace?
-    @AppStorage("sendBehavior") private var sendBehavior = SendBehavior.steer.rawValue
+    @AppStorage("sendBehavior", store: AppDefaults.store) private var sendBehavior = SendBehavior.steer.rawValue
     @State private var text = ""
     @State private var images: [ImageAttachment] = []
     @State private var sending = false
@@ -849,7 +849,7 @@ struct DraftComposerView: View {
     let onCreated: (String) -> Void
     /// 发出到 daemon 回复之间的首条消息（失败或完成时回 nil），由外层换成 PendingStartView 显示。
     var onPending: (PendingStart?) -> Void = { _ in }
-    @AppStorage("draft.provider") private var provider = "claude"
+    @AppStorage("draft.provider", store: AppDefaults.store) private var provider = "claude"
     /// Model / thinking / mode are remembered per provider (official: per-provider draft preferences).
     @State private var model = ""
     @State private var thinking = ""
@@ -988,14 +988,14 @@ struct DraftComposerView: View {
     }
 
     private func loadRemembered() {
-        let d = UserDefaults.standard
+        let d = AppDefaults.store
         model = d.string(forKey: "draft.\(provider).model") ?? ""
         thinking = d.string(forKey: "draft.\(provider).thinking") ?? ""
         mode = d.string(forKey: "draft.\(provider).mode") ?? ""
     }
 
     private func remember() {
-        let d = UserDefaults.standard
+        let d = AppDefaults.store
         d.set(model, forKey: "draft.\(provider).model")
         d.set(thinking, forKey: "draft.\(provider).thinking")
         d.set(mode, forKey: "draft.\(provider).mode")
@@ -1388,7 +1388,7 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
     @State private var forgeResults: [ForgeItem] = []
     @State private var forgeError: String?
     /// "enter" (⇧↩ newline) or "cmdEnter" (↩ newline, ⌘↩ send).
-    @AppStorage("sendKey") private var sendKey = "enter"
+    @AppStorage("sendKey", store: AppDefaults.store) private var sendKey = "enter"
 
     /// Hardware Return in ComposerTextView (input method not composing, no ⇧): ↩ sends, ⌘↩ the other send;
     /// with 「⌘↩ 发送」 set, ↩ types a newline. False = let the text view type the newline.

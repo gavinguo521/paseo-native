@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 
 struct LiveActivityPushSection: View {
     @Environment(AppModel.self) private var model
-    @AppStorage("liveActivity.pusher") private var pusherChoice = ""
+    @AppStorage("liveActivity.pusher", store: AppDefaults.store) private var pusherChoice = ""
     @State private var status: JSONValue?
     @State private var error: String?
     @State private var configuring = false

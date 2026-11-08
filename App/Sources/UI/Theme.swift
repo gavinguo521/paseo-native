@@ -53,7 +53,7 @@ enum Theme {
     static let diffRemove = Color(light: 0xb91c1c, dark: 0xef4444)
 
     /// Font size step from settings (-1 small … +2 largest); views refresh via RootView's `.id`.
-    private static var fontStep: CGFloat { CGFloat(UserDefaults.standard.integer(forKey: "fontStep")) }
+    private static var fontStep: CGFloat { CGFloat(AppDefaults.store.integer(forKey: "fontStep")) }
     // Official defaults (app/src/hooks/use-settings/storage.ts): desktop UI 14 / content 15, native 15 / 16.
     #if os(macOS)
     static var base: CGFloat { 14 + fontStep }
@@ -65,8 +65,8 @@ enum Theme {
     static var code: CGFloat { 12 + fontStep }
     /// Chat column width from settings (0 = full width).
     static var chatMaxWidth: CGFloat {
-        let w = UserDefaults.standard.integer(forKey: "contentWidth")
-        return w == 0 ? (UserDefaults.standard.object(forKey: "contentWidth") == nil ? 820 : .infinity) : CGFloat(w)
+        let w = AppDefaults.store.integer(forKey: "contentWidth")
+        return w == 0 ? (AppDefaults.store.object(forKey: "contentWidth") == nil ? 820 : .infinity) : CGFloat(w)
     }
 }
 

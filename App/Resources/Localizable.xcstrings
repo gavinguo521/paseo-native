@@ -1289,6 +1289,26 @@
       },
       "extractionState": "stale"
     },
+    "「%@」出错或已取消": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” failed or was canceled"
+          }
+        }
+      }
+    },
+    "「%@」发来消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” sent a message"
+          }
+        }
+      }
+    },
     "「%@」完成了": {
       "localizations": {
         "en": {
@@ -1305,11 +1325,20 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "“%@” Closed"
+            "value": "“%@” closed"
           }
         }
-      },
-      "extractionState": "stale"
+      }
+    },
+    "「%@」已完成": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” finished"
+          }
+        }
+      }
     },
     "「%@」的子代理": {
       "localizations": {
@@ -1336,11 +1365,10 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "“%@” Needs Permission"
+            "value": "“%@” needs permission"
           }
         }
-      },
-      "extractionState": "stale"
+      }
     },
     "「%@」（运行中）": {
       "localizations": {
@@ -2780,6 +2808,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "There is too much content. View it on your iPhone."
+          }
+        }
+      }
+    },
+    "最后回复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last reply"
+          }
+        }
+      }
+    },
+    "最后回复：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last reply: %@"
           }
         }
       }
@@ -12973,6 +13021,26 @@
         }
       }
     },
+    "查看最后回复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View last reply"
+          }
+        }
+      }
+    },
+    "查看原始消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View original message"
+          }
+        }
+      }
+    },
     "查看完整名称与状态": {
       "localizations": {
         "en": {
@@ -13047,7 +13115,8 @@
             "value": "来源会话已完成"
           }
         }
-      }
+      },
+      "extractionState": "stale"
     },
     "来源会话出错或已取消": {
       "localizations": {
@@ -13063,7 +13132,8 @@
             "value": "来源会话出错或已取消"
           }
         }
-      }
+      },
+      "extractionState": "stale"
     },
     "来源会话需要权限": {
       "localizations": {
@@ -13079,7 +13149,8 @@
             "value": "来源会话需要权限"
           }
         }
-      }
+      },
+      "extractionState": "stale"
     },
     "来源会话已关闭": {
       "localizations": {
@@ -13095,23 +13166,8 @@
             "value": "来源会话已关闭"
           }
         }
-      }
-    },
-    "来自其他会话": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "From another session"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "来自其他会话"
-          }
-        }
-      }
+      },
+      "extractionState": "stale"
     },
     "发送时的最后回复": {
       "localizations": {
@@ -13127,7 +13183,8 @@
             "value": "发送时的最后回复"
           }
         }
-      }
+      },
+      "extractionState": "stale"
     },
     "原始消息": {
       "localizations": {
@@ -13143,7 +13200,8 @@
             "value": "原始消息"
           }
         }
-      }
+      },
+      "extractionState": "stale"
     },
     "粘贴的文本.txt": {
       "localizations": {

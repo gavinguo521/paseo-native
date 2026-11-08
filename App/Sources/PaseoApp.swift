@@ -5,7 +5,7 @@ struct PaseoApp: App {
     @State private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     #if os(macOS)
-    @AppStorage("menuBarExtra") private var menuBarExtra = true
+    @AppStorage("menuBarExtra", store: AppDefaults.store) private var menuBarExtra = true
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     #else
     @UIApplicationDelegateAdaptor private var pushDelegate: PushDelegate

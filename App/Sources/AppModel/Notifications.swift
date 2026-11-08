@@ -47,7 +47,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     /// 主标题用侧栏的行名（workspaceTitle：工作区标题，没有就是会话标题）；不要副标题；正文是 daemon 给的摘要
     /// （完成时是会话最后一条回复，需要批准时是请求内容，同官方 App）。与 live-activity 插件推来的远程通知同一规则。
     func post(_ e: AttentionEvent, hostLabel: String, workspaceTitle: String, agentTitle: String, requestId: String? = nil) {
-        guard UserDefaults.standard.object(forKey: "notifications") as? Bool ?? true else { return }
+        guard AppDefaults.store.object(forKey: "notifications") as? Bool ?? true else { return }
         let content = UNMutableNotificationContent()
         switch e.reason {
         case "permission": content.title = String(localized: "需要你批准 · \(workspaceTitle)")
@@ -55,7 +55,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         default: content.title = String(localized: "完成 · \(workspaceTitle)")
         }
         content.body = e.body
-        content.sound = UserDefaults.standard.object(forKey: "notifications.sound") as? Bool ?? true ? .default : nil
+        content.sound = AppDefaults.store.object(forKey: "notifications.sound") as? Bool ?? true ? .default : nil
         content.categoryIdentifier = e.reason == "permission" ? Category.permission : Category.finished
         content.threadIdentifier = e.serverId + ":" + e.agentId
         var info: [String: Any] = ["serverId": e.serverId, "agentId": e.agentId]
@@ -79,7 +79,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let content = UNMutableNotificationContent()
         content.title = String(localized: "测试通知")
         content.body = String(localized: "会话完成、需要批准或出错时会这样提醒你。")
-        content.sound = UserDefaults.standard.object(forKey: "notifications.sound") as? Bool ?? true ? .default : nil
+        content.sound = AppDefaults.store.object(forKey: "notifications.sound") as? Bool ?? true ? .default : nil
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 

@@ -6,9 +6,9 @@ enum AppBuild {
 
     /// DEV starts with a copy, then keeps its preferences and logical client identity independent.
     static func prepareDevelopmentPreferences() {
-        guard isDevelopment, !UserDefaults.standard.bool(forKey: "dev.preferencesSeeded"),
+        guard isDevelopment, !AppDefaults.store.bool(forKey: "dev.preferencesSeeded"),
               let source = Bundle.main.object(forInfoDictionaryKey: "PaseoDevSeedBundleID") as? String else { return }
-        let defaults = UserDefaults.standard
+        let defaults = AppDefaults.store
         let values = defaults.persistentDomain(forName: source) ?? [:]
         for (key, value) in values where key != "clientId" && key != "localDaemon.previousCLILink" && !key.hasPrefix("updates.") {
             defaults.set(value, forKey: key)
@@ -27,10 +27,10 @@ enum Keychain {
         if let data = read(account, service: service) { return data }
         // Seed the normal host list locally once; never seed test accounts or write the production item.
         let marker = "dev.hostsSeeded"
-        if AppBuild.isDevelopment, account == "hosts.v1", !UserDefaults.standard.bool(forKey: marker),
+        if AppBuild.isDevelopment, account == "hosts.v1", !AppDefaults.store.bool(forKey: marker),
            let data = read(account, service: productionService) {
             save(data, account: account)
-            UserDefaults.standard.set(true, forKey: marker)
+            AppDefaults.store.set(true, forKey: marker)
             return data
         }
         return nil

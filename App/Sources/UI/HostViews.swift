@@ -183,7 +183,7 @@ enum HostColor {
         ("pink", String(localized: "粉"), .pink), ("teal", String(localized: "青"), .teal), ("red", String(localized: "红"), .red), ("yellow", String(localized: "黄"), .yellow),
     ]
     static func color(for serverId: String) -> SwiftUI.Color? {
-        let name = UserDefaults.standard.string(forKey: "hostColor." + serverId) ?? ""
+        let name = AppDefaults.store.string(forKey: "hostColor." + serverId) ?? ""
         return all.first { $0.name == name }?.color
     }
 }
@@ -216,7 +216,7 @@ struct HostDetailView: View {
 
     init(host: HostStore) {
         self.host = host
-        _color = AppStorage(wrappedValue: "", "hostColor." + host.id)
+        _color = AppStorage(wrappedValue: "", "hostColor." + host.id, store: AppDefaults.store)
     }
 
     var body: some View {

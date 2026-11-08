@@ -4,6 +4,12 @@ import Testing
 @testable import Paseo
 
 @Suite(.serialized) @MainActor struct SidebarOrderingTests {
+    /// 测试跑在 App 进程里，写设置不能落到本机正式版（排序、手动顺序、项目合并）。
+    @Test func testsUseSeparatePreferences() {
+        #expect(AppDefaults.isTesting)
+        #expect(AppDefaults.store !== UserDefaults.standard)
+    }
+
     private func agent(_ id: String, project: String, time: Int) throws -> Agent {
         try #require(Agent(["id": .string(id), "workspaceId": .string(id),
             "cwd": .string("/test/" + project), "status": "idle",
@@ -26,7 +32,7 @@ import Testing
         model.sort = .updated
         model.moveProject("project:B", to: "project:A")
         #expect(model.sort == .manual)
-        #expect(UserDefaults.standard.string(forKey: "sidebarSort") == SidebarSort.manual.rawValue)
+        #expect(AppDefaults.store.string(forKey: "sidebarSort") == SidebarSort.manual.rawValue)
         let expected = ["project:B", "project:A"]
         #expect(model.groups.map(\.id) == expected)
         // 与 agent_update 一样替换同一个会话对象；手动模式不能被新消息打乱。
@@ -55,7 +61,7 @@ import Testing
         model.sort = .updated
         model.moveWorkspace("ordering-test:b", to: "ordering-test:a", inGroup: "project:A")
         #expect(model.sort == .manual)
-        #expect(UserDefaults.standard.string(forKey: "sidebarSort") == SidebarSort.manual.rawValue)
+        #expect(AppDefaults.store.string(forKey: "sidebarSort") == SidebarSort.manual.rawValue)
         #expect(model.groups[0].rows.map(\.agent.id) == ["b", "a"])
         host.agents["a"] = try agent("a", project: "A", time: 40)
         #expect(model.groups[0].rows.map(\.agent.id) == ["b", "a"])
