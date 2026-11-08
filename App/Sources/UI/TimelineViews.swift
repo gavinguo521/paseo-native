@@ -53,7 +53,7 @@ indirect enum DisplayItem: Identifiable {
             // 助手正文不能因后续补充回复而被收起；只折叠已完成的普通工具操作。
             let worthFolding = finalIndex.map { body[..<$0].contains { r in
                 switch r.item {
-                case .toolCall(_, _, _, let detail, _, let m): m == nil && !detail.isPlan
+                case .toolCall(_, _, _, let detail, _, let m): m == nil && !detail.isPlan && r.item.outgoingMessage == nil
                 default: false
                 }
             } } ?? false
@@ -81,7 +81,8 @@ indirect enum DisplayItem: Identifiable {
                     switch row.item {
                     case .reasoning:
                         activity.append(row)
-                    case .toolCall(_, _, _, let detail, _, let message) where message == nil && !detail.isPlan:
+                    case .toolCall(_, _, _, let detail, _, let message)
+                        where message == nil && !detail.isPlan && row.item.outgoingMessage == nil:
                         activity.append(row)
                     default:
                         // 正文、计划、上下文压缩提示等保持可见，操作摘要不能跨过它们。
@@ -116,7 +117,8 @@ indirect enum DisplayItem: Identifiable {
         }
         for (i, r) in rows.enumerated() {
             switch r.item {
-            case .toolCall(_, _, _, let detail, _, let agentMessage) where agentMessage == nil && !detail.isPlan:
+            case .toolCall(_, _, _, let detail, _, let agentMessage)
+                where agentMessage == nil && !detail.isPlan && r.item.outgoingMessage == nil:
                 run.append(r)
             case .reasoning where !separateReasoning:
                 run.append(r)
@@ -197,6 +199,8 @@ extension DisplayItem {
     private var turns: [String: (TurnKey, [DisplayItem])] = [:]
     /// 要默认折叠的「来源会话已完成」卡片（行 id），随 items 一起算。
     private(set) var foldedCompletions: Set<String> = []
+    /// paseo-peer tell 输出里的「机器名 → serverId」，让同一会话里的 who / logs / wait 也能找到对应的主机。
+    private(set) var peerServers: [String: String] = [:]
 
     func items(_ timeline: AgentTimeline?, lastTurnActive: Bool, collapse: Bool, separateReasoning: Bool) -> [DisplayItem] {
         let k = (revision: timeline?.revision ?? -1, lastTurnActive: lastTurnActive, collapse: collapse,
@@ -227,11 +231,22 @@ extension DisplayItem {
         }
         turns = next
         foldedCompletions = Self.foldedCompletions(rows)
+        peerServers = Self.peerServers(rows)
         positions = nil
         visibilityReads = 0
         key = k
         return items
     }
+    static func peerServers(_ rows: [TimelineRow]) -> [String: String] {
+        var out: [String: String] = [:]
+        for row in rows {
+            guard case .toolCall(_, _, _, .shell(_, _, let output?, _), _, nil) = row.item, output.contains("serverId"),
+                  let message = row.item.outgoingMessage, let machine = message.machine, let server = message.serverId else { continue }
+            out[machine] = server
+        }
+        return out
+    }
+
     /// 来源会话这一轮发过主动消息时，完成通知里的最后回复多半只是收尾，折叠；没发过时最后回复就是它交来的结果，展开。
     /// 「这一轮」= 同一来源上一次完成之后。会话 id 只在所属主机内唯一，所以带上 serverId。
     static func foldedCompletions(_ rows: [TimelineRow]) -> Set<String> {
@@ -445,8 +460,18 @@ final class MessageSenderLookup {
     let sourceHost: @MainActor (JSONValue?) -> HostStore?
     let currentHostID: String
     let showHistory: @MainActor () -> Void
+    /// paseo-peer 的机器短名 → App 里的主机：local 是当前主机；否则主机名等于或包含短名（studio ↔「Gavin的Mac Studio」），唯一才算。
+    let hostNamed: @MainActor (String) -> HostStore?
     init(host: HostStore, model: AppModel, navigate: (@MainActor (AgentRef) -> Void)? = nil) {
         currentHostID = host.id
+        hostNamed = { name in
+            let key = name.lowercased()
+            if key == "local" { return host }
+            let labels = model.hosts.map { ($0, $0.label.lowercased()) }
+            if let exact = labels.filter({ $0.1 == key }).map(\.0).first { return exact }
+            let partial = labels.filter { $0.1.contains(key) }.map(\.0)
+            return partial.count == 1 ? partial[0] : nil
+        }
         sourceHost = { sender in sender?["serverId"]?.stringValue.map { model.host($0) } ?? host }
         lookup = { sender in
             let source = sender?["serverId"]?.stringValue.map { model.host($0) } ?? host
@@ -463,6 +488,10 @@ struct MessageSenderButton: View {
     var textAlignment: TextAlignment = .trailing
     /// 跨会话卡片的标题：把来源名放进整句（如「…」发来消息），名字用强调色表示可点；nil 时是用户消息下的「由…发送」。
     var phrase: ((String) -> String)? = nil
+    /// 整句的字体和颜色（工具步骤里用更小、更淡的字）。
+    var phraseFont: Font = .system(size: 13, weight: .medium)
+    var phraseColor: Color = Theme.foreground
+    var phraseLineLimit = 2
     @Environment(\.messageSender) private var lookup
     @Environment(\.openWindow) private var openWindow
     @State private var showingDetails = false
@@ -487,8 +516,8 @@ struct MessageSenderButton: View {
         } label: {
             if let phrase {
                 Text(Self.sentence(phrase(fullName), name: fullName))
-                    .font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.foreground)
-                    .lineLimit(2).multilineTextAlignment(textAlignment)
+                    .font(phraseFont).foregroundStyle(phraseColor)
+                    .lineLimit(phraseLineLimit).truncationMode(.middle).multilineTextAlignment(textAlignment)
                     #if os(iOS)
                     .frame(minHeight: 32)
                     #endif
@@ -765,6 +794,12 @@ struct TurnInfo {
 private struct RowView: View {
     @Environment(\.messageSender) private var messageSender
     @Environment(\.foldedCompletions) private var foldedCompletions
+    /// paseo-peer tell 失败（退出码非 0）时的输出末尾，显示在「发给…失败」卡片里。
+    static func shellFailure(_ detail: ToolCallDetail) -> String? {
+        guard case .shell(_, _, let output, let code?) = detail, code != 0 else { return nil }
+        let tail = (output ?? "").trimmingCharacters(in: .whitespacesAndNewlines).suffix(400)
+        return tail.isEmpty ? String(localized: "退出码 \(code)") : String(tail)
+    }
     let row: TimelineRow
     let footer: Bool
     var turn: TurnInfo? = nil
@@ -833,6 +868,9 @@ private struct RowView: View {
                                         foldable: foldedCompletions.contains(row.id), timestamp: row.timestamp)
             } else if case .plan(let text) = detail, case .toolCall(_, _, let status, _, _, _) = row.item {
                 PlanCard(text: text, status: status)
+            } else if let outgoing = row.item.outgoingMessage, case .toolCall(_, _, let status, let detail, let error, _) = row.item {
+                OutgoingMessageCard(message: outgoing, status: status, error: error, shellFailure: Self.shellFailure(detail),
+                                    timestamp: row.timestamp)
             } else {
                 ToolGroupView(rows: [row])
             }
@@ -937,7 +975,7 @@ struct ToolGroupView: View {
                         Text(command).lineLimit(1).truncationMode(.tail)
                             .font(.system(size: Theme.code, design: .monospaced))
                             .foregroundStyle(Theme.muted)
-                    } else {
+                    } else if headerAction == nil {
                         Text(summary).lineLimit(1).truncationMode(.middle)
                             .font(.system(size: Theme.base, weight: .semibold))
                             .foregroundStyle(Theme.foreground.opacity(0.75))
@@ -949,6 +987,10 @@ struct ToolGroupView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // 会话名要能单独点，不能放进展开 / 收起的按钮里：盖在图标右边。
+            .overlay(alignment: .leading) {
+                if let headerAction { PaseoAgentActionLabel(action: headerAction).padding(.leading, 26).padding(.trailing, 8) }
+            }
             if expanded {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(rows) { ToolDetailView(row: $0, showHeader: true) }
@@ -982,12 +1024,18 @@ struct ToolGroupView: View {
         }
     }
 
+    /// 标题这一步（正在跑的那步，或唯一一步）是针对某个会话的 Paseo 调用时，用可点的一句话。
+    private var headerAction: PaseoAgentAction? {
+        if running { return rows.last(where: { if case .toolCall(_, _, let s, _, _, _) = $0.item { s == "running" } else { $0.isStreaming } })?.item.paseoAgentAction }
+        return rows.count == 1 ? rows[0].item.paseoAgentAction : nil
+    }
+
     /// The shell command the header names (the running one, or the only step), first line only.
     private var command: String? {
         let r: TimelineRow?
         if running { r = rows.last(where: { if case .toolCall(_, _, let s, _, _, _) = $0.item { s == "running" } else { $0.isStreaming } }) }
         else { r = rows.count == 1 ? rows[0] : nil }
-        guard let r, case .toolCall(_, _, _, .shell(let c, _, _, _), _, _) = r.item else { return nil }
+        guard let r, case .toolCall(_, _, _, .shell(let c, _, _, _), _, _) = r.item, PeerCommand(c) == nil else { return nil }
         let line = c.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? c
         return line.trimmingCharacters(in: .whitespaces)
     }
@@ -1023,9 +1071,9 @@ func workSummary<S: Sequence>(_ rows: S) -> String where S.Element == TimelineRo
         switch r.item {
         case .reasoning: thoughts += 1
         case .toolCall(_, _, _, let d, _, let m):
-            if m != nil { continue }
+            if m != nil || r.item.outgoingMessage != nil { continue }
             switch d {
-            case .shell: commands += 1
+            case .shell(let c, _, _, _): if PeerCommand(c) == nil { commands += 1 } else { other += 1 }
             case .read(let p, _): read.insert(p)
             case .edit(let p, _, _, _), .write(let p, _): edited.insert(p)
             case .search, .fetch: searches += 1
@@ -1079,7 +1127,11 @@ struct ToolDetailView: View {
     private var previewContent: some View {
         VStack(alignment: .leading, spacing: 4) {
             if showHeader {
-                Text(row.item.toolSummary).font(.system(size: Theme.code)).foregroundStyle(Theme.muted).lineLimit(1)
+                if let action = row.item.paseoAgentAction {
+                    PaseoAgentActionLabel(action: action, font: .system(size: Theme.code), color: Theme.muted)
+                } else {
+                    Text(row.item.toolSummary).font(.system(size: Theme.code)).foregroundStyle(Theme.muted).lineLimit(1)
+                }
             }
             switch row.item {
             case .reasoning(let text):
@@ -1131,7 +1183,9 @@ struct ToolDetailView: View {
         case .plan(let text):
             MarkdownView(text: text)
         case .unknown(let json):
-            UnknownToolDetail(input: json["input"], output: json["output"], raw: json)
+            // 标题已是「查看「…」的状态」这样的一句话时，不再重复「目标会话」。
+            UnknownToolDetail(input: json["input"], output: json["output"], raw: json,
+                              showsTarget: !(showHeader && row.item.paseoAgentAction != nil))
         }
     }
 }
@@ -1141,11 +1195,12 @@ private struct UnknownToolDetail: View {
     let input: JSONValue?
     let output: JSONValue?
     let raw: JSONValue
+    var showsTarget = true
     @Environment(\.agentTitle) private var agentTitle
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let id = input?["agentId"]?.stringValue ?? input?["agent_id"]?.stringValue, let title = agentTitle?.lookup(id) {
+            if showsTarget, let id = input?["agentId"]?.stringValue ?? input?["agent_id"]?.stringValue, let title = agentTitle?.lookup(id) {
                 Label("目标会话「\(title)」", systemImage: "bubble.left").font(.system(size: Theme.base)).foregroundStyle(Theme.muted)
             }
             if let input, input != .null {
@@ -1528,6 +1583,532 @@ struct CrossSessionMessageCard: View {
     }
 }
 
+/// 一个目标会话：和收到的消息的 sender 同形（id + serverId + title），复用 MessageSenderButton 的名字解析和跳转。
+/// serverId 依次取：调用里写明的 → 同一会话里 paseo-peer tell 打出来的（machine → serverId）→ 按主机名找。
+/// paseo-peer 的机器名对不上 App 里的主机时用一个不存在的 serverId，免得短 id 碰巧匹配到本机的会话而跳错。
+@MainActor func sessionTarget(agentId: String, serverId: String?, machine: String?, title: String?,
+                              lookup: MessageSenderLookup?, peerServers: [String: String]) -> JSONValue {
+    var t: [String: JSONValue] = ["id": .string(agentId)]
+    if let title { t["title"] = .string(title) }
+    if let serverId { t["serverId"] = .string(serverId) }
+    else if let machine {
+        if let server = peerServers[machine] ?? lookup?.hostNamed(machine)?.id { t["serverId"] = .string(server) }
+        else {
+            t["serverId"] = .string("peer:" + machine)
+            if title == nil { t["title"] = .string("\(machine) · \(agentId.prefix(7))") }
+        }
+    }
+    return .object(t)
+}
+
+/// 针对某个会话的 Paseo 调用（查看状态、读活动、取消、归档…），以及 paseo-peer 的同类子命令（logs、wait、permit…）：
+/// 显示成一句话，会话名可点。
+struct PaseoAgentAction: Equatable {
+    let leaf: String
+    let agentId: String
+    var serverId: String? = nil
+    /// paseo-peer 的机器短名。
+    var machine: String? = nil
+
+    init(leaf: String, agentId: String, serverId: String? = nil, machine: String? = nil) {
+        self.leaf = leaf; self.agentId = agentId; self.serverId = serverId; self.machine = machine
+    }
+
+    init?(name: String, detail: ToolCallDetail) {
+        if case .shell(let command, _, _, _) = detail {
+            guard case .agent(let action)? = PeerCommand(command) else { return nil }
+            self = action
+            return
+        }
+        guard case .unknown(let json) = detail, let leaf = OutgoingAgentMessage.paseoLeafName(name),
+              Self.agentTools.contains(leaf), let input = json["input"],
+              let id = (input["agentId"] ?? input["agent_id"])?.stringValue, !id.isEmpty else { return nil }
+        self.leaf = leaf
+        agentId = id
+        serverId = input["serverId"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    static let agentTools: Set<String> = ["get_agent_status", "get_agent_activity", "update_agent", "set_agent_mode",
+                                          "cancel_agent", "archive_agent", "kill_agent", "respond_to_permission"]
+
+    func phrase(_ name: String) -> String {
+        switch leaf {
+        case "get_agent_status": String(localized: "查看「\(name)」的状态")
+        case "get_agent_activity": String(localized: "查看「\(name)」的最近活动")
+        case "update_agent": String(localized: "修改「\(name)」的设置")
+        case "set_agent_mode": String(localized: "切换「\(name)」的模式")
+        case "cancel_agent": String(localized: "取消「\(name)」当前这一轮")
+        case "archive_agent": String(localized: "归档「\(name)」")
+        case "kill_agent": String(localized: "关闭「\(name)」")
+        case "peer_logs": String(localized: "查看「\(name)」的记录")
+        case "peer_wait": String(localized: "等「\(name)」跑完这一轮")
+        case "permit_allow": String(localized: "批准「\(name)」的权限请求")
+        case "permit_deny": String(localized: "拒绝「\(name)」的权限请求")
+        case "permit_list": String(localized: "查看「\(name)」待批准的权限")
+        default: String(localized: "回复「\(name)」的权限请求")
+        }
+    }
+
+    /// 不针对某个会话的 Paseo 调用：一句话，带上关键参数（名字、脚本名…）。
+    static func label(_ leaf: String, input: JSONValue?) -> String? {
+        func field(_ keys: String...) -> String? {
+            for k in keys { if let v = input?[k]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { return v } }
+            return nil
+        }
+        func named(_ base: String, _ value: String?) -> String { value.map { "\(base)「\(String($0.prefix(60)))」" } ?? base }
+        switch leaf {
+        case "list_agents": return String(localized: "列出会话")
+        case "list_hosts": return String(localized: "列出机器")
+        case "list_workspaces": return String(localized: "列出工作区")
+        case "list_pending_permissions": return String(localized: "列出待批准的权限")
+        case "list_providers": return String(localized: "列出模型服务")
+        case "list_models": return named(String(localized: "列出模型"), field("provider"))
+        case "list_profiles": return String(localized: "列出配置")
+        case "inspect_provider": return named(String(localized: "查看模型服务"), field("provider"))
+        case "create_agent": return named(String(localized: "新开会话"), field("title"))
+        case "create_workspace":
+            return named(String(localized: "新建工作区"), field("title", "name") ?? field("path", "cwd").map { ($0 as NSString).lastPathComponent })
+        case "rename_workspace": return named(String(localized: "工作区改名为"), field("title", "name"))
+        case "archive_workspace": return String(localized: "归档工作区")
+        case "list_workspace_scripts": return String(localized: "列出工作区脚本")
+        case "start_workspace_script": return named(String(localized: "启动脚本"), field("scriptName"))
+        case "stop_workspace_script": return named(String(localized: "停止脚本"), field("scriptName"))
+        case "create_terminal": return named(String(localized: "新建终端"), field("name", "command"))
+        case "list_terminals": return String(localized: "列出终端")
+        case "capture_terminal": return String(localized: "读取终端输出")
+        case "send_terminal_keys": return named(String(localized: "向终端发送按键"), field("keys"))
+        case "kill_terminal": return String(localized: "关闭终端")
+        case "create_schedule": return named(String(localized: "新建定时任务"), field("name", "cron"))
+        case "create_heartbeat": return named(String(localized: "新建心跳"), field("name", "cron"))
+        case "update_schedule": return named(String(localized: "修改定时任务"), field("name"))
+        case "list_schedules": return String(localized: "列出定时任务")
+        case "inspect_schedule": return String(localized: "查看定时任务")
+        case "schedule_logs": return String(localized: "查看定时任务日志")
+        case "run_schedule_once": return String(localized: "立即运行定时任务")
+        case "pause_schedule": return String(localized: "暂停定时任务")
+        case "resume_schedule": return String(localized: "恢复定时任务")
+        case "delete_schedule": return String(localized: "删除定时任务")
+        case "delete_heartbeat": return String(localized: "删除心跳")
+        default: return nil
+        }
+    }
+}
+
+/// `paseo-peer <机器> <子命令> …`（tell 和 run 见 OutgoingAgentMessage）：针对某个会话的给出 PaseoAgentAction，其余给一句话。
+enum PeerCommand: Equatable {
+    case agent(PaseoAgentAction)
+    case plain(String)
+
+    init?(_ command: String) {
+        guard let args = PeerCommand.args(command), let first = args.first else { return nil }
+        if args.count == 1 {
+            switch first {
+            case "ls": self = .plain(String(localized: "列出所有机器")); return
+            case "doctor": self = .plain(String(localized: "检查跨机器连接")); return
+            case "whoami": self = .plain(String(localized: "查看本会话的来源说明")); return
+            default: return nil
+            }
+        }
+        if ["init", "invite", "join", "password", "link", "whoami"].contains(first) {
+            switch first {
+            case "whoami": self = .plain(String(localized: "查看本会话的来源说明"))
+            case "link": self = .plain(String(localized: "登记连接主机"))
+            default: return nil
+            }
+            return
+        }
+        let machine = first, sub = args[1], rest = Array(args.dropFirst(2))
+        // 跳过带值的选项（--days 7、--tail 40…），剩下的是位置参数。
+        let valueFlags: Set<String> = ["--days", "--tail", "--timeout", "--interval", "--start-grace", "--label", "--name", "--file"]
+        var positional: [String] = []
+        var skip = false
+        for a in rest {
+            if skip { skip = false; continue }
+            if valueFlags.contains(a) { skip = true; continue }
+            if !a.hasPrefix("-") { positional.append(a) }
+        }
+        let agent = { (leaf: String, id: String?) -> PeerCommand? in
+            guard let id, !id.isEmpty else { return nil }
+            return .agent(PaseoAgentAction(leaf: leaf, agentId: id, machine: machine))
+        }
+        // 「在本机上」/「在 studio 上」：中文和机器名之间留空格。
+        let on = machine == "local" ? String(localized: "本机") : " \(machine) "
+        let result: PeerCommand?
+        switch sub {
+        case "who": result = .plain(positional.first.map { String(localized: "在\(on)上查看做「\($0)」的会话") }
+                                    ?? String(localized: "在\(on)上查看做本项目的会话"))
+        case "find": result = .plain(String(localized: "在\(on)上找做「\(positional.joined(separator: " / "))」的会话"))
+        case "mine": result = .plain(String(localized: "列出本会话在\(on)上开的配合会话"))
+        case "ls": result = .plain(String(localized: "列出\(on)上的会话"))
+        case "logs": result = agent("peer_logs", positional.first)
+        case "wait": result = agent("peer_wait", positional.first)
+        case "workspace":
+            result = rest.first == "ls" ? .plain(String(localized: "列出\(on)上的工作区"))
+                : rest.first == "rename" ? .plain(String(localized: "改\(on)上的工作区名")) : nil
+        case "agent":
+            let id = rest.count > 1 ? rest[1] : nil
+            switch rest.first {
+            case "update": result = agent("update_agent", id)
+            case "archive": result = agent("archive_agent", id)
+            case "mode": result = agent("set_agent_mode", id)
+            default: result = nil
+            }
+        case "permit":
+            let id = rest.count > 1 ? rest[1] : nil
+            switch rest.first {
+            case "allow": result = agent("permit_allow", id)
+            case "deny": result = agent("permit_deny", id)
+            case "ls": result = id.flatMap { agent("permit_list", $0) } ?? .plain(String(localized: "查看\(on)上待批准的权限"))
+            default: result = nil
+            }
+        case "provider": result = .plain(String(localized: "查看\(on)上的模型服务"))
+        default: result = nil
+        }
+        guard let result else { return nil }
+        self = result
+    }
+
+    /// 命令里第一处 paseo-peer 调用的参数（到 ; && | 等为止）。
+    static func args(_ command: String) -> [String]? {
+        guard command.contains("paseo-peer") else { return nil }
+        let words = OutgoingAgentMessage.shellWords(command)
+        guard let i = words.firstIndex(where: { $0.map { ($0 as NSString).lastPathComponent == "paseo-peer" } ?? false }) else { return nil }
+        var args: [String] = []
+        for w in words[(i + 1)...] {
+            guard let w else { break }
+            args.append(w)
+        }
+        return args.isEmpty ? nil : args
+    }
+
+    /// 时间线里一行的文字版（工具详情面板、进度提示用）：会话名用短 id。
+    var summary: String {
+        switch self {
+        case .agent(let a): a.phrase(a.machine.map { "\($0) · \(a.agentId.prefix(7))" } ?? String(a.agentId.prefix(7)))
+        case .plain(let s): s
+        }
+    }
+}
+
+extension TimelineItem {
+    var paseoAgentAction: PaseoAgentAction? {
+        guard case .toolCall(_, let name, _, let detail, _, nil) = self else { return nil }
+        return PaseoAgentAction(name: name, detail: detail)
+    }
+}
+
+extension EnvironmentValues {
+    /// 这个会话里 paseo-peer tell 打出来的「机器名 → serverId」（DisplayItemCache.peerServers）。
+    @Entry var peerServers: [String: String] = [:]
+}
+
+/// 工具步骤里的「查看「…」的状态」：会话名可点；名字没解析到时退回短 id。
+struct PaseoAgentActionLabel: View {
+    let action: PaseoAgentAction
+    var font: Font = .system(size: Theme.base, weight: .semibold)
+    var color: Color = Theme.foreground.opacity(0.75)
+    @Environment(\.messageSender) private var lookup
+    @Environment(\.peerServers) private var peerServers
+
+    var body: some View {
+        MessageSenderButton(sender: sessionTarget(agentId: action.agentId, serverId: action.serverId, machine: action.machine,
+                                                  title: nil, lookup: lookup, peerServers: peerServers),
+                            textAlignment: .leading, phrase: action.phrase,
+                            phraseFont: font, phraseColor: color, phraseLineLimit: 1)
+    }
+}
+
+/// 本会话发给别的会话的消息：Paseo 工具 send_agent_prompt，或 shell 里的 `paseo-peer <机器> tell <id> …`。
+struct OutgoingAgentMessage: Equatable {
+    /// 新开会话（create_agent 带 initialPrompt）时为 true；会话 id 在输出里，还没返回时为空。
+    var creates = false
+    /// create_agent 的 title：会话还查不到时显示它。
+    var title: String? = nil
+    var agentId: String
+    /// send_agent_prompt 的 serverId（同机时没有）。
+    var serverId: String? = nil
+    /// paseo-peer 的机器短名（studio、mini、local），显示时按主机名找对应的主机。
+    var machine: String? = nil
+    /// 发出的内容；`tell --file` 时为 nil，内容在 file 里。
+    var prompt: String? = nil
+    var file: String? = nil
+
+    init(agentId: String, serverId: String? = nil, machine: String? = nil, prompt: String? = nil, file: String? = nil) {
+        self.agentId = agentId; self.serverId = serverId; self.machine = machine; self.prompt = prompt; self.file = file
+    }
+
+    init?(name: String, detail: ToolCallDetail) {
+        if case .shell(let command, _, let output, _) = detail {
+            guard var message = Self.peerTell(command) ?? Self.peerRun(command, output: output) else { return nil }
+            // paseo-peer tell 发送成功后打一行「已发送：studio（serverId srv_…）」，有它就不用按机器名猜主机。
+            if let output, let m = Self.sentMarker.firstMatch(in: output, range: NSRange(output.startIndex..., in: output)),
+               let r = Range(m.range(at: 1), in: output) { message.serverId = String(output[r]) }
+            self = message
+            return
+        }
+        guard case .unknown(let json) = detail, let leaf = Self.paseoLeafName(name), let input = json["input"] else { return nil }
+        switch leaf {
+        case "send_agent_prompt":
+            guard let id = input["agentId"]?.stringValue, !id.isEmpty, let prompt = input["prompt"]?.stringValue else { return nil }
+            agentId = id
+            self.prompt = Self.droppingSourceLine(prompt)
+        case "create_agent":
+            guard let prompt = input["initialPrompt"]?.stringValue,
+                  !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            creates = true
+            agentId = json["output"].flatMap(Self.createdAgentId) ?? ""
+            title = input["title"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+            self.prompt = Self.droppingSourceLine(prompt)
+        default:
+            return nil
+        }
+        serverId = input["serverId"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// create_agent 输出里的会话 id：可能直接在 output 里，也可能套在 structuredContent / output 里，或是文本里的 JSON。
+    static func createdAgentId(_ output: JSONValue) -> String? {
+        let e = JSONEncoder()
+        e.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? e.encode(output), let text = String(data: data, encoding: .utf8),
+              let m = agentIdPattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let r = Range(m.range(at: 1), in: text) else { return nil }
+        return String(text[r])
+    }
+    private static let agentIdPattern = try! NSRegularExpression(pattern: #"agentId\\*"\s*:\s*\\*"([A-Za-z0-9_-]+)"#)
+
+    /// mcp__paseo__send_agent_prompt（Claude）或 paseo.send_agent_prompt（其他 provider）；official tool-name-normalization.ts。
+    static func paseoLeafName(_ name: String) -> String? {
+        let n = name.trimmingCharacters(in: .whitespaces).lowercased()
+        if n.contains("__") {
+            let parts = n.components(separatedBy: "__").filter { !$0.isEmpty }
+            guard parts.count >= 3, parts[0] == "mcp", parts[1] == "paseo" || parts[1].hasPrefix("paseo_") else { return nil }
+            return parts.dropFirst(2).joined(separator: "__")
+        }
+        if let dot = n.firstIndex(of: ".") {
+            let ns = n[..<dot]
+            guard ns == "paseo" || ns.hasPrefix("paseo_") else { return nil }
+            return String(n[n.index(after: dot)...])
+        }
+        return nil
+    }
+
+    /// 跨机器 / 跨项目消息第一行是「来自本会话」的来源说明，在自己的时间线里是废话，去掉。
+    static func droppingSourceLine(_ prompt: String) -> String {
+        let prefixes = ["【跨机器消息】", "【跨项目消息】", "[Cross-machine message]", "[Cross-project message]"]
+        let trimmed = prompt.drop { $0.isWhitespace }
+        guard prefixes.contains(where: { trimmed.hasPrefix($0) }) else { return prompt }
+        let firstLine = trimmed.prefix { !$0.isNewline }
+        let after = trimmed.dropFirst(firstLine.count)
+        // 来源说明以「（id 短id）」结尾，同一行后面可能还接着正文（「…（id f6ae738），Gavin 让我把这件事派给你。」），只去掉说明。
+        var lineRest = ""
+        if let id = firstLine.range(of: #"[（(]id [0-9A-Za-z_-]+[）)]"#, options: .regularExpression) {
+            lineRest = String(firstLine[id.upperBound...]).trimmingCharacters(in: .whitespaces)
+            while let c = lineRest.first, "，,。.：:".contains(c) { lineRest.removeFirst() }
+        }
+        let rest = (lineRest.trimmingCharacters(in: .whitespaces) + after).trimmingCharacters(in: .whitespacesAndNewlines)
+        return rest.isEmpty ? prompt : rest
+    }
+
+    static let sentMarker = try! NSRegularExpression(pattern: #"serverId ([A-Za-z0-9_-]+)[）)]"#)
+
+    /// `…/paseo-peer <机器> tell <id> "消息"` 或 `… tell <id> --file <路径>`（前后可以接 ; && | 等）。
+    static func peerTell(_ command: String) -> OutgoingAgentMessage? {
+        guard command.contains("tell"), let args = PeerCommand.args(command), args.count >= 4, args[1] == "tell",
+              !args[2].hasPrefix("-") else { return nil }
+        let machine = args[0], id = args[2]
+        if args[3] == "--file" {
+            guard args.count >= 5 else { return nil }
+            return OutgoingAgentMessage(agentId: id, machine: machine, file: args[4])
+        }
+        return OutgoingAgentMessage(agentId: id, machine: machine, prompt: heredocBody(args[3]) ?? args[3])
+    }
+
+    /// `paseo-peer <机器> run [--no-wait] [--title 名] [--workspace id] … "要做的事"`：在那台机器上新开会话并发送。
+    static func peerRun(_ command: String, output: String?) -> OutgoingAgentMessage? {
+        guard command.contains("run"), let args = PeerCommand.args(command), args.count >= 3, args[1] == "run" else { return nil }
+        let valueFlags: Set<String> = ["--workspace", "--title", "--name", "--mode", "--label", "--cwd", "--provider",
+                                       "--model", "--thinking", "--prompt-file", "--host"]
+        var title: String?, prompt: String?, i = 2
+        while i < args.count {
+            let a = args[i]
+            if valueFlags.contains(a) {
+                if a == "--title" || a == "--name", i + 1 < args.count { title = args[i + 1] }
+                i += 2; continue
+            }
+            if !a.hasPrefix("-") && !a.hasPrefix("$(") { prompt = a }
+            i += 1
+        }
+        guard let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        var message = OutgoingAgentMessage(agentId: output.flatMap(firstUUID) ?? "", machine: args[0],
+                                           prompt: droppingSourceLine(heredocBody(prompt) ?? prompt))
+        message.creates = true
+        message.title = title
+        return message
+    }
+
+    static func firstUUID(_ text: String) -> String? {
+        text.range(of: #"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"#, options: .regularExpression).map { String(text[$0]) }
+    }
+
+    /// `"$(cat <<'EOF' … EOF)"` 写法的消息取出正文。
+    static func heredocBody(_ word: String) -> String? {
+        guard word.hasPrefix("$(cat <<"),
+              let m = heredoc.firstMatch(in: word, range: NSRange(word.startIndex..., in: word)),
+              let body = Range(m.range(at: 2), in: word) else { return nil }
+        return String(word[body])
+    }
+    private static let heredoc = try! NSRegularExpression(
+        pattern: #"^\$\(cat <<-?\s*['"]?(\w+)['"]?\n(.*?)\n\s*\1\s*\)$"#, options: [.dotMatchesLineSeparators])
+
+    /// 简单的 shell 分词：单双引号、反斜杠转义；; & | 换行 和重定向是分隔（nil）。不展开变量和 $(…)（整段保留成一个词）。
+    static func shellWords(_ s: String) -> [String?] {
+        var out: [String?] = []
+        var word = "", inWord = false
+        var quote: Character? = nil
+        var escaped = false
+        func flush() { if inWord { out.append(word) }; word = ""; inWord = false }
+        var depth = 0  // 没加引号的 $( … ) 整段算一个词（如 $(paseo-peer whoami --labels)）
+        var previous: Character? = nil
+        for c in s {
+            defer { previous = c }
+            if depth > 0 {
+                word.append(c)
+                if c == "(" { depth += 1 } else if c == ")" { depth -= 1 }
+                continue
+            }
+            if escaped {
+                if quote == "\"" && !"\"\\$`\n".contains(c) { word.append("\\") }
+                if c != "\n" { word.append(c) }  // 反斜杠加换行是续行
+                escaped = false; inWord = true; continue
+            }
+            if let q = quote {
+                if c == q { quote = nil }
+                else if c == "\\" && q == "\"" { escaped = true }
+                else { word.append(c) }
+                continue
+            }
+            if c == "(" && previous == "$" && quote == nil && !escaped {
+                word.append(c); depth = 1; continue
+            }
+            switch c {
+            case "'", "\"": quote = c; inWord = true
+            case "\\": escaped = true
+            case " ", "\t": flush()
+            case ";", "&", "|", "\n", "<", ">", "(", ")": flush(); out.append(nil)
+            default: word.append(c); inWord = true
+            }
+        }
+        flush()
+        return out
+    }
+}
+
+extension TimelineItem {
+    var outgoingMessage: OutgoingAgentMessage? {
+        guard case .toolCall(_, let name, _, let detail, _, nil) = self else { return nil }
+        return OutgoingAgentMessage(name: name, detail: detail)
+    }
+}
+
+/// 「已发给「…」」卡片：目标名可点，直接跳到那个会话（带返回）；正文是发过去的内容。
+struct OutgoingMessageCard: View {
+    let message: OutgoingAgentMessage
+    let status: String
+    let error: JSONValue?
+    /// paseo-peer 命令退出码非 0 时的输出末尾。
+    var shellFailure: String? = nil
+    var timestamp: Date? = nil
+    @State private var showingAll = false
+    @State private var fileText: String?
+    @State private var fileMissing = false
+    @Environment(\.findQuery) private var findQuery
+    @Environment(\.messageSender) private var lookup
+    @Environment(\.hostFileReader) private var fileReader
+
+    private var failed: Bool { status == "failed" || (error != nil && error != .null) || shellFailure != nil }
+    private var text: String? { message.prompt ?? fileText }
+    private var clips: Bool {
+        guard let text, !showingAll, findQuery.isEmpty else { return false }
+        return text.count > 600 || text.split(whereSeparator: \.isNewline).count > 12
+    }
+
+    @Environment(\.peerServers) private var peerServers
+    private var target: JSONValue {
+        sessionTarget(agentId: message.agentId, serverId: message.serverId, machine: message.machine, title: message.title,
+                      lookup: lookup, peerServers: peerServers)
+    }
+
+    private func phrase(_ name: String) -> String {
+        if message.creates {
+            if failed { return String(localized: "新开会话「\(name)」失败") }
+            if status == "running" { return String(localized: "正在新开会话「\(name)」") }
+            return String(localized: "新开会话「\(name)」并发送")
+        }
+        if failed { return String(localized: "发给「\(name)」失败") }
+        if status == "running" { return String(localized: "正在发给「\(name)」") }
+        return String(localized: "已发给「\(name)」")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: failed ? "xmark.circle.fill" : message.creates ? "plus.bubble.fill" : "paperplane.fill").font(.system(size: 13))
+                    .foregroundStyle(failed ? Theme.dotDanger : Theme.accentBright)
+                MessageSenderButton(sender: target, textAlignment: .leading, phrase: phrase)
+                if let timestamp {
+                    Text(formatTimestamp(timestamp)).font(.system(size: 12)).foregroundStyle(Theme.extraMuted)
+                        .lineLimit(1).fixedSize()
+                }
+                Spacer(minLength: 8)
+                if let text {
+                    Menu {
+                        Button("复制内容", systemImage: "doc.on.doc") { Pasteboard.copy(text) }
+                    } label: {
+                        Image(systemName: "ellipsis").frame(width: 28, height: 20).contentShape(Rectangle())
+                    }
+                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                    .foregroundStyle(Theme.muted)
+                    .accessibilityLabel("消息操作")
+                }
+            }
+            if let text {
+                let clipped = clips
+                MarkdownView(text: text, renderMedia: false, continuousSelection: true)
+                    .frame(maxHeight: clipped ? 200 : nil, alignment: .top)
+                    .clipped()
+                    .mask {
+                        if clipped {
+                            LinearGradient(stops: [.init(color: .black, location: 0.7), .init(color: .clear, location: 1)],
+                                           startPoint: .top, endPoint: .bottom)
+                        } else { Rectangle() }
+                    }
+                if clipped || showingAll {
+                    Button(showingAll ? "收起" : "显示全部") { withAnimation(.snappy(duration: 0.2)) { showingAll.toggle() } }
+                        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accentBright)
+                }
+            } else if let file = message.file {
+                Text(fileMissing ? String(localized: "内容在文件 \(file)，已读不到") : String(localized: "内容在文件 \(file)"))
+                    .font(.system(size: 12)).foregroundStyle(Theme.muted).textSelection(.enabled)
+            }
+            if failed, let reason = shellFailure ?? error.flatMap({ $0 == .null ? nil : $0["message"]?.stringValue ?? $0.stringValue ?? $0.description }) {
+                Text(reason)
+                    .font(.system(size: Theme.code, design: .monospaced)).foregroundStyle(Theme.muted)
+                    .lineLimit(6).textSelection(.enabled)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Theme.surface2.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.border, lineWidth: 1))
+        .task(id: message.file) {
+            // tell --file：正文在发送方机器上的文件里（发完通常还在），按需读出来。
+            guard message.prompt == nil, let file = message.file, let fileReader else { return }
+            if let data = await fileReader.read(file), let s = String(data: data, encoding: .utf8) { fileText = s }
+            else { fileMissing = true }
+        }
+    }
+}
+
 extension TimelineItem {
     /// User messages and messages from other sessions open a turn (official presentation.ts).
     var startsTurn: Bool {
@@ -1550,7 +2131,7 @@ extension TimelineItem {
         case .reasoning: return String(localized: "思考")
         case .toolCall(_, let name, _, let d, _, _):
             switch d {
-            case .shell(let c, _, _, _): return c
+            case .shell(let c, _, _, _): return PeerCommand(c)?.summary ?? c
             case .read(let p, _): return String(localized: "读取 \((p as NSString).lastPathComponent)")
             case .edit(let p, _, _, _): return String(localized: "编辑 \((p as NSString).lastPathComponent)")
             case .write(let p, _): return String(localized: "写入 \((p as NSString).lastPathComponent)")
@@ -1559,7 +2140,9 @@ extension TimelineItem {
             case .subAgent(let desc, _): return String(localized: "子任务 \(desc ?? "")")
             case .plainText(let label, _, _): return label ?? name
             case .plan: return String(localized: "计划")
-            case .unknown: return name
+            case .unknown(let json):
+                if let action = PaseoAgentAction(name: name, detail: d) { return action.phrase(String(action.agentId.prefix(7))) }
+                return OutgoingAgentMessage.paseoLeafName(name).flatMap { PaseoAgentAction.label($0, input: json["input"]) } ?? name
             }
         default: return ""
         }

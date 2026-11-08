@@ -13236,7 +13236,647 @@
       }
     },
     "·": {},
-    "TXT": {}
+    "TXT": {},
+    "发给「%@」失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to send to “%@”"
+          }
+        }
+      }
+    },
+    "已发给「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent to “%@”"
+          }
+        }
+      }
+    },
+    "正在发给「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sending to “%@”"
+          }
+        }
+      }
+    },
+    "内容在文件 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message is in file %@"
+          }
+        }
+      }
+    },
+    "内容在文件 %@，已读不到": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message was in file %@, which can no longer be read"
+          }
+        }
+      }
+    },
+    "新开会话「%@」失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to start session “%@”"
+          }
+        }
+      }
+    },
+    "正在新开会话「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starting session “%@”"
+          }
+        }
+      }
+    },
+    "新开会话「%@」并发送": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Started session “%@” and sent"
+          }
+        }
+      }
+    },
+    "查看「%@」的状态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checked status of “%@”"
+          }
+        }
+      }
+    },
+    "查看「%@」的最近活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read recent activity of “%@”"
+          }
+        }
+      }
+    },
+    "修改「%@」的设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updated settings of “%@”"
+          }
+        }
+      }
+    },
+    "切换「%@」的模式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changed mode of “%@”"
+          }
+        }
+      }
+    },
+    "取消「%@」当前这一轮": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Canceled the current turn of “%@”"
+          }
+        }
+      }
+    },
+    "归档「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archived “%@”"
+          }
+        }
+      }
+    },
+    "关闭「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closed “%@”"
+          }
+        }
+      }
+    },
+    "回复「%@」的权限请求": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Answered permission request from “%@”"
+          }
+        }
+      }
+    },
+    "列出会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed sessions"
+          }
+        }
+      }
+    },
+    "列出机器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed hosts"
+          }
+        }
+      }
+    },
+    "列出工作区": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed workspaces"
+          }
+        }
+      }
+    },
+    "列出待批准的权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed pending permissions"
+          }
+        }
+      }
+    },
+    "列出模型服务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed providers"
+          }
+        }
+      }
+    },
+    "列出模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed models"
+          }
+        }
+      }
+    },
+    "修改定时任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updated schedule"
+          }
+        }
+      }
+    },
+    "停止脚本": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopped script"
+          }
+        }
+      }
+    },
+    "关闭终端": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closed terminal"
+          }
+        }
+      }
+    },
+    "列出%@上的会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed sessions on%@"
+          }
+        }
+      }
+    },
+    "列出%@上的工作区": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed workspaces on%@"
+          }
+        }
+      }
+    },
+    "列出定时任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed schedules"
+          }
+        }
+      }
+    },
+    "列出工作区脚本": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed workspace scripts"
+          }
+        }
+      }
+    },
+    "列出所有机器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed all machines"
+          }
+        }
+      }
+    },
+    "列出本会话在%@上开的配合会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed helper sessions this session started on%@"
+          }
+        }
+      }
+    },
+    "列出终端": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed terminals"
+          }
+        }
+      }
+    },
+    "列出配置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed profiles"
+          }
+        }
+      }
+    },
+    "删除定时任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deleted schedule"
+          }
+        }
+      }
+    },
+    "删除心跳": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deleted heartbeat"
+          }
+        }
+      }
+    },
+    "向终端发送按键": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent keys to terminal"
+          }
+        }
+      }
+    },
+    "启动脚本": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Started script"
+          }
+        }
+      }
+    },
+    "在%@上找做「%@」的会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Searched sessions on%@for “%@”"
+          }
+        }
+      }
+    },
+    "在%@上查看做「%@」的会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checked sessions on%@working on “%@”"
+          }
+        }
+      }
+    },
+    "在%@上查看做本项目的会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checked sessions on%@working on this project"
+          }
+        }
+      }
+    },
+    "工作区改名为": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renamed workspace to"
+          }
+        }
+      }
+    },
+    "恢复定时任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resumed schedule"
+          }
+        }
+      }
+    },
+    "批准「%@」的权限请求": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approved permission request from “%@”"
+          }
+        }
+      }
+    },
+    "拒绝「%@」的权限请求": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denied permission request from “%@”"
+          }
+        }
+      }
+    },
+    "改%@上的工作区名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renamed a workspace on%@"
+          }
+        }
+      }
+    },
+    "新建定时任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Created schedule"
+          }
+        }
+      }
+    },
+    "新建心跳": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Created heartbeat"
+          }
+        }
+      }
+    },
+    "新建终端": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Created terminal"
+          }
+        }
+      }
+    },
+    "新开会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Started session"
+          }
+        }
+      }
+    },
+    "暂停定时任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused schedule"
+          }
+        }
+      }
+    },
+    "本机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " this machine "
+          }
+        }
+      }
+    },
+    "查看「%@」待批准的权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checked pending permissions of “%@”"
+          }
+        }
+      }
+    },
+    "查看「%@」的记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read the log of “%@”"
+          }
+        }
+      }
+    },
+    "查看%@上待批准的权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checked pending permissions on%@"
+          }
+        }
+      }
+    },
+    "查看%@上的模型服务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checked providers on%@"
+          }
+        }
+      }
+    },
+    "查看定时任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inspected schedule"
+          }
+        }
+      }
+    },
+    "查看定时任务日志": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read schedule logs"
+          }
+        }
+      }
+    },
+    "查看本会话的来源说明": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checked this session's sender line"
+          }
+        }
+      }
+    },
+    "查看模型服务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inspected provider"
+          }
+        }
+      }
+    },
+    "检查跨机器连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checked cross-machine connections"
+          }
+        }
+      }
+    },
+    "登记连接主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Linked connected hosts"
+          }
+        }
+      }
+    },
+    "立即运行定时任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ran schedule now"
+          }
+        }
+      }
+    },
+    "等「%@」跑完这一轮": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waited for “%@” to finish its turn"
+          }
+        }
+      }
+    },
+    "读取终端输出": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read terminal output"
+          }
+        }
+      }
+    }
   },
   "version": "1.0"
 }

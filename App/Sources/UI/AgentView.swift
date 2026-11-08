@@ -470,6 +470,7 @@ struct AgentView: View {
                     .environment(\.agentTitle, env?.agentTitle)
                     .environment(\.messageSender, env?.messageSender)
                     .environment(\.foldedCompletions, displayCache.foldedCompletions)
+                    .environment(\.peerServers, displayCache.peerServers)
                     .environment(\.pluginContext, pluginContext)
                     if hasNewerHistoryRows, let id = reading.historyWindow?.rows.last?.id {
                         Button("加载更多") { showMessage(id, preferLatest: true) }.frame(maxWidth: .infinity)

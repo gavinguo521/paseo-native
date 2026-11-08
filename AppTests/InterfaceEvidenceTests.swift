@@ -244,6 +244,154 @@ import Testing
         }
     }
 
+    private func toolRow(_ id: String, name: String, status: String = "completed", input: JSONValue) -> TimelineRow {
+        TimelineRow(id: id, turnId: nil, timestamp: Date(),
+                    item: .toolCall(callId: id, name: name, status: status, detail: .unknown(["input": input]),
+                                    error: nil, agentMessage: nil),
+                    isStreaming: false, isPending: false)
+    }
+
+    @Test func sentMessageShowsAsCardOutsideCollapsedWork() async throws {
+        let prompt = "【跨机器消息】来自 office 上「订单服务」项目的会话「邀请函」（id f6ae738）\n\n从 Studio 钥匙串读这两项：`com.example.app.test-login.phone` / `.password`。\n\n- 通过管道直接用 Mac mini 的 age 公钥加密，不落明文文件。\n- 只把 ASCII 装甲密文写在这一轮的最后回复里。"
+        let send = toolRow("send", name: "mcp__paseo__send_agent_prompt",
+                           input: ["agentId": "81790731-cf63-4158-a94b-5ae6d1935628", "serverId": "srv_studio", "prompt": .string(prompt)])
+        let message = try #require(send.item.outgoingMessage)
+        #expect(message.agentId == "81790731-cf63-4158-a94b-5ae6d1935628" && message.serverId == "srv_studio")
+        #expect(message.prompt?.hasPrefix("从 Studio 钥匙串") == true)
+        let codex = try #require(toolRow("s2", name: "paseo.send_agent_prompt", input: ["agentId": "a", "prompt": "hi"]).item.outgoingMessage)
+        #expect(codex.agentId == "a" && codex.serverId == nil)
+        #expect(toolRow("s3", name: "mcp__paseo__get_agent_status", input: ["agentId": "a"]).item.outgoingMessage == nil)
+        #expect(toolRow("s4", name: "mcp__other__send_agent_prompt", input: ["agentId": "a", "prompt": "hi"]).item.outgoingMessage == nil)
+
+        // paseo-peer tell：真实会话里出现过的写法。
+        let tell = { (command: String) in OutgoingAgentMessage.peerTell(command) }
+        #expect(tell(#"~/.claude/scripts/paseo-peer studio tell cfcc721 "方3 r2 已推送。\n复审只看 \"diff\"。" 2>&1 | tail -1"#)
+                == OutgoingAgentMessage(agentId: "cfcc721", machine: "studio", prompt: "方3 r2 已推送。\\n复审只看 \"diff\"。"))
+        #expect(tell("git push -q 2>&1 | tail -1; paseo-peer mini tell d05a873 '第一行\n第二行'")
+                == OutgoingAgentMessage(agentId: "d05a873", machine: "mini", prompt: "第一行\n第二行"))
+        #expect(tell("~/.claude/skills/paseo-peer-zh/scripts/paseo-peer studio tell 535994e --file /tmp/reply.md")
+                == OutgoingAgentMessage(agentId: "535994e", machine: "studio", file: "/tmp/reply.md"))
+        #expect(tell("paseo-peer studio tell 535994e \"$(cat <<'EOF'\n多行\n正文\nEOF\n)\"")?.prompt == "多行\n正文")
+        #expect(tell("paseo-peer studio who orders-service") == nil)
+        #expect(tell("paseo-peer studio logs 535994e --tail 40") == nil)
+        #expect(tell("echo paseo-peer studio tell") == nil)
+        let shellTell = TimelineRow(id: "pt", turnId: nil, timestamp: Date(),
+                                    item: .toolCall(callId: "pt", name: "Bash", status: "completed",
+                                                    detail: .shell(command: "paseo-peer studio tell cfcc721 \"好的\"", cwd: nil, output: nil, exitCode: 0),
+                                                    error: nil, agentMessage: nil), isStreaming: false, isPending: false)
+        #expect(shellTell.item.outgoingMessage?.machine == "studio")
+
+        let model = try SidebarTestFixture.model(projects: 1)
+        let host = try #require(model.hosts.first)
+        let lookup = MessageSenderLookup(host: host, model: model)
+        #expect(lookup.hostNamed("local") === host)
+        #expect(lookup.hostNamed(host.label.uppercased()) === host)
+        #expect(lookup.hostNamed("no-such-machine") == nil)
+
+        // create_agent 带 initialPrompt：新开会话并发送；会话 id 在输出里（几种包法都认）。
+        let createInput: JSONValue = ["title": "#1632 orders main 原有 16 项测试失败", "provider": "claude/claude-opus-5-5",
+                                      "initialPrompt": "【跨项目消息】来自「订单服务」项目的会话（id f6ae738），Gavin 让我把这件事派给你。\n\n处理看板 #1632：orders main 全量测试原有 16 项失败。"]
+        let create = TimelineRow(id: "c", turnId: nil, timestamp: Date(),
+                                 item: .toolCall(callId: "c", name: "mcp__paseo__create_agent", status: "completed",
+                                                 detail: .unknown(["input": createInput,
+                                                                   "output": ["output": ["agentId": "f91c5375-4bf1-4301-bc7d-881d95966f35", "availableModes": []]]]),
+                                                 error: nil, agentMessage: nil), isStreaming: false, isPending: false)
+        let created = try #require(create.item.outgoingMessage)
+        #expect(created.creates && created.agentId == "f91c5375-4bf1-4301-bc7d-881d95966f35")
+        #expect(created.title == "#1632 orders main 原有 16 项测试失败")
+        #expect(created.prompt?.hasPrefix("Gavin 让我把这件事派给你。\n\n处理看板 #1632") == true)
+        #expect(OutgoingAgentMessage.createdAgentId(["content": [["type": "text", "text": #"{"agentId":"abc-1","status":"idle"}"#]]]) == "abc-1")
+        #expect(toolRow("c2", name: "mcp__paseo__create_agent", status: "running", input: createInput).item.outgoingMessage?.agentId == "")
+        #expect(toolRow("c3", name: "mcp__paseo__create_agent", input: ["title": "空会话"]).item.outgoingMessage == nil)
+
+        // 查询类调用：一句话，会话名可点。
+        let check = toolRow("q1", name: "mcp__paseo__get_agent_status", input: ["agentId": "81790731-cf63-4158", "serverId": "srv_studio"])
+        let action = try #require(check.item.paseoAgentAction)
+        #expect(action.agentId == "81790731-cf63-4158" && action.serverId == "srv_studio")
+        #expect(check.item.toolSummary == "查看「8179073」的状态")
+        #expect(toolRow("q2", name: "paseo.get_agent_activity", input: ["agentId": "abc"]).item.toolSummary == "查看「abc」的最近活动")
+        #expect(toolRow("q3", name: "mcp__paseo__list_agents", input: [:]).item.toolSummary == "列出会话")
+        #expect(toolRow("q4", name: "mcp__paseo__list_agents", input: [:]).item.paseoAgentAction == nil)
+        #expect(send.item.paseoAgentAction == nil)
+
+        // paseo-peer 其他子命令：针对会话的可点，其余一句话。
+        let peer = { (c: String) in PeerCommand(c) }
+        #expect(peer("~/.claude/scripts/paseo-peer studio wait cfcc721 --timeout 90") == .agent(PaseoAgentAction(leaf: "peer_wait", agentId: "cfcc721", machine: "studio")))
+        #expect(peer("paseo-peer studio logs 535994e --tail 40 > /tmp/l.txt; tail -5 /tmp/l.txt") == .agent(PaseoAgentAction(leaf: "peer_logs", agentId: "535994e", machine: "studio")))
+        #expect(peer("paseo-peer studio permit allow 535994e req-1") == .agent(PaseoAgentAction(leaf: "permit_allow", agentId: "535994e", machine: "studio")))
+        #expect(peer("paseo-peer studio agent mode 535994e bypassPermissions") == .agent(PaseoAgentAction(leaf: "set_agent_mode", agentId: "535994e", machine: "studio")))
+        #expect(peer("paseo-peer studio who orders-service")?.summary == "在 studio 上查看做「orders-service」的会话")
+        #expect(peer("paseo-peer local find 部署 deploy -a --days 7")?.summary == "在本机上找做「部署 / deploy」的会话")
+        #expect(peer("paseo-peer studio mine")?.summary == "列出本会话在 studio 上开的配合会话")
+        #expect(peer("paseo-peer ls")?.summary == "列出所有机器")
+        #expect(peer("paseo-peer whoami --header --remote")?.summary == "查看本会话的来源说明")
+        #expect(peer("paseo-peer studio wait cfcc721")?.summary == "等「studio · cfcc721」跑完这一轮")
+        #expect(peer("paseo-peer join") == nil)
+        #expect(peer("ls -la ~/.paseo") == nil)
+        let waitRow = TimelineRow(id: "w", turnId: nil, timestamp: Date(),
+                                  item: .toolCall(callId: "w", name: "Bash", status: "completed",
+                                                  detail: .shell(command: "paseo-peer studio wait cfcc721", cwd: nil, output: "done", exitCode: 0),
+                                                  error: nil, agentMessage: nil), isStreaming: false, isPending: false)
+        #expect(waitRow.item.paseoAgentAction?.leaf == "peer_wait")
+        #expect(waitRow.item.toolSummary == "等「studio · cfcc721」跑完这一轮")
+        #expect(workSummary([waitRow]) == "1 个其他操作")
+
+        // tell 输出里的 serverId：本条直接用，同一会话里其他 paseo-peer 行也学到。
+        let toldRow = TimelineRow(id: "t", turnId: nil, timestamp: Date(),
+                                  item: .toolCall(callId: "t", name: "Bash", status: "completed",
+                                                  detail: .shell(command: "paseo-peer studio tell cfcc721 \"好的\"", cwd: nil,
+                                                                 output: "Queued\n已发送：studio（serverId srv_-cIHYMZUxi3_）", exitCode: 0),
+                                                  error: nil, agentMessage: nil), isStreaming: false, isPending: false)
+        #expect(toldRow.item.outgoingMessage?.serverId == "srv_-cIHYMZUxi3_")
+        #expect(DisplayItemCache.peerServers([waitRow, toldRow]) == ["studio": "srv_-cIHYMZUxi3_"])
+
+        // run：在那台机器上新开会话并发送；$(…) 整段算一个词。
+        let run = try #require(OutgoingAgentMessage.peerRun(#"paseo-peer studio run --no-wait --workspace wks_1 --title "测网发布" --mode bypassPermissions $(paseo-peer whoami --labels) --cwd ~/p "把后端发到测网""#,
+                                                            output: "Agent started: 1a2b3c4d-0000-4000-8000-123456789abc"))
+        #expect(run.creates && run.title == "测网发布" && run.prompt == "把后端发到测网" && run.agentId == "1a2b3c4d-0000-4000-8000-123456789abc")
+
+        // 工作区、终端、定时任务等工具：中文一句话。
+        #expect(toolRow("w1", name: "mcp__paseo__create_workspace", input: ["path": "/Users/me/projects/demo"]).item.toolSummary == "新建工作区「demo」")
+        #expect(toolRow("w2", name: "mcp__paseo__start_workspace_script", input: ["scriptName": "dev"]).item.toolSummary == "启动脚本「dev」")
+        #expect(toolRow("w3", name: "mcp__paseo__create_schedule", input: ["name": "每日巡检", "cron": "0 9 * * *"]).item.toolSummary == "新建定时任务「每日巡检」")
+        #expect(toolRow("w4", name: "mcp__paseo__capture_terminal", input: ["terminalId": "t1"]).item.toolSummary == "读取终端输出")
+
+        let user = TimelineRow(id: "u", turnId: nil, timestamp: Date(), item: .userMessage(text: "去要测网凭证", messageId: nil),
+                               isStreaming: false, isPending: false)
+        let shell = TimelineRow(id: "sh", turnId: nil, timestamp: Date(),
+                                item: .toolCall(callId: "sh", name: "Bash", status: "completed",
+                                                detail: .shell(command: "paseo-peer studio who", cwd: nil, output: nil, exitCode: 0),
+                                                error: nil, agentMessage: nil), isStreaming: false, isPending: false)
+        let status = toolRow("st", name: "mcp__paseo__get_agent_status", input: ["agentId": "81790731"])
+        let reply = TimelineRow(id: "r", turnId: nil, timestamp: Date(), item: .assistantMessage(text: "消息已发给 Studio 上的会话。", messageId: nil),
+                                isStreaming: false, isPending: false)
+        let items = DisplayItem.build([user, shell, status, send, reply], lastTurnActive: false, collapse: true)
+        #expect(items.map(\.id) == ["u", "turn-sh", "send", "r"])
+        if case .turnSummary(_, let label, _) = items[1] { #expect(label == "2 个其他操作") }
+
+        let failed = TimelineRow(id: "f", turnId: nil, timestamp: Date(),
+                                 item: .toolCall(callId: "f", name: "mcp__paseo__send_agent_prompt", status: "failed",
+                                                 detail: .unknown(["input": ["agentId": "8179073", "prompt": "再试一次"]]),
+                                                 error: ["message": "Host srv_studio is offline"], agentMessage: nil),
+                                 isStreaming: false, isPending: false)
+        try await capture(VStack(alignment: .leading, spacing: 20) {
+            ForEach([send, failed, shellTell, create]) { TimelineItemView(item: .row($0, footer: false)) }
+        }.environment(\.messageSender, lookup)
+         .padding(16).frame(maxHeight: .infinity, alignment: .top), width: 800, name: "sent-message")
+        let activity = toolRow("q5", name: "mcp__paseo__get_agent_activity", input: ["agentId": "p0-w0-s0"])
+        try await capture(VStack(alignment: .leading, spacing: 20) {
+            ToolGroupView(rows: [check])
+            ToolGroupView(rows: [activity])
+            ToolGroupView(rows: [shell, check, activity])
+            ToolGroupView(rows: [waitRow])
+            ToolGroupView(rows: [toolRow("w5", name: "mcp__paseo__create_schedule", input: ["name": "每日巡检"])])
+        }.environment(\.messageSender, lookup)
+         .padding(16).frame(maxHeight: .infinity, alignment: .top), width: 800, name: "agent-queries")
+        try await capture(VStack(alignment: .leading, spacing: 20) {
+            ForEach([send, failed]) { TimelineItemView(item: .row($0, footer: false)) }
+        }.padding(16).frame(maxHeight: .infinity, alignment: .top), width: 390, name: "sent-message-dark", dark: true)
+    }
+
     private func capture<V: View>(_ content: V, width: Int, name: String, dark: Bool = false) async throws {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 620), styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
