@@ -19,6 +19,7 @@ An **Apple Watch companion (watchOS 11+)** is included: view sessions and schedu
 
 ## Features
 
+- **Sessions working together**: a session can hand work to sessions in other projects or on other machines, message them and get results back; the timeline shows these as cards, and session names open the other session. [More below](#sessions-working-together-across-projects-and-machines)
 - **Native UI**: SwiftUI with Liquid Glass on macOS / iOS 26 and later, and standard buttons and rounded backgrounds on iOS 18; long sessions scroll smoothly
 - **On par with the official client**: multiple machines, sessions, timeline, permissions, terminals, files, diffs,
   Git and pull requests, schedules, command palette
@@ -32,6 +33,21 @@ An **Apple Watch companion (watchOS 11+)** is included: view sessions and schedu
 
 It is only a client: it doesn't include or modify the Paseo daemon, and your agents keep running on your computer
 with the Claude Code / Codex accounts logged in there.
+
+## Sessions working together, across projects and machines
+
+Paseo's built-in orchestration is one session managing its own sub-agents, on one machine. Real work often needs several sessions to cooperate: the orders service needs the payments service to change an API, test together and deploy separately; a session on the office machine hands work to one at home. With [paseo-mesh](https://github.com/gavinguo521/paseo-mesh) (two Agent Skills and a small script), sessions can find each other, exchange messages, and start sessions on another machine, and the other side reports back after each turn.
+
+Paseo Native draws this traffic right in the timeline instead of leaving it in raw tool output:
+
+<p align="center"><img src="docs/images/en/cross-session.png" width="720" alt="Cross-machine collaboration: the orders session sends a task to the payments session on the home MacBook, which replies and finishes"></p>
+
+- **Outgoing**: "Sent to …" and "Started session … and sent" get their own cards showing what was sent; they stay visible when the turn is collapsed, and failed sends are marked with the reason
+- **Incoming**: messages, completions, errors and permission requests from other sessions read as one-line titles with the content below; if that session already messaged you, its completion folds to a single line with the first line of its last reply
+- **Clickable session names**: jump straight to the other session, even on another machine, and return to where you were reading
+- **Lookups in plain words**: checking status, reading activity, waiting for a turn or finding who works on something read like "Checked status of …" instead of internal tool names
+
+Messages sent with Paseo's own MCP tools and with paseo-mesh's `paseo-peer` command are both recognized. Once paseo-mesh is installed, cross-project work on one machine needs no further setup; for cross-machine setup see the [paseo-mesh quick start](https://github.com/gavinguo521/paseo-mesh/blob/main/README.en.md#quick-start-send-this-to-your-agent).
 
 ## Download
 

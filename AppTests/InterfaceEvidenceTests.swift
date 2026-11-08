@@ -392,14 +392,65 @@ import Testing
         }.padding(16).frame(maxHeight: .infinity, alignment: .top), width: 390, name: "sent-message-dark", dark: true)
     }
 
-    private func capture<V: View>(_ content: V, width: Int, name: String, dark: Bool = false) async throws {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 620), styleMask: [.borderless], backing: .buffered, defer: false)
+    /// README 配图：一段完整的跨机器协作（示例项目名，不含真实数据）。
+    /// 英文图用 `xcodebuild … -testLanguage en` 再跑一次；输出 /tmp/paseo-readme-cross-session-<zh|en>-800.png。
+    @Test func readmeCrossSessionShowcase() async throws {
+        let en = Locale.current.language.languageCode?.identifier == "en"
+        func t(_ zh: String, _ english: String) -> String { en ? english : zh }
+        let office = HostStore(offer: .direct(serverId: "srv_office", endpoint: "localhost:1", useTls: false, password: nil),
+                               label: t("公司的 iMac", "Office iMac"), clientId: "test", appVersion: "test")
+        let home = HostStore(offer: .direct(serverId: "srv_home", endpoint: "localhost:2", useTls: false, password: nil),
+                             label: t("家里的 MacBook", "Home MacBook"), clientId: "test", appVersion: "test")
+        home.agents["pay-1"] = try #require(Agent(["id": "pay-1", "cwd": "/projects/payments", "title": .string(t("退款回调改造", "Refund callback rework")),
+                                                    "status": "idle", "createdAt": .string(Date().ISO8601Format())]))
+        let model = AppModel(testHosts: [office, home])
+        let lookup = MessageSenderLookup(host: office, model: model)
+        let base = Calendar.current.date(bySettingHour: 14, minute: 2, second: 0, of: Date()) ?? Date()
+        func at(_ minutes: Int) -> Date { base.addingTimeInterval(Double(minutes * 60)) }
+        func row(_ id: String, _ minutes: Int, _ item: TimelineItem) -> TimelineRow {
+            TimelineRow(id: id, turnId: nil, timestamp: at(minutes), item: item, isStreaming: false, isPending: false)
+        }
+        let sender: JSONValue = ["id": "pay-1", "serverId": "srv_home", "title": .string(t("退款回调改造", "Refund callback rework"))]
+        let find = row("who", 1, .toolCall(callId: "who", name: "Bash", status: "completed",
+                                           detail: .shell(command: t("paseo-peer home who 支付服务", "paseo-peer home who payments"), cwd: nil, output: nil, exitCode: 0),
+                                           error: nil, agentMessage: nil))
+        let prompt = t("【跨机器消息】来自 公司的 iMac 上「订单服务」项目的会话「退款接口联调」（id 1a2b3c4）\n\n订单服务这边退款接口已改好，需要支付服务配合：\n\n- 退款回调改用 `refund_id` + `status` 两个字段\n- 改完部署到测试环境，告诉我一声就开始联调",
+                       "[Cross-machine message] From session \"Refund API integration\" in project \"orders\" on Office iMac (id 1a2b3c4)\n\nThe refund API on the orders side is ready. Need the payments side to:\n\n- Switch the refund callback to `refund_id` + `status`\n- Deploy to staging and ping me so we can start integration testing")
+        let send = row("send", 1, .toolCall(callId: "send", name: "mcp__paseo__send_agent_prompt", status: "completed",
+                                            detail: .unknown(["input": ["agentId": "pay-1", "serverId": "srv_home", "prompt": .string(prompt)]]),
+                                            error: nil, agentMessage: nil))
+        let incoming = row("msg", 9, .toolCall(callId: "msg", name: "paseo", status: "completed", detail: .unknown(.null), error: nil,
+                                               agentMessage: ["event": "message", "sender": sender,
+                                                              "text": .string(t("回调已改成 `refund_id` + `status`，已部署到测试环境（payments-staging），可以开始联调。",
+                                                                                "Callback now uses `refund_id` + `status` and is deployed to staging (payments-staging). Ready for integration testing."))]))
+        let doneText = t("Agent pay-1 (退款回调改造) finished.\n\nServer: srv_home\n\n<agent-response>\n已通知订单服务，等待联调结果。\n</agent-response>",
+                         "Agent pay-1 (Refund callback rework) finished.\n\nServer: srv_home\n\n<agent-response>\nNotified the orders session, waiting for integration results.\n</agent-response>")
+        let done = row("done", 9, .toolCall(callId: "done", name: "paseo", status: "completed", detail: .unknown(.null), error: nil,
+                                            agentMessage: ["event": "finished", "sender": sender, "text": .string(doneText)]))
+        let reply = row("reply", 12, .assistantMessage(text: t("联调通过：退款下单 → 支付回调 → 订单状态更新，全链路 6 个用例都过了。两边都已在测试环境，可以安排上线。",
+                                                              "Integration passed: refund request → payment callback → order status update, all 6 end-to-end cases green. Both sides are on staging and ready to ship."),
+                                                       messageId: nil))
+        let rows = [send, incoming, done]
+        try await capture(VStack(alignment: .leading, spacing: 20) {
+            UserBubble(text: t("让家里那台机器上的支付服务把退款回调改一下，改完和我们联调", "Ask the payments session on the home machine to update the refund callback, then run integration tests with us"))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            ToolGroupView(rows: [find])
+            ForEach(rows) { TimelineItemView(item: .row($0, footer: false)) }
+            TimelineItemView(item: .row(reply, footer: false))
+        }
+        .environment(\.messageSender, lookup)
+        .environment(\.foldedCompletions, DisplayItemCache.foldedCompletions(rows))
+        .padding(24).frame(maxHeight: .infinity, alignment: .top), width: 800, height: en ? 600 : 556, name: "readme-cross-session-\(en ? "en" : "zh")")
+    }
+
+    private func capture<V: View>(_ content: V, width: Int, height: Int = 620, name: String, dark: Bool = false) async throws {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height), styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { window.close() }
         let view = NSHostingView(rootView: content.environment(\.colorScheme, dark ? .dark : .light).background(dark ? Color.black : Color.white))
         view.sizingOptions = []
         window.contentView = view
-        view.frame = NSRect(x: 0, y: 0, width: width, height: 620)
+        view.frame = NSRect(x: 0, y: 0, width: width, height: height)
         view.layoutSubtreeIfNeeded()
         await Task.yield()
         view.layoutSubtreeIfNeeded()
