@@ -47,6 +47,7 @@ targets:
     platform: iOS
     sources:
       - AppTests/SidebarTestFixture.swift
+      - AppTests/ScheduledSidebarTests.swift
       - AppTests/VisualizationTests.swift
       - AppTests/ReplyTextTests.swift
       - AppTests/ToolPreviewLayoutTests.swift

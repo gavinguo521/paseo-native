@@ -320,7 +320,8 @@ final class AppModel {
         var descendants: [String: [String: [Agent]]] = [:]
         // 每台机器只扫描一次；原先每个工作区都重扫所有会话和子任务，数据量大时接近平方增长。
         for h in hosts {
-            for a in h.agents.values where a.archivedAt == nil {
+            // Schedule runs stay in the schedule's history, including before archiveOnFinish takes effect.
+            for a in h.agents.values where a.archivedAt == nil && !a.isScheduledRun {
                 if let parent = a.parentAgentId { descendants[h.id, default: [:]][parent, default: []].append(a) }
                 guard !h.isNested(a) else { continue }
                 if let workspace = a.workspaceId { workspaceSessions[h.id, default: [:]][workspace, default: []].append(a) }
@@ -480,7 +481,7 @@ final class AppModel {
     /// running also counts when only one of its subagents (nested Paseo sessions or provider subagents such as
     /// Claude's Task tool) does — a parent idling while its children work is still running.
     func groupBucket(_ roots: [Agent], in host: HostStore) -> StatusBucket {
-        let live = host.agents.values.filter { $0.archivedAt == nil && $0.parentAgentId != nil }
+        let live = host.agents.values.filter { $0.archivedAt == nil && !$0.isScheduledRun && $0.parentAgentId != nil }
         let children = Dictionary(grouping: live) { $0.parentAgentId! }
         return groupBucket(roots, in: host, children: children)
     }
@@ -520,12 +521,12 @@ final class AppModel {
     }
 
     /// 侧边栏下钻用：每个工作区里的子会话（同一工作区的各个顶层会话，即工作区的标签页），按创建先后排。
-    /// 子任务（会话派出去的子代理，带 paseo.parent-agent-id）不算，它们只在输入框的子代理胶囊里。
+    /// 子任务（会话派出去的子代理）和计划任务的运行会话不算；它们由各自的专用入口展示。
     /// 整个侧栏算一次往下传（"serverId|工作区 id" → 会话），每行查表。
     func sidebarSessionIndex() -> [String: [Agent]] {
         var out: [String: [Agent]] = [:]
         for h in visibleHosts {
-            for a in h.agents.values where a.archivedAt == nil && !h.isNested(a) {
+            for a in h.agents.values where a.archivedAt == nil && !a.isScheduledRun && !h.isNested(a) {
                 guard let ws = a.workspaceId else { continue }
                 out[h.id + "|" + ws, default: []].append(a)
             }
