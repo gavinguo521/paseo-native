@@ -191,6 +191,8 @@ public struct Agent: Sendable, Identifiable {
     /// Host of the parent agent; nil means the same host.
     public var parentServerId: String? { labels["paseo.parent-server-id"] }
     public var isSubagent: Bool { parentAgentId != nil }
+    /// A session created for a schedule run. Heartbeats target existing sessions without these labels.
+    public var isScheduledRun: Bool { labels["paseo.schedule-id"] != nil || labels["paseo.schedule-run"] != nil }
     public var currentMode: AgentMode? { availableModes.first { $0.id == currentModeId } }
 
     public var bucket: StatusBucket {

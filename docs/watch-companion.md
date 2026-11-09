@@ -4,7 +4,7 @@ PaseoWatch is a watchOS 11+ companion target in the existing XcodeGen project. I
 
 ## First version
 
-- Recent sessions, their current status and recent messages; host filtering. Within a session, Reply sits directly below the status and messages appear newest-first.
+- Recent sessions, their current status and recent messages; host filtering. Schedule-created run sessions are excluded from this list, while their results remain available under schedules; existing chats targeted by heartbeats remain visible. Within a session, Reply sits directly below the status and messages appear newest-first.
 - Read-only schedule lists, details and recent execution results.
 - System dictation/text input, a transcript preview, saved drafts, and explicit Send.
 - Compact message previews with original message times; generated question replies show the user's answers.

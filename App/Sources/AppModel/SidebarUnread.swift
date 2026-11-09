@@ -6,7 +6,7 @@ import PaseoKit
     func sidebarUnreadIndex() -> [String: [AgentRef]] {
         var result: [String: [AgentRef]] = [:]
         for host in visibleHosts {
-            for agent in host.agents.values where agent.archivedAt == nil && !host.isNested(agent) && agent.bucket == .attention {
+            for agent in host.agents.values where agent.archivedAt == nil && !agent.isScheduledRun && !host.isNested(agent) && agent.bucket == .attention {
                 result[Self.rowKey(serverId: host.id, agent: agent), default: []]
                     .append(AgentRef(serverId: host.id, agentId: agent.id))
             }

@@ -52,8 +52,7 @@ final class WatchCompanion: NSObject, WCSessionDelegate {
             // Only actively running phone data is offered as a fresh passive snapshot.
             if UIApplication.shared.applicationState != .background, let model {
                 for host in model.hosts where host.state == .connected {
-                    let rows = host.agents.values.filter { $0.archivedAt == nil && !$0.isSubagent }
-                    let summaries = rows.map { summary($0, host: host) }.sorted(by: Self.sessionOrder)
+                    let summaries = Self.sessionSummaries(host.agents.values, host: host)
                     if pages[host.id]?.sessions != Array(summaries.prefix(60)) {
                         pages[host.id] = WatchSessionPage(hostID: host.id, sessions: Array(summaries.prefix(60)), hasMore: summaries.count > 60)
                     }
@@ -130,7 +129,7 @@ final class WatchCompanion: NSObject, WCSessionDelegate {
         case .sessions(let hostID):
             let host = try await readyHost(hostID)
             let agents = try await host.fetchRecentAgents(timeout: readBudget(deadline))
-            let summaries = agents.filter { $0.archivedAt == nil && !$0.isSubagent }.map { summary($0, host: host) }.sorted(by: Self.sessionOrder)
+            let summaries = Self.sessionSummaries(agents, host: host)
             let page = WatchSessionPage(hostID: hostID, sessions: summaries, hasMore: agents.count >= 60)
             pages[hostID] = page
             publish()
@@ -153,7 +152,7 @@ final class WatchCompanion: NSObject, WCSessionDelegate {
                 guard !compact.isEmpty else { return nil }
                 return WatchMessage(id: row.id, role: role, text: String(compact.prefix(800)), truncated: compact.count > 800, timestamp: row.timestamp)
             }
-            return .session(WatchSessionDetail(session: summary(agent, host: host), messages: Array(messages.suffix(8)),
+            return .session(WatchSessionDetail(session: Self.summary(agent, host: host), messages: Array(messages.suffix(8)),
                                                permissions: Array(agent.pendingPermissions.prefix(4)).map(permission)))
         case .schedules(let hostID):
             let host = try await readyHost(hostID)
@@ -288,7 +287,13 @@ final class WatchCompanion: NSObject, WCSessionDelegate {
         return result
     }
 
-    private func summary(_ agent: Agent, host: HostStore) -> WatchSessionSummary {
+    /// Passive snapshots and explicit refreshes must expose the same ordinary sessions on the watch.
+    static func sessionSummaries<S: Sequence>(_ agents: S, host: HostStore) -> [WatchSessionSummary] where S.Element == Agent {
+        agents.filter { $0.archivedAt == nil && !$0.isSubagent && !$0.isScheduledRun }
+            .map { summary($0, host: host) }.sorted(by: sessionOrder)
+    }
+
+    private static func summary(_ agent: Agent, host: HostStore) -> WatchSessionSummary {
         let status: WatchSessionStatus
         switch agent.bucket {
         case .needsInput: status = .waiting
