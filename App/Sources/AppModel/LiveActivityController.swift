@@ -225,7 +225,14 @@ final class LiveActivityController {
         }
         // 插件远程启动的活动也从这里来（系统会在后台唤醒 App 一会儿）。
         Task { [weak self] in
-            for await activity in Activity<PaseoActivityAttributes>.activityUpdates { self?.watch(activity) }
+            for await activity in Activity<PaseoActivityAttributes>.activityUpdates {
+                self?.watch(activity)
+                // 插件在后台远程启动新活动时，上一轮的「全部完成」卡片可能还没到撤下时间（dismissAfter），
+                // 会和新活动并排出现（灵动岛 / 锁屏 / Mac 菜单栏）。apply 只在前台跑，这里趁被唤醒时撤掉。
+                let stale = Activity<PaseoActivityAttributes>.activities
+                    .filter { $0.id != activity.id && $0.activityState == .ended }.map(\.id)
+                for id in stale { await Self.end(id) }
+            }
         }
         Activity<PaseoActivityAttributes>.activities.forEach(watch)
     }
@@ -266,7 +273,7 @@ final class LiveActivityController {
 
     /// 把令牌和要合并的机器交给推送机器；其他装了插件的机器注销本设备。
     func register() async {
-        guard let model else { return }
+        guard let model, Self.registersWithPlugin else { return }
         if registering { registerAgain = true; return }
         registering = true
         defer { registering = false }
@@ -337,6 +344,19 @@ final class LiveActivityController {
             }
         }
     }
+
+    /// 测试、模拟器、用 PASEO_PAIRING 预置机器的调试启动都不向插件登记：它们各有自己的 deviceId，
+    /// 登记了就会在插件里留下多余的设备，一直收推送。调试插件推送时可设 PASEO_LIVE_ACTIVITY_REGISTER=1 强制登记。
+    static let registersWithPlugin: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        if env["PASEO_LIVE_ACTIVITY_REGISTER"] == "1" { return true }
+        if AppDefaults.isTesting { return false }
+        #if targetEnvironment(simulator)
+        return false
+        #else
+        return env["PASEO_PAIRING"]?.isEmpty ?? true
+        #endif
+    }()
 
     /// 用户看得到 App（不是被推送从后台唤醒）。拉下控制中心、弹系统对话框时是 inactive，也算。
     static var isForeground: Bool { UIApplication.shared.applicationState != .background }

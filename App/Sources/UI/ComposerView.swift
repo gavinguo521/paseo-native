@@ -956,7 +956,7 @@ struct DraftComposerView: View {
             }
             }
         } trailing: {
-            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || uploads.contains(where: { $0.done }) {
+            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.isEmpty || uploads.contains(where: { $0.done }) {
                 RoundButton(systemImage: "arrow.up", busy: sending, help: String(localized: "开始")) { create() }
             }
         } onSubmit: { create() }
@@ -1010,7 +1010,7 @@ struct DraftComposerView: View {
 
     private func create() {
         let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !sending, !prompt.isEmpty || uploads.contains(where: { $0.done }) else { return }
+        guard !sending, !prompt.isEmpty || !images.isEmpty || uploads.contains(where: { $0.done }) else { return }
         guard !uploads.contains(where: { !$0.done }) else { error = uploads.compactMap(\.error).first ?? String(localized: "文件还在上传"); return }
         sending = true
         error = nil
