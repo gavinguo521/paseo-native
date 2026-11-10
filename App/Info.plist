@@ -51,6 +51,8 @@
 	<string>扫描配对二维码和拍照添加到会话</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>选择图片发给会话</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>把会话里的图片存到相册</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>

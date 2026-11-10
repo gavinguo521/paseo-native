@@ -3,6 +3,7 @@
 
 import PaseoKit
 import SwiftUI
+import UniformTypeIdentifiers
 import WebKit
 
 struct MarkdownView: View {
@@ -778,6 +779,7 @@ struct MarkdownImage: View {
     @State private var zoomed: Image?
     @State private var thumbnail: Image?
     @State private var tried = false
+    @State private var exportType: UTType?
     @Environment(\.hostFileReader) private var reader
     @Environment(\.displayScale) private var displayScale
 
@@ -790,6 +792,7 @@ struct MarkdownImage: View {
                 thumbnail.resizable().scaledToFit()
                     .frame(maxWidth: maxSize.width, maxHeight: maxSize.height, alignment: alignment)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .imageExport(source, type: exportType)
                     .onTapGesture {
                         zoomed = thumbnail
                         Task {
@@ -807,10 +810,19 @@ struct MarkdownImage: View {
             guard !Task.isCancelled else { return }
             thumbnail = cg.map { Image(decorative: $0, scale: displayScale) }
             tried = true
+            // 拖出时要先声明文件类型；字节刚读过，一般直接命中缓存。
+            if cg != nil, let data = await source.load(), !Task.isCancelled { exportType = ImageExport.type(of: data) }
         }
         .help(alt.isEmpty ? String(localized: "点击放大") : String(localized: "\(alt)（点击放大）"))
         .sheet(isPresented: Binding(get: { zoomed != nil }, set: { if !$0 { zoomed = nil } })) {
-            if let zoomed { ImageLightbox(image: zoomed, title: alt) }
+            if let zoomed { ImageLightbox(image: zoomed, title: alt, source: source, sourceType: exportType) }
+        }
+    }
+
+    private var source: ImageSource {
+        let (key, url, snapshotKey, reader) = (sourceKey, url, cacheKey, reader)
+        return ImageSource(name: url) {
+            await TimelineImageLoader.shared.data(key: key, url: url, snapshotKey: snapshotKey, reader: reader)
         }
     }
 
@@ -923,6 +935,8 @@ struct ImageLightbox: View {
     @Environment(\.dismiss) private var dismiss
     let image: Image
     var title = ""
+    var source: ImageSource?
+    var sourceType: UTType?
     @State private var scale: CGFloat = 1
     @State private var base: CGFloat = 1
 
@@ -939,6 +953,7 @@ struct ImageLightbox: View {
                 Button { scale = 1; base = 1 } label: { Image(systemName: "arrow.up.left.and.down.right.magnifyingglass") }
                     .keyboardShortcut("0", modifiers: .command).help("适合窗口")
                     .accessibilityLabel("适合窗口")
+                if let source { ImageSaveButton(source: source) }
                 Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
             }
             .buttonStyle(.plain)
@@ -948,6 +963,7 @@ struct ImageLightbox: View {
                 ScrollView([.horizontal, .vertical]) {
                     image.resizable().scaledToFit()
                         .frame(width: geo.size.width * scale, height: geo.size.height * scale)
+                        .imageExport(source, type: sourceType)
                         .onTapGesture(count: 2) { withAnimation(.snappy) { scale = scale > 1 ? 1 : 2; base = scale } }
                 }
                 .gesture(MagnifyGesture()

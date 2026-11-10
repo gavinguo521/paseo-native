@@ -13876,6 +13876,56 @@
           }
         }
       }
+    },
+    "存储图片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save Image"
+          }
+        }
+      }
+    },
+    "存储图片…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save Image…"
+          }
+        }
+      }
+    },
+    "存储图片（⌘S），也可以直接把图片拖出去": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save image (⌘S), or drag the image out"
+          }
+        }
+      }
+    },
+    "存储或分享图片…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save or Share Image…"
+          }
+        }
+      }
+    },
+    "拷贝图片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Image"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

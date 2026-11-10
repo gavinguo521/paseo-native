@@ -8,7 +8,7 @@ struct UserMessageImages: View {
     @Environment(\.hostFileReader) private var reader
     @Environment(\.messageImagesConnected) private var connected
     @State private var remoteImages: [MessageImage] = []
-    @State private var zoomed: Image?
+    @State private var zoomed: ImageAttachment?
 
     var body: some View {
         // Keep a concrete container before metadata arrives. An empty Group inside a
@@ -24,7 +24,8 @@ struct UserMessageImages: View {
                             (ImageTools.image(image, maxPixel: 1080) ?? Image(systemName: "photo"))
                                 .resizable().scaledToFit().frame(maxWidth: 360, maxHeight: 180)
                                 .clipShape(RoundedRectangle(cornerRadius: 14))
-                                .onTapGesture { zoomed = ImageTools.image(image) }
+                                .imageExport(ImageSource(name: "", data: image.data))
+                                .onTapGesture { zoomed = image }
                         }
                     } else {
                         ForEach(remoteImages) { image in
@@ -49,8 +50,10 @@ struct UserMessageImages: View {
                 }
             }
         }
-        .sheet(isPresented: Binding(get: { zoomed != nil }, set: { if !$0 { zoomed = nil } })) {
-            if let zoomed { ImageLightbox(image: zoomed) }
+        .sheet(item: $zoomed) { attachment in
+            if let image = ImageTools.image(attachment) {
+                ImageLightbox(image: image, source: ImageSource(name: "", data: attachment.data))
+            }
         }
     }
 }

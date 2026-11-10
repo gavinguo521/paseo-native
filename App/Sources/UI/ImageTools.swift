@@ -156,7 +156,7 @@ struct AttachmentTray: View {
         }
         .sheet(item: $preview) { attachment in
             if let image = ImageTools.image(attachment) {
-                ImageLightbox(image: image)
+                ImageLightbox(image: image, source: ImageSource(name: "", data: attachment.data))
             }
         }
     }

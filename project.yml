@@ -16,7 +16,7 @@ settings:
     # 界面文案：中文为源语言，英文翻译在各 target 的 Localizable.xcstrings（编译时自动收集 SwiftUI 文案）
     SWIFT_EMIT_LOC_STRINGS: YES
     LOCALIZATION_PREFERS_STRING_CATALOGS: YES
-    MARKETING_VERSION: "1.0.33"
+    MARKETING_VERSION: "1.0.34"
     CURRENT_PROJECT_VERSION: "1"
 packages:
   PaseoKit:
@@ -112,6 +112,7 @@ targets:
         UISupportedInterfaceOrientations~iphone: [UIInterfaceOrientationPortrait]
         NSCameraUsageDescription: 扫描配对二维码和拍照添加到会话
         NSPhotoLibraryUsageDescription: 选择图片发给会话
+        NSPhotoLibraryAddUsageDescription: 把会话里的图片存到相册
         ITSAppUsesNonExemptEncryption: false
         # 灵动岛 / 锁屏实时活动（iOS），见 App/Shared/PaseoActivity.swift。
         NSSupportsLiveActivities: true

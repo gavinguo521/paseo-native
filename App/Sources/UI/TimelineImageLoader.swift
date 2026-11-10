@@ -32,7 +32,8 @@ actor TimelineImageLoader {
         return cg
     }
 
-    private func data(key: String, url: String, snapshotKey: String?, reader: HostFileReader?) async -> Data? {
+    /// 原始字节：存储、拷贝和拖出图片时用，通常已在字节缓存里。
+    func data(key: String, url: String, snapshotKey: String?, reader: HostFileReader?) async -> Data? {
         if let hit = bytes.object(forKey: key as NSString) { return hit as Data }
         if let transfer = transfers[key] { return await transfer.value }
         let task = Task<Data?, Never> {
