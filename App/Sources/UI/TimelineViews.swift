@@ -758,13 +758,7 @@ struct PendingStartView: View {
         ScrollView {
             VStack(alignment: .trailing, spacing: 6) {
                 if !pending.images.isEmpty {
-                    HStack(spacing: 6) {
-                        Spacer(minLength: 64)
-                        ForEach(pending.images) { a in
-                            (ImageTools.image(a, maxPixel: 1080) ?? Image(systemName: "photo")).resizable().scaledToFit()
-                                .frame(maxWidth: 360, maxHeight: 180).clipShape(RoundedRectangle(cornerRadius: 14))
-                        }
-                    }
+                    UserMessageImages(messageId: "pending-start", localImages: pending.images)
                 }
                 UserBubble(text: pending.text, pending: true)
                 HStack(spacing: 8) {

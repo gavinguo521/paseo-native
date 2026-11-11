@@ -14002,6 +14002,166 @@
           }
         }
       }
+    },
+    "无法读取视频画面，请选择可播放的 MP4 或 MOV 文件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to read video frames. Choose a playable MP4 or MOV file."
+          }
+        }
+      }
+    },
+    "视频超过 500 MB，请先裁剪需要分析的片段。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video exceeds 500 MB. Trim it to the part you want to analyze."
+          }
+        }
+      }
+    },
+    "视频超过 3 分钟，请先裁剪需要分析的片段。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video exceeds 3 minutes. Trim it to the part you want to analyze."
+          }
+        }
+      }
+    },
+    "无法生成视频画面，请换一个视频重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to prepare video frames. Try a different video."
+          }
+        }
+      }
+    },
+    "本次图片和视频画面过多，请减少附件或分开发送。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Too many images and video frames. Remove some attachments or send them separately."
+          }
+        }
+      }
+    },
+    "视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video"
+          }
+        }
+      }
+    },
+    "预览视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview video"
+          }
+        }
+      }
+    },
+    "%lld 秒 · %lld 帧": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld sec · %2$lld frames"
+          }
+        }
+      }
+    },
+    "正在准备视频画面…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing video frames…"
+          }
+        }
+      }
+    },
+    "发送采样画面供 AI 分析，不含音频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send sampled frames for AI analysis, without audio"
+          }
+        }
+      }
+    },
+    "AI 将分析下方的采样画面，未采样的瞬间可能遗漏；不包含音频。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI will analyze the sampled frames below. Events between samples may be missed; audio is not included."
+          }
+        }
+      }
+    },
+    "附件还在准备中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attachments are still being prepared"
+          }
+        }
+      }
+    },
+    "· %lld 个视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "· %lld videos"
+          }
+        }
+      }
+    },
+    "添加附件…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Attachments…"
+          }
+        }
+      }
+    },
+    "添加附件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Attachments"
+          }
+        }
+      }
+    },
+    "照片与视频…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photos & Videos…"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
