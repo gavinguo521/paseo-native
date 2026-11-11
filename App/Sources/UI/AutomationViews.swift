@@ -13,7 +13,7 @@ struct SchedulesView: View {
     @State private var tab = 0
     @State private var editing: ScheduleFormTarget?
     @State private var confirmDelete: (HostStore, Schedule)?
-    @State private var detail: (HostStore, Schedule)?
+    @State private var detail: (HostStore, String)?
     /// 本页自己的主机筛选（nil = 全部机器），不和侧栏共用：在这里只看一台机器，不该让侧栏的会话也跟着少掉。
     @State private var hostFilter: String?
 
@@ -53,7 +53,7 @@ struct SchedulesView: View {
             ForEach(visible) { item in
                 ScheduleRow(item: item, gone: targetGone(item), showHost: model.hosts.count > 1)
                     .contentShape(Rectangle())
-                    .onTapGesture { detail = (item.host, item.schedule) }
+                    .onTapGesture { detail = (item.host, item.schedule.id) }
                     .contextMenu { menu(item) }
             }
             if loading && (!visible.isEmpty || !errors.isEmpty || visibleActionError != nil) {
@@ -116,15 +116,24 @@ struct SchedulesView: View {
             }
         }
         .onDisappear { loader.cancel() }
+        .onChange(of: model.pendingScheduleNotification, initial: true) { _, _ in openNotificationHistory() }
+        .onChange(of: model.hosts.map(\.id)) { _, _ in openNotificationHistory() }
         .sheet(item: $editing) { target in ScheduleForm(target: target) { refresh += 1 } }
         .sheet(isPresented: Binding(get: { detail != nil }, set: { if !$0 { detail = nil } })) {
-            if let (h, s) = detail { ScheduleDetail(host: h, scheduleId: s.id) }
+            if let (h, id) = detail { ScheduleDetail(host: h, scheduleId: id).id(h.id + ":" + id) }
         }
         .confirmationDialog("删除「\(confirmDelete?.1.title ?? "")」？", isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } })) {
             Button("删除", role: .destructive) {
                 if let (h, s) = confirmDelete { act(h, s, "delete") }
             }
         } message: { Text("删除后无法恢复。") }
+    }
+
+    private func openNotificationHistory() {
+        guard let route = model.pendingScheduleNotification, let host = model.host(route.serverId) else { return }
+        editing = nil
+        detail = (host, route.scheduleId)
+        model.pendingScheduleNotification = nil
     }
 
     private var statusPicker: some View {
@@ -288,6 +297,14 @@ struct ScheduleForm: View {
     @State private var thinkingId = ""
     @State private var isolation = "local"
     @State private var archiveOnFinish = true
+    @State private var notifyResults = false
+    @State private var notificationPreference: ScheduleNotificationPreference?
+    @State private var notificationLoading = false
+    @State private var notificationProblem: String?
+    @State private var notificationHostID: String?
+    @State private var notificationLoadID = UUID()
+    @State private var configuringBark = false
+    @State private var editorSave = ScheduleEditorSave()
     @State private var maxRuns = ""
     @State private var error: String?
     @State private var saving = false
@@ -315,7 +332,7 @@ struct ScheduleForm: View {
                                 }
                             }
                         }
-                        .disabled(editing != nil)
+                        .disabled(editing != nil || editorSave.createdID != nil)
                         if let host {
                             Picker("Provider", selection: $provider) {
                                 ForEach(host.providers.compactMap { $0["provider"]?.stringValue }, id: \.self) { Text($0).tag($0) }
@@ -344,6 +361,18 @@ struct ScheduleForm: View {
                         }
                         Picker("隔离", selection: $isolation) { Text("直接在目录里").tag("local"); Text("新建 worktree").tag("worktree") }
                         Toggle("跑完自动归档", isOn: $archiveOnFinish)
+                        Toggle("通知任务结果", isOn: $notifyResults)
+                            .disabled(notificationLoading || notificationPreference == nil
+                                      || (notificationPreference?.ready == false && notificationPreference?.enabled != true))
+                        Text("每次运行结束后，向手机通知结果或失败原因；自动归档不影响通知。")
+                            .font(.caption).foregroundStyle(Theme.muted)
+                        if host != nil { Button("配置 Bark 推送…") { configuringBark = true } }
+                        if notificationLoading {
+                            ProgressView().controlSize(.small)
+                        } else if let notificationProblem {
+                            Text(notificationProblem).font(.caption).foregroundStyle(Theme.dotWarning)
+                            if host != nil { Button("重新检查通知设置") { Task { await loadNotificationPreference() } } }
+                        }
                     }
                     Section("内容") {
                         TextField("名字（可选）", text: $name)
@@ -372,18 +401,27 @@ struct ScheduleForm: View {
                 }
                 if let error { Text(error).foregroundStyle(Theme.destructive) }
             }
+            .disabled(saving)
             .formStyle(.grouped)
             .navigationTitle(editing == nil ? "新建计划任务" : "编辑")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("保存") { save() }.disabled(saving || !valid) }
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.disabled(saving) }
+                ToolbarItem(placement: .confirmationAction) { Button("保存") { save() }.disabled(saving || notificationLoading || !valid) }
             }
             .task(id: workspace) {
                 if let host, host.providers.isEmpty { await host.loadProviders(cwd: workspace.flatMap { model.workspace($0)?.directory }) }
             }
+            .task(id: host.map { $0.id + ":" + String(describing: $0.state) }) {
+                await loadNotificationPreference()
+            }
             .onAppear(perform: fill)
         }
         .macOnly { $0.frame(minWidth: 520, minHeight: 560) }
+        .sheet(isPresented: $configuringBark, onDismiss: {
+            Task { await loadNotificationPreference() }
+        }) {
+            if let host { BarkConfigurationSheet(host: host) }
+        }
     }
 
     private var valid: Bool {
@@ -413,34 +451,85 @@ struct ScheduleForm: View {
     }
 
     private func save() {
+        guard !saving, let h = host else { return }
+        let preference = notificationPreference
+        let requestedNotifications = notifyResults
         saving = true
         error = nil
         let cadence: JSONValue = ["type": "cron", "expression": .string(cron.trimmingCharacters(in: .whitespaces)),
                                   "timezone": .string(TimeZone.current.identifier)]
         Task {
             do {
-                if let (serverId, s) = editing, let h = model.host(serverId) {
-                    var p: [String: JSONValue] = ["cadence": cadence]
-                    if !s.isHeartbeat {
-                        p["name"] = name.isEmpty ? .null : .string(name)
-                        p["prompt"] = .string(prompt)
-                        p["maxRuns"] = Int(maxRuns).map { .number(Double($0)) } ?? .null
-                        p["newAgentConfig"] = config()
+                let changedNotification = !isHeartbeat && preference.map { $0.enabled != requestedNotifications } == true
+                if changedNotification && requestedNotifications {
+                    // Recheck delivery readiness before creating a schedule.
+                    let latest = try await h.scheduleNotificationPreference(editing?.1.id ?? editorSave.createdID)
+                    guard latest.ready else {
+                        throw HostStore.ActionError.rejected(String(localized: "请先在任务所在主机配置手机推送，并在手机上开启通知。"))
                     }
-                    try await h.updateSchedule(s.id, p)
-                } else if let ref = workspace, let h = model.host(ref.serverId) {
-                    var p: [String: JSONValue] = ["prompt": .string(prompt), "cadence": cadence, "target": ["type": "new-agent", "config": config()]]
-                    if !name.isEmpty { p["name"] = .string(name) }
-                    if let n = Int(maxRuns) { p["maxRuns"] = .number(Double(n)) }
-                    try await h.createSchedule(p)
                 }
+                var update: [String: JSONValue] = ["cadence": cadence]
+                if !isHeartbeat {
+                    update["name"] = name.isEmpty ? .null : .string(name)
+                    update["prompt"] = .string(prompt)
+                    update["maxRuns"] = Int(maxRuns).map { .number(Double($0)) } ?? .null
+                    update["newAgentConfig"] = config()
+                }
+                var create: [String: JSONValue] = ["prompt": .string(prompt), "cadence": cadence, "target": ["type": "new-agent", "config": config()]]
+                if !name.isEmpty { create["name"] = .string(name) }
+                if let n = Int(maxRuns) { create["maxRuns"] = .number(Double(n)) }
+                let saveNotification: (@MainActor (String) async throws -> Void)?
+                if changedNotification, let preference {
+                    saveNotification = { id in
+                        notificationPreference = try await h.setScheduleNotifications(id, enabled: requestedNotifications,
+                                                                                     expectedRevision: preference.revision)
+                    }
+                } else { saveNotification = nil }
+                try await editorSave.save(existingID: editing?.1.id,
+                    create: { try await h.createSchedule(create).id },
+                    update: { try await h.updateSchedule($0, update) }, saveNotification: saveNotification)
                 onDone()
                 dismiss()
+            } catch ScheduleEditorSave.Failure.notification(let underlying) {
+                self.error = String(localized: "任务已保存，但通知设置未保存。请重试或重新打开任务确认。") + "\n\(underlying)"
+                onDone()
             } catch {
                 self.error = "\(error)"
             }
             saving = false
         }
+    }
+
+    @MainActor private func loadNotificationPreference() async {
+        let loadID = UUID()
+        notificationLoadID = loadID
+        guard !isHeartbeat, let h = host else {
+            notificationLoading = false
+            notificationPreference = nil
+            notifyResults = false
+            return
+        }
+        notificationLoading = true
+        notificationProblem = nil
+        let previous = notificationHostID == h.id ? notificationPreference : nil
+        if notificationHostID != h.id { notifyResults = false }
+        notificationHostID = h.id
+        let desired = notifyResults
+        notificationPreference = nil
+        do {
+            let preference = try await h.scheduleNotificationPreference(editing?.1.id ?? editorSave.createdID)
+            guard !Task.isCancelled, notificationLoadID == loadID, host?.id == h.id else { return }
+            notificationPreference = preference
+            notifyResults = previous.map { $0.enabled != desired } == true ? desired : preference.enabled
+            if !preference.ready {
+                notificationProblem = String(localized: "请先配置 Bark 推送，或配置 APNs 并在手机上开启通知。")
+            }
+        } catch {
+            guard !Task.isCancelled, notificationLoadID == loadID, host?.id == h.id else { return }
+            notificationPreference = previous
+            notificationProblem = String(localized: "无法读取通知设置。请确认任务所在主机已安装并启用最新推送插件。")
+        }
+        notificationLoading = false
     }
 
     private func config() -> JSONValue {
@@ -461,6 +550,8 @@ private struct ScheduleDetail: View {
     let host: HostStore
     let scheduleId: String
     @State private var schedule: Schedule?
+    @State private var error: String?
+    @State private var refresh = 0
 
     var body: some View {
         NavigationStack {
@@ -482,19 +573,31 @@ private struct ScheduleDetail: View {
                                         Button("打开会话") { dismiss(); model.open(AgentRef(serverId: host.id, agentId: agentId)) }
                                     }
                                 }
-                                if let out = run.output ?? run.error {
+                                if let out = run.status == "failed" ? (run.error ?? run.output) : (run.output ?? run.error) {
                                     Text(out).font(.system(size: 12)).foregroundStyle(run.error != nil ? Theme.destructive : Theme.muted).lineLimit(6)
                                 }
                             }
                         }
                     }
+                } else if let error {
+                    Text(error).foregroundStyle(Theme.destructive)
+                    Button("重试") { refresh += 1 }
+                } else if host.state != .connected {
+                    Text("正在等待主机连接…").foregroundStyle(Theme.muted)
                 } else {
                     ProgressView()
                 }
             }
             .navigationTitle(schedule?.title ?? String(localized: "计划任务"))
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
-            .task { schedule = try? await host.inspectSchedule(scheduleId) }
+            .task(id: String(describing: host.state) + ":\(refresh)") {
+                guard host.state == .connected else { return }
+                error = nil
+                do {
+                    schedule = try await host.inspectSchedule(scheduleId)
+                    if schedule == nil { error = String(localized: "计划任务已删除或不存在。") }
+                } catch { self.error = "\(error)" }
+            }
         }
         .macOnly { $0.frame(minWidth: 520, minHeight: 480) }
     }

@@ -1,3 +1,4 @@
+import PaseoKit
 import SwiftUI
 
 @main
@@ -58,7 +59,9 @@ struct PaseoApp: App {
                 }
                 // 点灵动岛 / 锁屏实时活动里的会话；Mac 上从终端或别的 App 打开 paseonative:// 链接也走这里。
                 .onOpenURL { url in
-                    if let (s, a) = PaseoActivityLink.parse(url) {
+                    if let route = ScheduleNotificationRoute(url: url) {
+                        model.openScheduleNotification(route)
+                    } else if let (s, a) = PaseoActivityLink.parse(url) {
                         model.revealDetail += 1
                         model.open(AgentRef(serverId: s, agentId: a))
                     }

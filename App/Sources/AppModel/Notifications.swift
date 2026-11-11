@@ -9,6 +9,7 @@ import UserNotifications
 final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
     var onOpen: ((AgentRef) -> Void)?
+    var onOpenSchedule: ((ScheduleNotificationRoute) -> Void)?
     /// A button or the reply field of a notification; the app may be in the background.
     /// 做完（或失败）才返回：App 可能是被通知按钮从后台唤醒的，要等批准真正发到机器再让系统挂起。
     var onAction: ((AgentRef, NotificationAction) async -> Void)?
@@ -21,6 +22,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     private enum Category {
         static let finished = "paseo.finished", permission = "paseo.permission"
+        static let scheduleResult = "paseo.schedule-result"
         static let reply = "paseo.reply", allow = "paseo.allow", deny = "paseo.deny"
     }
 
@@ -35,6 +37,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         center.setNotificationCategories([
             UNNotificationCategory(identifier: Category.finished, actions: [reply], intentIdentifiers: []),
             UNNotificationCategory(identifier: Category.permission, actions: [allow, deny], intentIdentifiers: []),
+            UNNotificationCategory(identifier: Category.scheduleResult, actions: [], intentIdentifiers: []),
         ])
         #if DEBUG
         // PASEO_NO_NOTIFY=1: no permission prompt (simulator screenshots, where nobody can tap it).
@@ -100,8 +103,15 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let requestId = info["requestId"] as? String
         let text = (response as? UNTextInputNotificationResponse)?.userText.trimmingCharacters(in: .whitespacesAndNewlines)
         let action = response.actionIdentifier
+        let scheduleRoute = ScheduleNotificationRoute(userInfo: info)
         Task { @MainActor in
-            if let s, let a {
+            if action == UNNotificationDismissActionIdentifier {
+                completionHandler()
+                return
+            }
+            if let scheduleRoute {
+                self.onOpenSchedule?(scheduleRoute)
+            } else if let s, let a {
                 let ref = AgentRef(serverId: s, agentId: a)
                 switch action {
                 case Category.reply: if let text, !text.isEmpty { await self.onAction?(ref, .reply(text)) }
@@ -121,9 +131,11 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         // 没直连那台机器（只经推送机器的关联看到它）时没有本地通知，照常显示。
         let remote = notification.request.trigger is UNPushNotificationTrigger
         let serverId = notification.request.content.userInfo["serverId"] as? String
+        let scheduleResult = ScheduleNotificationRoute(userInfo: notification.request.content.userInfo) != nil
         DispatchQueue.main.async {
             let covered = MainActor.assumeIsolated { serverId.map { self.isHostConnected?($0) ?? false } ?? false }
-            completionHandler(remote && covered ? [] : [.banner, .sound])
+            // Schedule runs have no corresponding local attention notification.
+            completionHandler(remote && covered && !scheduleResult ? [] : [.banner, .sound])
         }
     }
 }
