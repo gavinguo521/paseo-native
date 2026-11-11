@@ -544,6 +544,7 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Binding var showAddHost: Bool
     @State private var tab = 0
+    @State private var configuringBarkHost: HostStore?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -551,7 +552,9 @@ struct SettingsView: View {
             SettingsTabPicker(tab: $tab).padding(.top, 14)
             #endif
             // iOS: the picker sits in the navigation bar, on one line with 完成.
-            if tab == 0 { PreferencesView(tabPicker: $tab) } else { HostsView(showAddHost: $showAddHost, tabPicker: $tab) }
+            if tab == 0 {
+                PreferencesView(tabPicker: $tab, configuringBarkHost: $configuringBarkHost)
+            } else { HostsView(showAddHost: $showAddHost, tabPicker: $tab) }
         }
         .onAppear { tab = model.settingsTab; model.settingsTab = 0 }
         #if os(macOS)
@@ -591,6 +594,7 @@ struct SettingsTabPicker: View {
 
 struct PreferencesView: View {
     var tabPicker: Binding<Int>? = nil
+    @Binding var configuringBarkHost: HostStore?
     @Environment(\.dismiss) private var dismiss
     @AppStorage("sendBehavior", store: AppDefaults.store) private var sendBehavior = SendBehavior.steer.rawValue
     @AppStorage("notifications", store: AppDefaults.store) private var notifications = true
@@ -721,6 +725,7 @@ struct PreferencesView: View {
                         #endif
                     }
                 }
+                BarkPushSection(configuringHost: $configuringBarkHost)
                 LiveActivityPushSection()
                 Section {
                     Picker("终端字号", selection: $terminalFontSize) {
@@ -772,6 +777,12 @@ struct PreferencesView: View {
                 #endif
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
             }
+        }
+        // A Form distributes Section modifiers to its content. Presenting from
+        // that section can create competing sheets and dismiss them on iOS.
+        // Keep one presenter on the stable settings navigation container.
+        .sheet(item: $configuringBarkHost) { host in
+            BarkConfigurationSheet(host: host)
         }
     }
 }
