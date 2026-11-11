@@ -111,7 +111,7 @@ targets:
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~iphone: [UIInterfaceOrientationPortrait]
         NSCameraUsageDescription: 扫描配对二维码和拍照添加到会话
-        NSPhotoLibraryUsageDescription: 选择图片发给会话
+        NSPhotoLibraryUsageDescription: 选择图片或视频发给会话
         NSPhotoLibraryAddUsageDescription: 把会话里的图片存到相册
         ITSAppUsesNonExemptEncryption: false
         # 灵动岛 / 锁屏实时活动（iOS），见 App/Shared/PaseoActivity.swift。

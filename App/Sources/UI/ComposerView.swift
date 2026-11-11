@@ -247,6 +247,7 @@ struct ComposerView: View {
                     Image(systemName: "clock").foregroundStyle(Theme.muted)
                     Text(q.text.isEmpty ? q.uploads.map(\.name).joined(separator: ", ") : q.text).lineLimit(1)
                     if !q.images.isEmpty { Text("· \(q.images.count) 张图").foregroundStyle(Theme.muted) }
+                    if q.uploads.contains(where: { $0.isVideo }) { Text("· \(q.uploads.filter(\.isVideo).count) 个视频").foregroundStyle(Theme.muted) }
                     Spacer()
                     Button("编辑") { model.queue[agentId]?.removeAll { $0.id == q.id }; text = q.text; images = q.images; uploads = UploadItem.restoring(q.uploads, into: uploads); focused = true }
                     Button("现在发送") { model.queue[agentId]?.removeAll { $0.id == q.id }; dispatch(q.text, q.images, files: q.files, restoreUploads: q.uploads, steer: true) }
@@ -321,10 +322,12 @@ struct ComposerView: View {
         guard hasContent, !sending else { return }
         var behavior = self.behavior
         if alternate { behavior = behavior == .queue ? .steer : .queue }
-        guard !uploads.contains(where: { !$0.done }) else { error = uploads.compactMap(\.error).first ?? String(localized: "文件还在上传"); return }
+        guard !uploads.contains(where: { !$0.done }) else { error = uploads.compactMap(\.error).first ?? String(localized: "附件还在准备中"); return }
         let attached = images
         let files = uploads.compactMap(\.file).map(\.attachment)
         let sentUploads = uploads
+        do { _ = try ComposerMediaPayload(images: attached, files: files, uploads: sentUploads) }
+        catch { self.error = error.localizedDescription; return }
         text = ""
         // 和文字一起清掉：否则清空后到消息进会话之间，上一轮的建议会作为占位文字在输入框里闪一下。
         suggestion = nil
@@ -343,7 +346,8 @@ struct ComposerView: View {
         host.noteActivity()
         Task {
             do {
-                try await host.send(message, to: agentId, steer: steer, images: attached, attachments: files)
+                let payload = try ComposerMediaPayload(images: attached, files: files, uploads: restoreUploads)
+                try await host.send(message, to: agentId, steer: steer, images: payload.images, attachments: payload.files)
                 sentCount += 1
             } catch {
                 self.error = String(localized: "发送失败：\(error)")
@@ -694,11 +698,16 @@ struct ProviderSubagentStatusIcon: View {
 /// A file being uploaded to the host (or done) for the next message.
 struct UploadItem: Identifiable {
     let id = UUID()
-    let name: String
+    var name: String
     var file: UploadedFile?
     var error: String?
     var pastedText: PastedTextAttachment?
-    var done: Bool { file != nil }
+    var isVideo = false
+    var videoSource: VideoSource?
+    var video: PreparedVideo?
+    var progress: Double?
+    var work: Task<Void, Never>?
+    var done: Bool { file != nil || video != nil }
 
     /// 排队编辑或发送失败时还原附件，同时保留用户刚添加的其他附件。
     static func restoring(_ incoming: [UploadItem], into existing: [UploadItem]) -> [UploadItem] {
@@ -768,27 +777,44 @@ struct UploadTray: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(items) { item in
-                    if let attachment = item.pastedText {
-                        PastedTextAttachmentCard(item: item, attachment: attachment, remove: { items.removeAll { $0.id == item.id } },
+                    if item.isVideo {
+                        VideoAttachmentCard(item: item, remove: { remove(item) }) {
+                            guard let source = item.videoSource else { return }
+                            remove(item)
+                            prepareVideo(into: $items, name: source.name) { source }
+                        }
+                    } else if let attachment = item.pastedText {
+                        PastedTextAttachmentCard(item: item, attachment: attachment, remove: { remove(item) },
                                                  retry: retry.map { action in { action(item) } })
                     } else {
+                    VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         if item.error != nil { Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.destructive) }
                         else if item.done { Image(systemName: "doc.fill").foregroundStyle(Theme.muted) }
                         else { ProgressView().controlSize(.mini) }
                         Text(item.name).lineLimit(1).frame(maxWidth: 180)
-                        Button { items.removeAll { $0.id == item.id } } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+                        Button { remove(item) } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
                             .accessibilityLabel("移除附件")
                     }
                     .font(.system(size: 12))
                     .padding(.horizontal, 10).frame(height: 28)
                     .background(Theme.surface2, in: Capsule())
                     .help(item.error ?? item.name)
+                    if let error = item.error {
+                        Text(error).font(.caption2).foregroundStyle(Theme.destructive)
+                            .frame(maxWidth: 280, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+                    }
+                    }
                     }
                 }
             }
             .padding(.top, 6).padding(.horizontal, 4)
         }
+    }
+
+    private func remove(_ item: UploadItem) {
+        item.work?.cancel()
+        items.removeAll { $0.id == item.id }
     }
 }
 
@@ -796,13 +822,22 @@ struct UploadTray: View {
 @MainActor
 func uploadFiles(_ urls: [URL], to host: HostStore, into items: Binding<[UploadItem]>) {
     for url in urls {
+        if VideoProcessor.isVideo(url) {
+            prepareVideo(into: items, name: url.lastPathComponent) {
+                // Copying large files also stays off the main actor.
+                try VideoSource.copy(url)
+            }
+            continue
+        }
         let item = UploadItem(name: url.lastPathComponent)
         items.wrappedValue.append(item)
         Task {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             do {
-                let data = try Data(contentsOf: url)
+                let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard size <= 50 * 1024 * 1024 else { throw HostStore.ActionError.rejected(String(localized: "文件超过 50 MB")) }
+                let data = try await Task.detached(priority: .userInitiated) { try Data(contentsOf: url) }.value
                 guard data.count <= 50 * 1024 * 1024 else { throw HostStore.ActionError.rejected(String(localized: "文件超过 50 MB")) }
                 let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
                 let f = try await host.upload(fileName: url.lastPathComponent, mimeType: mime, data: data)
@@ -1011,13 +1046,16 @@ struct DraftComposerView: View {
     private func create() {
         let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sending, !prompt.isEmpty || !images.isEmpty || uploads.contains(where: { $0.done }) else { return }
-        guard !uploads.contains(where: { !$0.done }) else { error = uploads.compactMap(\.error).first ?? String(localized: "文件还在上传"); return }
+        guard !uploads.contains(where: { !$0.done }) else { error = uploads.compactMap(\.error).first ?? String(localized: "附件还在准备中"); return }
         sending = true
         error = nil
         let attachments = (app.forkDraft.map { [$0.attachment] } ?? []) + uploads.compactMap(\.file).map(\.attachment)
+        let payload: ComposerMediaPayload
+        do { payload = try ComposerMediaPayload(images: images, files: attachments, uploads: uploads) }
+        catch { self.error = error.localizedDescription; sending = false; return }
         // 先显示刚发的消息并清空输入框（官方提交时同样清空），失败再原样还回去。
         let images = images
-        onPending(PendingStart(text: prompt, images: images))
+        onPending(PendingStart(text: prompt, images: payload.images))
         text = ""
         self.images = []
         Task {
@@ -1028,8 +1066,8 @@ struct DraftComposerView: View {
                     if let model = effectiveModel { config["model"] = .string(model) }
                     if !thinking.isEmpty { config["thinkingOptionId"] = .string(thinking) }
                     if !effectiveMode.isEmpty { config["modeId"] = .string(effectiveMode) }
-                    let (_, agentId) = try await host.createWorkspace(source: .object(worktree.source), agentConfig: config, prompt: prompt, images: images,
-                                                                      attachments: attachments)
+                    let (_, agentId) = try await host.createWorkspace(source: .object(worktree.source), agentConfig: config, prompt: prompt, images: payload.images,
+                                                                      attachments: payload.files)
                     guard let agentId else { throw HostStore.ActionError.rejected(String(localized: "工作区已创建，但会话没有启动")) }
                     id = agentId
                 } else if newWorkspace, !workspace.projectId.isEmpty {
@@ -1040,13 +1078,13 @@ struct DraftComposerView: View {
                     let source: [String: JSONValue] = ["kind": "directory", "path": .string(projectDirectory),
                                                        "projectId": .string(workspace.projectId)]
                     let (_, agentId) = try await host.createWorkspace(source: .object(source), agentConfig: config, prompt: prompt,
-                                                                      images: images, attachments: attachments)
+                                                                      images: payload.images, attachments: payload.files)
                     guard let agentId else { throw HostStore.ActionError.rejected(String(localized: "工作区已创建，但会话没有启动")) }
                     id = agentId
                 } else {
                     id = try await host.createAgent(workspace: workspace, provider: provider, model: effectiveModel,
                                                     modeId: effectiveMode.isEmpty ? nil : effectiveMode, thinkingOptionId: thinking.isEmpty ? nil : thinking,
-                                                    prompt: prompt, images: images, attachments: attachments)
+                                                    prompt: prompt, images: payload.images, attachments: payload.files)
                 }
                 uploads = []
                 app.forkDraft = nil
@@ -1372,7 +1410,6 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
     @ViewBuilder let controls: Controls
     @ViewBuilder let trailing: Trailing
     let onSubmit: () -> Void
-    @State private var picking = false
     @State private var pickingFiles = false
     #if os(iOS)
     @State private var pickingPhotos = false
@@ -1460,7 +1497,8 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                     #else
                     MacComposerTextView(text: $text, placeholder: placeholder, focused: focused, fontSize: Theme.content,
                                         onReturn: hardwareReturn, onKey: hardwareKey,
-                                        onPaste: { pasteTableIfAvailable() || pasteAttachments() }, onLongText: attachLongText)
+                                        onPaste: pasteTableIfAvailable, onAttachments: importPasteboard,
+                                        onDropTargetChanged: { dropTargeted = $0 }, onLongText: attachLongText)
                         .padding(.horizontal, 6)
                         .padding(.top, 8)
                     #endif
@@ -1478,18 +1516,15 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                             if searchForge != nil, uploads != nil {
                                 Button("添加 Issue / PR…", systemImage: "number") { pickingForge = true }
                             }
-                            if onFiles != nil { Button("选择文件…", systemImage: "doc") { pickingFiles = true } }
-                            Button("从文件选择图片…", systemImage: "photo") { picking = true }
-                            Button("从相册选择…", systemImage: "photo.on.rectangle") { pickingPhotos = true }
+                            Button("选择文件…", systemImage: "doc") { pickingFiles = true }
+                            Button("照片与视频…", systemImage: "photo.on.rectangle") { pickingPhotos = true }
                             Button("相机拍照", systemImage: "camera") {
                                 focused.wrappedValue = false
                                 PhoneKeyboard.dismiss()
                                 takingPhoto = true
                             }
                             #else
-                            Button("选择图片…", systemImage: "photo") { picking = true }
-                            if onFiles != nil { Button("选择文件…", systemImage: "doc") { pickingFiles = true } }
-                            Button("粘贴图片", systemImage: "doc.on.clipboard") { pasteImages() }
+                            Button("添加附件…", systemImage: "paperclip") { pickingFiles = true }
                             if searchForge != nil, uploads != nil {
                                 Button("添加 Issue / PR…", systemImage: "number") { pickingForge = true }
                             }
@@ -1506,8 +1541,8 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
                         }
                         .menuOrder(.fixed)
                         .controlMenuStyle()
-                        .help("添加图片或文件")
-                        .accessibilityLabel("添加图片或文件")
+                        .help("添加附件")
+                        .accessibilityLabel("添加附件")
                         .popover(isPresented: $pickingForge, arrowEdge: .bottom) { forgePicker }
                         #if os(iOS)
                         // ComposerControls folds itself into one button when the row is too narrow.
@@ -1535,13 +1570,10 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
         .onDrop(of: [.image, .fileURL], isTargeted: $dropTargeted) { providers in
             // Images become inline images; other files are uploaded as attachments.
             for p in providers {
-                if p.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier), let onFiles {
+                if p.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
                     _ = p.loadObject(ofClass: URL.self) { url, _ in
                         guard let url else { return }
-                        let isImage = UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true
-                        Task { @MainActor in
-                            if isImage { images += ImageTools.attachments(from: [url]) } else { onFiles([url]) }
-                        }
+                        Task { @MainActor in importFiles([url]) }
                     }
                 } else {
                     ImageTools.load([p]) { images += $0 }
@@ -1563,31 +1595,32 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
             }
             .macOnly { $0.frame(minWidth: 720, minHeight: 520) }
         }
-        .fileImporter(isPresented: $picking, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
-            if case .success(let urls) = result { images += ImageTools.attachments(from: urls) }
+        .fileImporter(isPresented: $pickingFiles, allowedContentTypes: onFiles == nil ? [.image] : [.item], allowsMultipleSelection: true) { result in
+            if case .success(let urls) = result { importFiles(urls) }
         }
         #if os(iOS)
         .fullScreenCover(isPresented: $takingPhoto) {
             CameraCaptureSheet { images.append($0) }
         }
-        .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 10, matching: .images)
+        .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 10,
+                      matching: uploads == nil ? .images : .any(of: [.images, .videos]), preferredItemEncoding: .current)
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }
             photoItems = []
             Task {
                 for item in items {
-                    if let data = try? await item.loadTransferable(type: Data.self), let a = ImageTools.attachment(from: data) {
+                    if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }), let uploads {
+                        prepareVideo(into: uploads) {
+                            guard let video = try await item.loadTransferable(type: PickedVideo.self) else { throw VideoPreparationError.unreadable }
+                            return video.source
+                        }
+                    } else if let data = try? await item.loadTransferable(type: Data.self), let a = ImageTools.attachment(from: data) {
                         images.append(a)
                     }
                 }
             }
         }
         #endif
-        .background {
-            Color.clear.fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-                if case .success(let urls) = result { onFiles?(urls) }
-            }
-        }
         .frame(maxWidth: Theme.chatMaxWidth)
         .padding(.horizontal, 16)
         .bottomBarPlacement()
@@ -1662,6 +1695,11 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
         #endif
     }
 
+    @discardableResult
+    private func importFiles(_ urls: [URL]) -> Bool {
+        ComposerAttachmentImport.files(urls, addImages: { images += $0 }, addFiles: onFiles)
+    }
+
     #if os(macOS)
     private func pasteTableIfAvailable() -> Bool {
         guard let value = TableClipboard.pasted() else { return false }
@@ -1671,32 +1709,8 @@ struct ComposerShell<Chips: View, Controls: View, Trailing: View>: View {
 
     /// Pastes images (and, with uploads, other copied files) as attachments. Returns false when the
     /// clipboard holds text instead, so ⌘V falls through to the normal text paste.
-    private func pasteAttachments() -> Bool {
-        let pb = NSPasteboard.general
-        let urls = (pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
-        if !urls.isEmpty {
-            let isImage = { (u: URL) in UTType(filenameExtension: u.pathExtension)?.conforms(to: .image) == true }
-            let pics = urls.filter(isImage), others = urls.filter { !isImage($0) }
-            if !pics.isEmpty { images += ImageTools.attachments(from: pics) }
-            if !others.isEmpty, let onFiles { onFiles(others) }
-            return !pics.isEmpty || (!others.isEmpty && onFiles != nil)
-        }
-        // Text wins when both are present (copying from a web page puts an image and text on the clipboard).
-        if let text = pb.string(forType: .string), !text.isEmpty { return false }
-        if let data = pb.data(forType: .png) ?? pb.data(forType: .tiff), let a = ImageTools.attachment(from: data) {
-            images.append(a)
-            return true
-        }
-        return false
-    }
-
-    private func pasteImages() {
-        let pb = NSPasteboard.general
-        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingContentsConformToTypes: [UTType.image.identifier]]) as? [URL], !urls.isEmpty {
-            images += ImageTools.attachments(from: urls)
-        } else if let data = pb.data(forType: .png) ?? pb.data(forType: .tiff), let a = ImageTools.attachment(from: data) {
-            images.append(a)
-        }
+    private func importPasteboard(_ pasteboard: NSPasteboard) -> Bool {
+        ComposerAttachmentPasteboard.read(pasteboard, importFiles: importFiles, addImages: { images += $0 })
     }
     #endif
 }

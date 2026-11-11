@@ -21,24 +21,10 @@ struct UserMessageImages: View {
                     // Keep the thumbnail frames with the user's message; center each
                     // image inside its own frame, not across the conversation column.
                     Spacer(minLength: 64)
-                    if !localImages.isEmpty {
-                        ForEach(localImages) { image in
-                            (ImageTools.image(image, maxPixel: 1080) ?? Image(systemName: "photo"))
-                                .resizable().scaledToFit().frame(maxWidth: 360, maxHeight: 180)
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
-                                .imageExport(ImageSource(name: "", data: image.data))
-                                .lightboxSource(image.id.uuidString, in: lightboxNS)
-                                .lightboxGalleryEntry(image.id.uuidString, page: ImageTools.lightbox([image], selected: image).pages.first)
-                                .onTapGesture {
-                                    zoomed = gallery?.item(startingAt: image.id.uuidString).flatMap { $0.pages.count > 1 ? $0 : nil }
-                                        ?? ImageTools.lightbox(localImages, selected: image)
-                                }
-                        }
+                    if imageCount > 3 {
+                        ScrollView(.horizontal) { imageStrip }
                     } else {
-                        ForEach(remoteImages) { image in
-                            MarkdownImage(alt: "Image", url: image.path, maxSize: CGSize(width: 360, height: 180), alignment: .center,
-                                          gallery: remoteImages.map(\.path))
-                        }
+                        imageStrip
                     }
                 }
             }
@@ -59,5 +45,33 @@ struct UserMessageImages: View {
             }
         }
         .imageLightbox($zoomed, namespace: lightboxNS)
+    }
+
+    private var imageCount: Int { localImages.isEmpty ? remoteImages.count : localImages.count }
+
+    private var imageStrip: some View {
+        HStack(spacing: 6) {
+            if !localImages.isEmpty {
+                ForEach(localImages) { image in
+                    (ImageTools.image(image, maxPixel: 1080) ?? Image(systemName: "photo"))
+                        .resizable().scaledToFit().frame(maxWidth: 360, maxHeight: 180)
+                        .frame(width: imageCount > 3 ? 140 : nil)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .imageExport(ImageSource(name: "", data: image.data))
+                        .lightboxSource(image.id.uuidString, in: lightboxNS)
+                        .lightboxGalleryEntry(image.id.uuidString, page: ImageTools.lightbox([image], selected: image).pages.first)
+                        .onTapGesture {
+                            zoomed = gallery?.item(startingAt: image.id.uuidString).flatMap { $0.pages.count > 1 ? $0 : nil }
+                                ?? ImageTools.lightbox(localImages, selected: image)
+                        }
+                }
+            } else {
+                ForEach(remoteImages) { image in
+                    MarkdownImage(alt: "Image", url: image.path, maxSize: CGSize(width: 360, height: 180), alignment: .center,
+                                  gallery: remoteImages.map(\.path))
+                        .frame(width: imageCount > 3 ? 140 : nil)
+                }
+            }
+        }
     }
 }

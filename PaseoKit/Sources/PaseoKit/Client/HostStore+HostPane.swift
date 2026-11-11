@@ -557,7 +557,7 @@ extension HostStore {
         let requestId = UUID().uuidString.lowercased()
         let iso = ISO8601DateFormatter().string(from: Date())
         let rid = Array(requestId.utf8)
-        func frame(_ op: UInt8, _ body: Data = Data()) -> Data {
+        @Sendable func frame(_ op: UInt8, _ body: Data = Data()) -> Data {
             var d = Data([op, UInt8(rid.count)])
             d.append(contentsOf: rid)
             d.append(body)
@@ -568,22 +568,22 @@ extension HostStore {
         var begin = Data()
         begin.appendU16(UInt16(meta.utf8.count))
         begin.append(Data(meta.utf8))
-        let responseTask = Task {
-            try await c.request("file.upload.request", ["fileName": .string(fileName), "mimeType": .string(mimeType),
-                                                        "size": .number(Double(data.count)), "modifiedAt": .string(iso)],
-                                timeout: .seconds(600), requestId: requestId)
-        }
-        // The JSON request registers the upload; frames follow on the same connection, in order.
-        try await Task.sleep(for: .milliseconds(30))
-        try await c.sendBinary(frame(0x10, begin))
-        var offset = 0
-        let chunk = 128 * 1024
-        while offset < data.count {
-            try await c.sendBinary(frame(0x11, data.subdata(in: offset..<min(offset + chunk, data.count))))
-            offset += chunk
-        }
-        try await c.sendBinary(frame(0x12))
-        let r = try await responseTask.value
+        let beginFrame = frame(0x10, begin)
+        let r = try await c.request("file.upload.request", ["fileName": .string(fileName), "mimeType": .string(mimeType),
+                                                          "size": .number(Double(data.count)), "modifiedAt": .string(iso)],
+                                  timeout: .seconds(600), requestId: requestId, afterSend: {
+            // Await the JSON send; elapsed time is not proof that the upload was registered.
+            try await c.sendBinary(beginFrame)
+            var offset = 0
+            let chunk = 128 * 1024
+            while offset < data.count {
+                try Task.checkCancellation()
+                try await c.sendBinary(frame(0x11, data.subdata(in: offset..<min(offset + chunk, data.count))))
+                offset += chunk
+            }
+            try Task.checkCancellation()
+            try await c.sendBinary(frame(0x12))
+        })
         guard let file = r["payload"]?["file"], file != .null, let id = file["id"]?.stringValue else {
             throw ActionError.rejected(r["payload"]?["error"]?.stringValue ?? String(localized: "上传失败", bundle: .module))
         }
