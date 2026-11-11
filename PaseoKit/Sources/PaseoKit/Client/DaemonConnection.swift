@@ -300,15 +300,27 @@ public actor DaemonConnection {
         pongWaiters.removeValue(forKey: id)?.resume(returning: false)
     }
 
-    /// 前台恢复用带 requestId 的往返确认旧连接仍可用；失败后交给 HostStore 原有循环重连。
+    /// 前台恢复时确认旧连接仍可用：发带 requestId 的 ping，超时内收到它的回复或任何别的帧都算活着。
+    /// 只认 ping 回复的话，正在传大响应（分块帧）时回复排在后面，好好的连接会被误断。
+    /// 失败后交给 HostStore 原有循环重连。
     func validateOnForeground(timeout: Duration = .seconds(3)) async {
-        do {
+        let revision = inboundRevision
+        // ping 只负责让 daemon 回一帧；它的回复本身也是入站帧，所以只等「任何入站帧或超时」。
+        // 不在等待里 await 这个请求：请求不响应取消，等它会把已经确认活着的检测拖到超时。
+        let ping = Task {
             let sent = (Date().timeIntervalSince1970 * 1000).rounded()
-            _ = try await request("ping", ["clientSentAt": .number(sent)], timeout: timeout)
-        } catch {
-            guard !Task.isCancelled else { return }
-            await close()
+            _ = try? await self.request("ping", ["clientSentAt": .number(sent)], timeout: timeout)
         }
+        let alive = await withTaskGroup(of: Bool.self) { group in
+            group.addTask { await self.waitForInbound(since: revision) }
+            group.addTask { try? await Task.sleep(for: timeout); return false }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+        if alive { ping.cancel() }
+        guard !alive, !Task.isCancelled else { return }
+        await close()
     }
 
     private func shutdown(_ reason: String) async {

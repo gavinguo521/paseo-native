@@ -61,6 +61,18 @@ import Testing
         await connection.close()
     }
 
+    /// 回归：回到前台时正在收大响应，ping 回复排在后面；期间收到别的帧就说明连接活着，不能误断。
+    @Test func foregroundCheckTreatsOtherInboundFramesAsAlive() async throws {
+        let transport = RecoveryTransport()
+        let connection = try await connected(transport)
+        let check = Task { await connection.validateOnForeground(timeout: .seconds(20)) }
+        _ = try #require(await transport.nextSent("ping"))
+        await transport.deliver(["type": "session", "message": ["type": "agent_update", "payload": [:]]])
+        await check.value
+        #expect(await !connection.isClosed)
+        await connection.close()
+    }
+
     @Test @MainActor func disconnectedHistoryDoesNotBecomePermanentLoadError() async throws {
         let transport = RecoveryTransport()
         let connection = try await connected(transport)

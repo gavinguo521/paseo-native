@@ -14,6 +14,9 @@ struct RootView: View {
     @State private var importing = false
     @State private var addingProject = false
     @State private var showShortcuts = false
+    #if DEBUG
+    @State private var lightboxDemo: LightboxItem?
+    #endif
     @AppStorage("appearance", store: AppDefaults.store) private var appearance = "system"
     @AppStorage("fontStep", store: AppDefaults.store) private var fontStep = 0
     @AppStorage("contentWidth", store: AppDefaults.store) private var contentWidth = 820
@@ -80,6 +83,17 @@ struct RootView: View {
         #endif
         .tint(Theme.accent)
         .overlay(alignment: .bottom) { UndoArchiveToast() }
+        #if DEBUG
+        // PASEO_LIGHTBOX_DEMO=<图片路径,…>：启动后直接打开大图（截图核对查看器）。
+        .imageLightbox($lightboxDemo)
+        .task {
+            guard let paths = ProcessInfo.processInfo.environment["PASEO_LIGHTBOX_DEMO"] else { return }
+            try? await Task.sleep(for: .seconds(2))
+            let attachments = paths.split(separator: ",").compactMap { try? Data(contentsOf: URL(fileURLWithPath: String($0))) }
+                .compactMap(ImageTools.attachment(from:))
+            if let first = attachments.first { lightboxDemo = ImageTools.lightbox(attachments, selected: first) }
+        }
+        #endif
         .sheet(isPresented: $showAddHost) { AddHostView() }
         .sheet(isPresented: $showSettings) { SettingsView(showAddHost: $showAddHost) }
         .sheet(isPresented: $showPalette) { CommandPalette(showSettings: $showSettings) }
@@ -353,7 +367,7 @@ struct UndoArchiveToast: View {
                     Text("已归档「\(u.title)」").lineLimit(1)
                     Button("撤销") {
                         model.undoArchive = nil
-                        Task { await model.unarchiveAndRestore(u.ref, open: true) }
+                        Task { await model.performUndoArchive(u) }
                     }
                     .buttonStyle(.borderless).fontWeight(.semibold)
                 }

@@ -65,6 +65,26 @@ enum ImageTools {
         }
     }
 
+    /// 打开附件大图；同一组里的其他附件可以左右切换。
+    static func lightbox(_ list: [ImageAttachment], selected: ImageAttachment) -> LightboxItem {
+        let pages = list.map { a in
+            LightboxPage(id: a.id.uuidString, placeholder: image(a, maxPixel: 1080), source: ImageSource(name: "", data: a.data),
+                         size: pointSize(a.data), sizeIsExact: true)
+        }
+        return LightboxItem(pages: pages, index: list.firstIndex { $0.id == selected.id } ?? 0)
+    }
+
+    /// 图片的显示尺寸（点）：按像素和 DPI 算，Retina 截图（144 DPI）算出来是像素的一半，只读文件头不解码。
+    static func pointSize(_ data: Data) -> CGSize? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil),
+              let p = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+              let w = p[kCGImagePropertyPixelWidth] as? CGFloat, let h = p[kCGImagePropertyPixelHeight] as? CGFloat else { return nil }
+        let dpi = (p[kCGImagePropertyDPIWidth] as? CGFloat).flatMap { $0 > 0 ? $0 : nil } ?? 72
+        var size = CGSize(width: w * 72 / dpi, height: h * 72 / dpi)
+        if let o = p[kCGImagePropertyOrientation] as? UInt32, o >= 5 { size = CGSize(width: size.height, height: size.width) }
+        return size
+    }
+
     nonisolated(unsafe) private static let decoded = { let c = NSCache<NSString, PlatformImage>(); c.countLimit = 200; return c }()
 
     /// Decoded once per attachment and size: rows redraw while scrolling, and a fresh image from `data`
@@ -120,14 +140,15 @@ enum ImageTools {
 
 struct AttachmentTray: View {
     @Binding var images: [ImageAttachment]
-    @State private var preview: ImageAttachment?
+    @State private var preview: LightboxItem?
+    @Namespace private var lightboxNS
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(images) { a in
                     ZStack(alignment: .topTrailing) {
-                        Button { preview = a } label: {
+                        Button { preview = ImageTools.lightbox(images, selected: a) } label: {
                             (ImageTools.image(a, maxPixel: 240) ?? Image(systemName: "photo"))
                                 .resizable().scaledToFill()
                                 .frame(width: 56, height: 56)
@@ -135,6 +156,7 @@ struct AttachmentTray: View {
                                 // Clipping only affects drawing. Bound hit testing too,
                                 // so a filled image cannot cover its neighbor's controls.
                                 .contentShape(RoundedRectangle(cornerRadius: 10))
+                                .lightboxSource(a.id.uuidString, in: lightboxNS)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("预览图片")
@@ -154,10 +176,6 @@ struct AttachmentTray: View {
             }
             .padding(.vertical, 2).padding(.horizontal, 4)
         }
-        .sheet(item: $preview) { attachment in
-            if let image = ImageTools.image(attachment) {
-                ImageLightbox(image: image, source: ImageSource(name: "", data: attachment.data))
-            }
-        }
+        .imageLightbox($preview, namespace: lightboxNS)
     }
 }

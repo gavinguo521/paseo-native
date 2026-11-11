@@ -157,9 +157,11 @@ struct SidebarView: View {
                 if let r = renamingAgent, let h = model.host(r.serverId) { Task { try? await h.rename(r.agentId, to: newName) } }
             }
         }
-        .confirmationDialog("归档这个会话？", isPresented: Binding(get: { archivingAgent != nil }, set: { if !$0 { archivingAgent = nil } })) {
+        // 用 alert 而不是 confirmationDialog：iPhone 上后者锚定在整个侧栏，弹出来宽度不对。
+        .alert("归档这个会话？", isPresented: Binding(get: { archivingAgent != nil }, set: { if !$0 { archivingAgent = nil } })) {
+            Button("取消", role: .cancel) {}
             Button("归档", role: .destructive) {
-                if let r = archivingAgent, let h = model.host(r.serverId) { Task { try? await h.archive(r.agentId) } }
+                if let r = archivingAgent, let h = model.host(r.serverId) { archiveAgent(r, on: h) }
             }
         } message: {
             Text(archivingAgent.flatMap { model.agent($0) }?.status == .running ? "它还在运行，归档会停止它。" : "归档后可以在会话历史里找回。")
@@ -168,7 +170,8 @@ struct SidebarView: View {
         .alert("新建会话失败", isPresented: Binding(get: { sessionError != nil }, set: { if !$0 { sessionError = nil } })) {
             Button("好") {}
         } message: { Text(sessionError ?? "") }
-        .confirmationDialog("从 Paseo 移除「\(removingProject?.name ?? "")」？", isPresented: Binding(get: { removingProject != nil }, set: { if !$0 { removingProject = nil } })) {
+        .alert("从 Paseo 移除「\(removingProject?.name ?? "")」？", isPresented: Binding(get: { removingProject != nil }, set: { if !$0 { removingProject = nil } })) {
+            Button("取消", role: .cancel) {}
             Button("移除", role: .destructive) {
                 guard let targets = removingProject?.targets else { return }
                 Task {
@@ -469,7 +472,7 @@ struct SidebarView: View {
                         }
                         : nil,
                     trailing: SwipeAction(title: String(localized: "归档"), systemImage: "archivebox", tint: Theme.destructive) {
-                        if let workspace { archivingWorkspace = workspace } else { archivingAgent = ref }
+                        archiveFromSwipe(ref, workspace: workspace)
                     }))
                 #endif
                 if childrenOpen {
@@ -487,6 +490,27 @@ struct SidebarView: View {
                 .padding(.vertical, 6)
             }
         }
+    }
+
+    /// 左滑归档：空闲会话、普通工作区直接归档并给「撤销」；运行中的会话、worktree 仍先确认。
+    private func archiveFromSwipe(_ ref: AgentRef, workspace: Workspace?) {
+        guard let host = model.host(ref.serverId) else { return }
+        if let workspace {
+            if AppModel.canArchiveWithoutConfirm(workspace, host: host) {
+                Task { await model.archiveWorkspace(workspace, on: host) }
+            } else {
+                archivingWorkspace = workspace
+            }
+        } else if host.agents[ref.agentId]?.status == .running {
+            archivingAgent = ref
+        } else {
+            archiveAgent(ref, on: host)
+        }
+    }
+
+    private func archiveAgent(_ ref: AgentRef, on host: HostStore) {
+        let title = host.agents[ref.agentId]?.displayTitle ?? ""
+        Task { if (try? await host.archive(ref.agentId)) != nil { model.offerUndoArchive(ref, title: title, open: false) } }
     }
 
     private func toggleChildren(_ key: String) {
@@ -800,6 +824,16 @@ struct SessionRow: View {
 
     private var pullRequest: PullRequestInfo? { workspace?.pullRequest }
     #if os(iOS)
+    @Environment(\.swipeTapGuard) private var swipeTapGuard
+    /// 左滑归档松手时，行按钮会把这次触摸当成点击直接进会话；刚滑过就不算点击。
+    private func tapped() {
+        if swipeTapGuard?.suppressesTap == true { return }
+        action()
+    }
+    #else
+    private func tapped() { action() }
+    #endif
+    #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     /// iPhone: the change counts and PR number go on a second line instead of cutting the title short.
     private var badgesBelow: Bool { sizeClass == .compact }
@@ -834,7 +868,7 @@ struct SessionRow: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(expanded ? String(localized: "收起会话列表") : String(localized: "展开 \(childCount) 个会话"))
             }
-            Button(action: action) {
+            Button(action: tapped) {
                 HStack(spacing: 8) {
                     // Status sits in front of the title, in the indent under the project icon.
                     StatusDot(bucket: bucket).frame(width: 16)
@@ -969,16 +1003,45 @@ struct SwipeAction {
 
 /// iPhone list swipes on the hand-drawn sidebar rows (List's swipeActions need a List):
 /// drag to reveal the button, drag far to trigger it.
+/// 横滑进行中或刚结束时，行里的按钮不响应松手点击（引用类型：按钮松手时同步读取，不等视图刷新）。
+/// 只看最近一次横滑的时间，不靠「滑动中」标记：手势被系统取消时 onEnded 可能不来，标记会卡住让整行再也点不进去。
+final class SwipeTapGuard: @unchecked Sendable { // 只在主线程手势回调里读写
+    var swiping = false
+    var lastSwipeAt: Date?
+    var suppressesTap: Bool { lastSwipeAt.map { Date().timeIntervalSince($0) < 0.5 } == true }
+}
+
+private struct SwipeTapGuardKey: EnvironmentKey {
+    static let defaultValue: SwipeTapGuard? = nil
+}
+
+extension EnvironmentValues {
+    var swipeTapGuard: SwipeTapGuard? {
+        get { self[SwipeTapGuardKey.self] }
+        set { self[SwipeTapGuardKey.self] = newValue }
+    }
+}
+
+private struct AnyLabelStyle: LabelStyle {
+    private let make: (Configuration) -> AnyView
+    init<S: LabelStyle>(_ style: S) { make = { AnyView(style.makeBody(configuration: $0)) } }
+    func makeBody(configuration: Configuration) -> some View { make(configuration) }
+}
+
 struct SwipeActions: ViewModifier {
     let leading: SwipeAction?
     let trailing: SwipeAction?
+    @State private var tapGuard = SwipeTapGuard()
     @State private var offset: CGFloat = 0
     @State private var settled: CGFloat = 0
+    /// 拖过了触发位置，松手即执行。
+    @State private var armed = false
     private let reveal: CGFloat = 76
     private let trigger: CGFloat = 170
 
     func body(content: Content) -> some View {
         content
+            .environment(\.swipeTapGuard, tapGuard)
             // While open, a tap on the row closes it instead of opening the session. Only on the row itself
             // (it moves with it): covering the revealed button too swallowed its tap, so 归档 did nothing.
             .overlay { if settled != 0 { Color.clear.contentShape(Rectangle()).onTapGesture { close() } } }
@@ -989,10 +1052,15 @@ struct SwipeActions: ViewModifier {
                         close()
                         a.action()
                     } label: {
-                        Label(a.title, systemImage: a.systemImage).labelStyle(.iconOnly)
-                            .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(a.tint, in: RoundedRectangle(cornerRadius: 10))
+                        // 越过触发位置：图标旁出现文字、整块加深，松手就会执行。
+                        Label(a.title, systemImage: a.systemImage)
+                            .labelStyle(armed ? AnyLabelStyle(.titleAndIcon) : AnyLabelStyle(.iconOnly))
+                            .font(.system(size: armed ? 15 : 16, weight: .semibold)).foregroundStyle(.white)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: armed ? (offset < 0 ? .leading : .trailing) : .center)
+                            .padding(.horizontal, armed ? 16 : 0)
+                            .background(a.tint.opacity(armed ? 1 : 0.85), in: RoundedRectangle(cornerRadius: 10))
+                            .animation(.snappy(duration: 0.15), value: armed)
                     }
                     .buttonStyle(.plain)
                     .frame(width: abs(offset))
@@ -1004,12 +1072,21 @@ struct SwipeActions: ViewModifier {
                 DragGesture(minimumDistance: 20)
                     .onChanged { v in
                         guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
+                        tapGuard.swiping = true
+                        tapGuard.lastSwipeAt = Date()
                         var x = settled + v.translation.width
                         if x > 0, leading == nil { x = 0 }
                         if x < 0, trailing == nil { x = 0 }
                         offset = x
+                        let nowArmed = abs(x) >= trigger
+                        if nowArmed != armed {
+                            armed = nowArmed
+                            UISelectionFeedbackGenerator().selectionChanged()
+                        }
                     }
                     .onEnded { _ in
+                        armed = false
+                        if tapGuard.swiping { tapGuard.swiping = false; tapGuard.lastSwipeAt = Date() }
                         let x = offset
                         if x <= -trigger, let t = trailing { close(); fire(t) }
                         else if x >= trigger, let l = leading { close(); fire(l) }

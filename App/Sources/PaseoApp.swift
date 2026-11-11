@@ -77,6 +77,18 @@ struct PaseoApp: App {
             if let ref { MessageSessionWindow(initial: ref).environment(model) }
         }
         .defaultSize(width: 900, height: 760)
+        // 点开的图片：独立窗口，可以最大化、全屏。
+        WindowGroup("图片", for: ImageWindowID.self) { $id in
+            if let id { ImageWindowContent(id: id.id) }
+        }
+        .defaultSize(width: 1100, height: 820)
+        // 按图片比例开窗口（ImageWindowContent 给出理想尺寸），不超出屏幕可用区域。
+        .defaultWindowPlacement { content, context in
+            let ideal = content.sizeThatFits(.unspecified)
+            let visible = context.defaultDisplay.visibleRect.size
+            return WindowPlacement(size: CGSize(width: min(ideal.width, visible.width * 0.92), height: min(ideal.height, visible.height * 0.92)))
+        }
+        .restorationBehavior(.disabled)
         MenuBarExtra(isInserted: $menuBarExtra) {
             MenuBarContent().environment(model)
         } label: {

@@ -14,6 +14,7 @@ struct AgentView: View {
     @AppStorage("restoreSessionReadingPosition", store: AppDefaults.store) private var restoreSessionReadingPosition = false
     private var collapseTurns: Bool { timelineDetail == TimelineDetail.collapseTurns.rawValue }
     @State private var toolDetailID: String?
+    @State private var lightboxGallery = LightboxGallery()
     @State private var atBottom = true
     /// 聊天区可视高度（去掉工具栏等安全区）：内容至少撑满它，见下面 frame(minHeight:)
     @State private var viewportHeight: CGFloat = 0
@@ -497,6 +498,9 @@ struct AgentView: View {
                 #endif
                 .scrollTargetLayout()
                 .modifier(LayoutProbe(label: "column"))
+                // 会话图集：内容坐标系（滚动时不变），点开任意一张图可在整个会话的图片之间左右切换。
+                .coordinateSpace(.named(LightboxGallery.coordinateSpace))
+                .environment(\.lightboxGallery, lightboxGallery)
             }
             .scrollPosition($scrollPosition)
             #if os(iOS)

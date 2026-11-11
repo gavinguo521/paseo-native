@@ -157,8 +157,11 @@ private func text(_ row: TimelineRow) -> String {
         #expect(Agent(.object(base))?.bucket == .running)
         var p = base; p["pendingPermissions"] = [["id": "perm1", "kind": "tool"]]
         #expect(Agent(.object(p))?.bucket == .needsInput)
-        var e = base; e["status"] = "error"
+        var e = base; e["status"] = "error"; e["requiresAttention"] = true; e["attentionReason"] = "error"
         #expect(Agent(.object(e))?.bucket == .failed)
+        // 回归：失败会话点开看过（提醒被清掉）后不再算失败，不用等下一轮开始。
+        var seen = e; seen["requiresAttention"] = false
+        #expect(Agent(.object(seen))?.bucket == .done)
         var d = base; d["status"] = "idle"; d["requiresAttention"] = true
         #expect(Agent(.object(d))?.bucket == .attention)
         var u = base; u["status"] = "brand_new_status"

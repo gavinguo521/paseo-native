@@ -718,16 +718,49 @@ final class AppModel {
     /// Agents being archived and terminals being killed, hidden until the host confirms.
     var closingTabs: Set<WorkspaceTab> = []
 
-    /// 刚归档的会话（关标签时空闲会话不确认就归档，同官方）：窗口底部显示几秒「已归档 [撤销]」。
-    struct UndoArchive: Equatable { let ref: AgentRef; let title: String; let id = UUID() }
+    /// 刚归档的会话或工作区（关标签时空闲会话不确认就归档，同官方；侧栏左滑也是）：窗口底部显示几秒「已归档 [撤销]」。
+    struct UndoArchive: Equatable {
+        /// 一起归档的会话；归档工作区时是它下面当时还在的顶层会话。
+        let refs: [AgentRef]
+        /// 归档的是整个工作区时有值。
+        var workspace: WorkspaceRef?
+        let title: String
+        /// 撤销后打开会话（关标签、历史里归档时是）；侧栏归档撤销后留在原地。
+        var open = true
+        let id = UUID()
+    }
     var undoArchive: UndoArchive?
 
-    func offerUndoArchive(_ ref: AgentRef, title: String) {
-        let item = UndoArchive(ref: ref, title: title)
+    func offerUndoArchive(_ ref: AgentRef, title: String, open: Bool = true) {
+        offerUndo(UndoArchive(refs: [ref], title: title, open: open))
+    }
+
+    func offerUndoArchiveWorkspace(_ ws: WorkspaceRef, agents: [AgentRef], title: String) {
+        offerUndo(UndoArchive(refs: agents, workspace: ws, title: title, open: false))
+    }
+
+    private func offerUndo(_ item: UndoArchive) {
         undoArchive = item
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(8))
             if self?.undoArchive == item { self?.undoArchive = nil }
+        }
+    }
+
+    func performUndoArchive(_ u: UndoArchive) async {
+        guard let ws = u.workspace else {
+            if let ref = u.refs.first { await unarchiveAndRestore(ref, open: u.open) }
+            return
+        }
+        guard let host = host(ws.serverId) else { return }
+        for ref in u.refs { try? await host.unarchive(ref.agentId) }
+        // 工作区里没有会话时也要恢复工作区本身；有会话时等它们回来再看工作区是否还缺。
+        for _ in 0..<20 where host.workspaces[ws.workspaceId] == nil && u.refs.contains(where: { host.agents[$0.agentId].map { $0.archivedAt != nil } ?? true }) {
+            try? await Task.sleep(for: .milliseconds(150))
+        }
+        if host.workspaces[ws.workspaceId] == nil,
+           (try? await host.inspectWorkspaceRecovery(ws.workspaceId))?["kind"]?.stringValue == "recoverable" {
+            try? await host.restoreWorkspace(ws.workspaceId)
         }
     }
 

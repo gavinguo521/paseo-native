@@ -776,8 +776,14 @@ struct MarkdownImage: View {
     var alignment: Alignment = .leading
     /// Keep the first copy fetched under this key, so a file overwritten later still shows what was there.
     var cacheKey: String?
-    @State private var zoomed: Image?
+    /// 同一条消息里的图片地址（含自己）：大图里可以左右切换。
+    var gallery: [String] = []
+    @State private var lightbox: LightboxItem?
+    @Namespace private var lightboxNS
     @State private var thumbnail: Image?
+    @State private var thumbnailSize: CGSize?
+    @State private var galleryKey = UUID().uuidString
+    @Environment(\.lightboxGallery) private var sessionGallery
     @State private var tried = false
     @State private var exportType: UTType?
     @Environment(\.hostFileReader) private var reader
@@ -793,35 +799,55 @@ struct MarkdownImage: View {
                     .frame(maxWidth: maxSize.width, maxHeight: maxSize.height, alignment: alignment)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .imageExport(source, type: exportType)
-                    .onTapGesture {
-                        zoomed = thumbnail
-                        Task {
-                            if let cg = await loadImage(maxPixel: nil), !Task.isCancelled, zoomed != nil {
-                                zoomed = Image(decorative: cg, scale: 1)
-                            }
-                        }
-                    }
+                    .lightboxSource(sourceKey, in: lightboxNS)
+                    .lightboxGalleryEntry(galleryKey, page: page(thumbnail))
+                    .onTapGesture { openLightbox(thumbnail) }
             } else { placeholder(loading: !tried) }
         }
         .task(id: "\(sourceKey)|\(pixels)") {
             thumbnail = nil
+            thumbnailSize = nil
             tried = false
             let cg = await loadImage(maxPixel: pixels)
             guard !Task.isCancelled else { return }
             thumbnail = cg.map { Image(decorative: $0, scale: displayScale) }
+            thumbnailSize = cg.map { CGSize(width: $0.width, height: $0.height) }
             tried = true
             // 拖出时要先声明文件类型；字节刚读过，一般直接命中缓存。
             if cg != nil, let data = await source.load(), !Task.isCancelled { exportType = ImageExport.type(of: data) }
         }
         .help(alt.isEmpty ? String(localized: "点击放大") : String(localized: "\(alt)（点击放大）"))
-        .sheet(isPresented: Binding(get: { zoomed != nil }, set: { if !$0 { zoomed = nil } })) {
-            if let zoomed { ImageLightbox(image: zoomed, title: alt, source: source, sourceType: exportType) }
-        }
+        .imageLightbox($lightbox, namespace: lightboxNS)
     }
 
-    private var source: ImageSource {
-        let (key, url, snapshotKey, reader) = (sourceKey, url, cacheKey, reader)
-        return ImageSource(name: url) {
+    /// 大图自己按需取原图，这里先给缩略图垫底；缩略图尺寸只代表比例。
+    private func page(_ thumbnail: Image) -> LightboxPage {
+        LightboxPage(id: sourceKey, placeholder: thumbnail, title: alt, source: source, sourceType: exportType, size: thumbnailSize)
+    }
+
+    private func openLightbox(_ thumbnail: Image) {
+        // 在会话里：整个会话的图片一起左右切换。
+        if let item = sessionGallery?.item(startingAt: galleryKey), item.pages.count > 1 {
+            lightbox = item
+            return
+        }
+        let me = page(thumbnail)
+        guard gallery.count > 1, let index = gallery.firstIndex(of: url) else {
+            lightbox = LightboxItem(page: me)
+            return
+        }
+        let scope = reader?.cacheScope ?? "local"
+        let pages = gallery.enumerated().map { i, other in
+            i == index ? me : LightboxPage(id: scope + "|" + other, title: alt,
+                                           source: Self.source(key: scope + "|" + other, url: other, snapshotKey: nil, reader: reader))
+        }
+        lightbox = LightboxItem(pages: pages, index: index)
+    }
+
+    private var source: ImageSource { Self.source(key: sourceKey, url: url, snapshotKey: cacheKey, reader: reader) }
+
+    private static func source(key: String, url: String, snapshotKey: String?, reader: HostFileReader?) -> ImageSource {
+        ImageSource(name: url) {
             await TimelineImageLoader.shared.data(key: key, url: url, snapshotKey: snapshotKey, reader: reader)
         }
     }
@@ -928,56 +954,6 @@ enum FileLink {
         "swift", "ts", "tsx", "js", "jsx", "mjs", "py", "go", "rs", "java", "kt", "c", "h", "m", "mm", "cpp", "rb", "sh",
         "md", "json", "yml", "yaml", "toml", "plist", "html", "css", "scss", "sql", "txt", "lock", "xml", "vue", "php",
     ]
-}
-
-/// Full-size image: pinch or ⌘+/⌘− to zoom, double-click to toggle fit / 2×, Esc to close.
-struct ImageLightbox: View {
-    @Environment(\.dismiss) private var dismiss
-    let image: Image
-    var title = ""
-    var source: ImageSource?
-    var sourceType: UTType?
-    @State private var scale: CGFloat = 1
-    @State private var base: CGFloat = 1
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text(title.isEmpty || title == "Image" ? String(localized: "图片") : title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                Spacer()
-                Button { zoom(1 / 1.25) } label: { Image(systemName: "minus.magnifyingglass") }.keyboardShortcut("-", modifiers: .command)
-                    .accessibilityLabel("缩小")
-                Text("\(Int(scale * 100))%").font(.system(size: 12)).monospacedDigit().foregroundStyle(Theme.muted).frame(width: 44)
-                Button { zoom(1.25) } label: { Image(systemName: "plus.magnifyingglass") }.keyboardShortcut("=", modifiers: .command)
-                    .accessibilityLabel("放大")
-                Button { scale = 1; base = 1 } label: { Image(systemName: "arrow.up.left.and.down.right.magnifyingglass") }
-                    .keyboardShortcut("0", modifiers: .command).help("适合窗口")
-                    .accessibilityLabel("适合窗口")
-                if let source { ImageSaveButton(source: source) }
-                Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
-            }
-            .buttonStyle(.plain)
-            .padding(12)
-            Divider()
-            GeometryReader { geo in
-                ScrollView([.horizontal, .vertical]) {
-                    image.resizable().scaledToFit()
-                        .frame(width: geo.size.width * scale, height: geo.size.height * scale)
-                        .imageExport(source, type: sourceType)
-                        .onTapGesture(count: 2) { withAnimation(.snappy) { scale = scale > 1 ? 1 : 2; base = scale } }
-                }
-                .gesture(MagnifyGesture()
-                    .onChanged { scale = min(max(base * $0.magnification, 0.5), 8) }
-                    .onEnded { _ in base = scale })
-            }
-            .background(Theme.surface1)
-        }
-        .macOnly { $0.frame(minWidth: 720, minHeight: 540) }
-    }
-
-    private func zoom(_ f: CGFloat) {
-        withAnimation(.snappy(duration: 0.15)) { scale = min(max(scale * f, 0.5), 8); base = scale }
-    }
 }
 
 /// ```mermaid blocks drawn by mermaid.js in a web view (needs network for the script); source is one click away.

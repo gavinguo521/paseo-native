@@ -8,7 +8,9 @@ struct UserMessageImages: View {
     @Environment(\.hostFileReader) private var reader
     @Environment(\.messageImagesConnected) private var connected
     @State private var remoteImages: [MessageImage] = []
-    @State private var zoomed: ImageAttachment?
+    @State private var zoomed: LightboxItem?
+    @Namespace private var lightboxNS
+    @Environment(\.lightboxGallery) private var gallery
 
     var body: some View {
         // Keep a concrete container before metadata arrives. An empty Group inside a
@@ -25,11 +27,17 @@ struct UserMessageImages: View {
                                 .resizable().scaledToFit().frame(maxWidth: 360, maxHeight: 180)
                                 .clipShape(RoundedRectangle(cornerRadius: 14))
                                 .imageExport(ImageSource(name: "", data: image.data))
-                                .onTapGesture { zoomed = image }
+                                .lightboxSource(image.id.uuidString, in: lightboxNS)
+                                .lightboxGalleryEntry(image.id.uuidString, page: ImageTools.lightbox([image], selected: image).pages.first)
+                                .onTapGesture {
+                                    zoomed = gallery?.item(startingAt: image.id.uuidString).flatMap { $0.pages.count > 1 ? $0 : nil }
+                                        ?? ImageTools.lightbox(localImages, selected: image)
+                                }
                         }
                     } else {
                         ForEach(remoteImages) { image in
-                            MarkdownImage(alt: "Image", url: image.path, maxSize: CGSize(width: 360, height: 180), alignment: .center)
+                            MarkdownImage(alt: "Image", url: image.path, maxSize: CGSize(width: 360, height: 180), alignment: .center,
+                                          gallery: remoteImages.map(\.path))
                         }
                     }
                 }
@@ -50,10 +58,6 @@ struct UserMessageImages: View {
                 }
             }
         }
-        .sheet(item: $zoomed) { attachment in
-            if let image = ImageTools.image(attachment) {
-                ImageLightbox(image: image, source: ImageSource(name: "", data: attachment.data))
-            }
-        }
+        .imageLightbox($zoomed, namespace: lightboxNS)
     }
 }

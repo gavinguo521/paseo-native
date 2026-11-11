@@ -197,7 +197,9 @@ public struct Agent: Sendable, Identifiable {
 
     public var bucket: StatusBucket {
         if !pendingPermissions.isEmpty || attentionReason == "permission" { return .needsInput }
-        if status == .error || attentionReason == "error" { return .failed }
+        // 失败只看「需要处理且原因是出错」：看过（清掉提醒）后就回到普通状态。只看 status == .error 的话，
+        // 要等下一轮开始才变，点开看过的失败会话一直挂着红点和「失败」分组。daemon 出错时两个字段一起设。
+        if requiresAttention && attentionReason == "error" { return .failed }
         if status == .running { return .running }
         if requiresAttention { return .attention }
         return .done

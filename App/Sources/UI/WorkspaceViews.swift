@@ -573,10 +573,12 @@ struct WorkspaceDialogs: ViewModifier {
             }
             .onChange(of: renaming?.id) { title = renaming?.title ?? renaming?.name ?? "" }
             // 用工作区标题（如「项目开源的风险评估」）：同一个项目里的本地工作区 name 都是分支名「main」，只显示 name 分不清归档的是哪个
-            .confirmationDialog("归档「\(archiving.map(Self.displayName) ?? "")」？", isPresented: Binding(get: { archiving != nil }, set: { if !$0 { archiving = nil } })) {
+            // 用 alert 而不是 confirmationDialog：iPhone 上后者锚定在整个侧栏，弹出来宽度不对。
+            .alert("归档「\(archiving.map(Self.displayName) ?? "")」？", isPresented: Binding(get: { archiving != nil }, set: { if !$0 { archiving = nil } })) {
+                Button("取消", role: .cancel) {}
                 Button("归档", role: .destructive) {
                     guard let w = archiving, let h = host(of: w) else { return }
-                    Task { try? await h.archiveWorkspace(w.id) }
+                    Task { await model.archiveWorkspace(w, on: h) }
                 }
             } message: {
                 Text(archiveWarning)
@@ -596,7 +598,7 @@ struct WorkspaceDialogs: ViewModifier {
             : String(localized: "里面的会话会一起归档，正在运行的会被停止。")
         // 列出会被归档的会话，正在运行的标出来，防止点错行
         guard let h = host(of: w) else { return base }
-        let agents = h.agents.values.filter { $0.workspaceId == w.id && $0.archivedAt == nil && $0.parentAgentId == nil }
+        let agents = AppModel.liveAgents(in: w, host: h)
             .sorted { ($0.status == .running ? 0 : 1) < ($1.status == .running ? 0 : 1) }
         guard !agents.isEmpty else { return base }
         let names = agents.prefix(5).map { $0.status == .running ? String(localized: "「\($0.displayTitle)」（运行中）") : String(localized: "「\($0.displayTitle)」") }
@@ -605,6 +607,27 @@ struct WorkspaceDialogs: ViewModifier {
     }
 
     private func host(of w: Workspace) -> HostStore? { model.hosts.first { $0.workspaces[w.id] != nil } }
+}
+
+extension AppModel {
+    /// 工作区里还在的顶层会话（归档工作区时会一起归档的那些）。
+    static func liveAgents(in w: Workspace, host: HostStore) -> [Agent] {
+        host.agents.values.filter { $0.workspaceId == w.id && $0.archivedAt == nil && $0.parentAgentId == nil }
+    }
+
+    /// 侧栏左滑能不能不确认直接归档：worktree 归档会删目录、运行中的会话和开着的终端会被停止，撤销不回来，仍要确认。
+    static func canArchiveWithoutConfirm(_ w: Workspace, host: HostStore) -> Bool {
+        w.kind != "worktree" && (host.terminals[w.id] ?? []).isEmpty
+            && !host.agents.values.contains { $0.workspaceId == w.id && $0.archivedAt == nil && $0.status == .running }
+    }
+
+    /// 归档工作区；不是 worktree 时底部给几秒「撤销」。
+    func archiveWorkspace(_ w: Workspace, on host: HostStore) async {
+        // 撤销时连子会话一起恢复。
+        let agents = host.agents.values.filter { $0.workspaceId == w.id && $0.archivedAt == nil }.map { AgentRef(serverId: host.id, agentId: $0.id) }
+        guard (try? await host.archiveWorkspace(w.id)) != nil, w.kind != "worktree" else { return }
+        offerUndoArchiveWorkspace(WorkspaceRef(serverId: host.id, workspaceId: w.id), agents: agents, title: WorkspaceDialogs.displayName(w))
+    }
 }
 
 extension View {

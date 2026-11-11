@@ -213,6 +213,22 @@
       }
     },
     "%lld": {},
+    "%lld / %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld / %2$lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$lld / %2$lld"
+          }
+        }
+      }
+    },
     "%lld ms": {},
     "%lld 个其他操作": {
       "localizations": {
@@ -1440,6 +1456,26 @@
         }
       }
     },
+    "上一张": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous"
+          }
+        }
+      }
+    },
+    "上一张（←）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous (←)"
+          }
+        }
+      }
+    },
     "上一轮：%@ tok/s · 输出 %@ tokens · 生成 %@ · %lld 次请求": {
       "localizations": {
         "en": {
@@ -1558,6 +1594,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Next Prompt Suggestions"
+          }
+        }
+      }
+    },
+    "下一张": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next"
+          }
+        }
+      }
+    },
+    "下一张（→）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next (→)"
           }
         }
       }
@@ -5380,6 +5436,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Denied (turn on in System Settings)"
+          }
+        }
+      }
+    },
+    "已拷贝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copied"
           }
         }
       }
@@ -13923,6 +13989,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Copy Image"
+          }
+        }
+      }
+    },
+    "拷贝图片（⌘C）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Image (⌘C)"
           }
         }
       }
