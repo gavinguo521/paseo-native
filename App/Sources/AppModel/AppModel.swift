@@ -1116,6 +1116,7 @@ final class AppModel {
     func removeHost(_ serverId: String) {
         host(serverId)?.stop()
         AppDefaults.store.removeObject(forKey: "hostAutoConnectPaused." + serverId)
+        AppDefaults.store.removeObject(forKey: "hostReconnectProgress." + serverId)
         hosts.removeAll { $0.id == serverId }
         if case .agent(let r) = destination, r.serverId == serverId { destination = nil }
         if hostFilter == serverId { hostFilter = nil }
@@ -1133,8 +1134,15 @@ final class AppModel {
     }
 
     func setAutomaticConnectionPaused(host: HostStore, _ paused: Bool) {
-        AppDefaults.store.set(paused, forKey: "hostAutoConnectPaused." + host.id)
         host.setAutomaticConnectionPaused(paused)
+        Self.persistReconnectState(serverId: host.id, paused: host.automaticConnectionPaused, progress: host.reconnectProgress)
+    }
+
+    private static func persistReconnectState(serverId: String, paused: Bool, progress: HostReconnectProgress?) {
+        AppDefaults.store.set(paused, forKey: "hostAutoConnectPaused." + serverId)
+        let key = "hostReconnectProgress." + serverId
+        if let progress, let data = try? JSONEncoder().encode(progress) { AppDefaults.store.set(data, forKey: key) }
+        else { AppDefaults.store.removeObject(forKey: key) }
     }
 
     func setAppVisible(_ visible: Bool) {
@@ -1205,8 +1213,14 @@ final class AppModel {
     }
 
     private func makeStore(_ offer: PairingOffer, label: String) -> HostStore {
+        let progress = AppDefaults.store.data(forKey: "hostReconnectProgress." + offer.serverId)
+            .flatMap { try? JSONDecoder().decode(HostReconnectProgress.self, from: $0) }
         let store = HostStore(offer: offer, label: label, clientId: clientId, appVersion: appVersion,
-                              automaticConnectionPaused: AppDefaults.store.bool(forKey: "hostAutoConnectPaused." + offer.serverId))
+                              automaticConnectionPaused: AppDefaults.store.bool(forKey: "hostAutoConnectPaused." + offer.serverId),
+                              reconnectProgress: progress)
+        store.onReconnectStateChange = { paused, progress in
+            Self.persistReconnectState(serverId: offer.serverId, paused: paused, progress: progress)
+        }
         store.onUserActivity = { PresenceReporter.shared.reportSoon() }
         #if os(macOS)
         store.setFrontmost(NSApp?.isActive ?? true)

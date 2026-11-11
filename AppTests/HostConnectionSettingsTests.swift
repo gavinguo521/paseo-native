@@ -13,8 +13,10 @@ import Testing
         let previous = Keychain.load(account)
         let id = "pause-settings-" + UUID().uuidString
         let key = "hostAutoConnectPaused." + id
+        let progressKey = "hostReconnectProgress." + id
         defer {
             AppDefaults.store.removeObject(forKey: key)
+            AppDefaults.store.removeObject(forKey: progressKey)
             if let previous { Keychain.save(previous, account: account) }
             else { Keychain.delete(account) }
         }
@@ -38,6 +40,20 @@ import Testing
         restored.setAutomaticConnectionPaused(host: restoredHost, false)
         restoredHost.stop()
         #expect(AppModel().host(id)?.automaticConnectionPaused == false)
+
+        let old = Date().addingTimeInterval(-(15 * 60 + 24 * 60 * 60 + 10))
+        let progress = HostReconnectProgress(startedAt: old, failures: 6, retryAt: old)
+        AppDefaults.store.set(try JSONEncoder().encode(progress), forKey: progressKey)
+        let expired = try #require(AppModel().host(id))
+        expired.start()
+        #expect(expired.automaticConnectionExpired)
+        #expect(AppDefaults.store.bool(forKey: key))
+        let expiredAfterReload = try #require(AppModel().host(id))
+        #expect(expiredAfterReload.automaticConnectionExpired)
+        #expect(expiredAfterReload.reconnectProgress == progress)
+        model.setAutomaticConnectionPaused(host: expiredAfterReload, false)
+        expiredAfterReload.stop()
+        #expect(AppDefaults.store.object(forKey: progressKey) == nil)
 
         restored.setAutomaticConnectionPaused(host: restoredHost, true)
         restored.removeHost(id)

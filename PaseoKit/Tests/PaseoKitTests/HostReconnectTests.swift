@@ -3,12 +3,112 @@ import Testing
 @testable import PaseoKit
 
 @Suite(.timeLimit(.minutes(1))) @MainActor struct HostReconnectTests {
+    @Test func retriesForFifteenMinutesThenHalfHourlyForOneDayBeforePausing() async throws {
+        let driver = RetryDriver()
+        let began = driver.clock.now
+        let host = makeHost(driver)
+        defer { host.stop() }
+        var savedPause = false
+        host.onReconnectStateChange = { paused, _ in savedPause = paused }
+        host.start()
+        while driver.clock.now < began.addingTimeInterval(15 * 60) {
+            let delay = try #require(await driver.nextDelay())
+            #expect(delay > 0 && delay <= 30)
+            await driver.releaseWait()
+        }
+        #expect(await driver.nextDelay() == 30 * 60)
+        let attemptsAtSlowStart = await driver.attempts
+        for interval in 0..<48 {
+            #expect(host.reconnectProgress?.startedAt == began)
+            host.setAppVisible(false)
+            host.setAppVisible(true)
+            await driver.releaseWait()
+            if interval < 47 { #expect(await driver.nextDelay() == 30 * 60) }
+        }
+        try await eventually { host.state == .paused }
+        #expect(driver.clock.now == began.addingTimeInterval(15 * 60 + 24 * 60 * 60))
+        #expect(await driver.attempts == attemptsAtSlowStart + 47)
+        #expect(host.automaticConnectionExpired && savedPause)
+        host.start()
+        host.reconnectNow()
+        #expect(host.state == .paused)
+        host.setAutomaticConnectionPaused(false)
+        #expect(await driver.nextDelay() == 1.5)
+        #expect(host.reconnectProgress?.startedAt == driver.clock.now)
+        #expect(!host.automaticConnectionExpired && !savedPause)
+    }
+
+    @Test func restoringOutagePreservesItsDeadlineAndRemainingWait() async throws {
+        let driver = RetryDriver()
+        let first = makeHost(driver)
+        first.start()
+        _ = await driver.nextDelay()
+        await driver.releaseWait(advanceBy: 15 * 60)
+        #expect(await driver.nextDelay() == 30 * 60)
+        let saved = try #require(first.reconnectProgress)
+        first.stop()
+        driver.clock.advance(10 * 60)
+
+        let restoredDriver = RetryDriver(clock: driver.clock)
+        let restored = makeHost(restoredDriver, progress: saved)
+        defer { restored.stop() }
+        restored.start()
+        #expect(await restoredDriver.nextDelay() == 20 * 60)
+        #expect(await restoredDriver.attempts == 0)
+        await restoredDriver.releaseWait()
+        #expect(await restoredDriver.nextDelay() == 30 * 60)
+        #expect(restored.reconnectProgress?.startedAt == saved.startedAt)
+    }
+
+    @Test func wakeAfterDeadlinePausesWithoutAnotherConnectionAttempt() async throws {
+        let driver = RetryDriver()
+        let began = driver.clock.now
+        driver.clock.advance(15 * 60 + 24 * 60 * 60 - 10)
+        let progress = HostReconnectProgress(startedAt: began, failures: 6,
+                                            retryAt: driver.clock.now.addingTimeInterval(30 * 60))
+        let host = makeHost(driver, progress: progress)
+        defer { host.stop() }
+        host.start()
+        // Even a persisted retry beyond the deadline must wake at the cutoff.
+        #expect(await driver.nextDelay() == 10)
+        await driver.releaseWait(advanceBy: 2 * 24 * 60 * 60)
+        try await eventually { host.automaticConnectionExpired }
+        #expect(await driver.attempts == 0)
+
+        let relaunched = makeHost(driver, progress: progress)
+        relaunched.start()
+        #expect(relaunched.state == .paused)
+        #expect(await driver.attempts == 0)
+    }
+
+    @Test func successfulRecoveryResetsTheOutageBudget() async throws {
+        let driver = RetryDriver()
+        let began = driver.clock.now
+        let progress = HostReconnectProgress(startedAt: began, failures: 6, retryAt: began)
+        driver.clock.advance(15 * 60 + 23 * 60 * 60)
+        await driver.setAvailable()
+        let host = makeHost(driver, progress: progress)
+        defer { host.stop() }
+        host.start()
+        try await eventually { host.state == .connected }
+        #expect(host.reconnectProgress == nil)
+        // An established connection must not expire with its previous outage.
+        driver.clock.advance(2 * 60 * 60)
+        host.setAppVisible(false)
+        host.setAppVisible(true)
+        #expect(!host.automaticConnectionPaused)
+        let transport = try #require(await driver.transports.last)
+        await transport.close(code: 1001, reason: "new outage")
+        #expect(await driver.nextDelay() == 1.5)
+        #expect(host.reconnectProgress?.startedAt == driver.clock.now)
+    }
+
     @Test func sustainedOutageStaysOfflineAndForegroundPreservesBackoff() async throws {
         let driver = RetryDriver()
         let host = makeHost(driver)
         defer { host.stop() }
         host.start()
-        for (index, expected) in [1.5, 3, 120, 240, 300, 300].enumerated() {
+        for (index, expected) in [1.5, 3, 6, 12, 24, 30, 30].enumerated() {
             #expect(await driver.nextDelay() == expected)
             if index >= 2 {
                 guard case .offline = host.state else { Issue.record("Long outage must stay offline"); return }
@@ -19,10 +119,10 @@ import Testing
                 #expect(host.state == before)
                 #expect(await driver.attempts == index + 1)
             }
-            if index < 5 { await driver.releaseWait() }
+            if index < 6 { await driver.releaseWait() }
         }
         let observed = await driver.states
-        #expect(observed.count == 6)
+        #expect(observed.count == 7)
         #expect(observed.dropFirst(3).allSatisfy { if case .offline = $0 { true } else { false } })
     }
 
@@ -32,7 +132,7 @@ import Testing
         defer { host.stop() }
         host.start()
         for _ in 0..<2 { _ = await driver.nextDelay(); await driver.releaseWait() }
-        #expect(await driver.nextDelay() == 120)
+        #expect(await driver.nextDelay() == 6)
         await driver.setAvailable()
         await driver.releaseWait()
         try await eventually { host.state == .connected }
@@ -50,9 +150,11 @@ import Testing
         defer { host.stop() }
         host.start()
         for _ in 0..<2 { _ = await driver.nextDelay(); await driver.releaseWait() }
-        #expect(await driver.nextDelay() == 120)
+        #expect(await driver.nextDelay() == 6)
+        let oldStart = host.reconnectProgress?.startedAt
         host.reconnectNow()
         #expect(await driver.nextDelay() == 1.5)
+        #expect(host.reconnectProgress?.startedAt != oldStart)
         host.setAutomaticConnectionPaused(true)
         #expect(host.state == .paused)
         host.start()
@@ -106,12 +208,12 @@ import Testing
         let host = makeHost(driver)
         defer { host.stop() }
         host.start()
-        for delay in [1.5, 3, 120] {
+        for delay in [1.5, 3, 6] {
             #expect(await driver.nextDelay() == delay)
             let transport = try #require(await driver.transports.last)
             #expect(await transport.closed)
             #expect(host.connection == nil)
-            if delay != 120 { await driver.releaseWait() }
+            if delay != 6 { await driver.releaseWait() }
         }
         guard case .offline = host.state else { Issue.record("Bootstrap failures must also back off"); return }
     }
@@ -152,9 +254,10 @@ import Testing
         #expect(await transport.closed)
     }
 
-    private func makeHost(_ driver: RetryDriver, paused: Bool = false) -> HostStore {
+    private func makeHost(_ driver: RetryDriver, paused: Bool = false, progress: HostReconnectProgress? = nil) -> HostStore {
         let host = HostStore(offer: .direct(serverId: "test", endpoint: "localhost:1", useTls: false, password: nil),
-                             label: "Offline test", clientId: "test", appVersion: "test", automaticConnectionPaused: paused)
+                             label: "Offline test", clientId: "test", appVersion: "test", automaticConnectionPaused: paused, reconnectProgress: progress)
+        host.reconnectDate = { driver.clock.now }
         host.openConnection = { [weak host] _, _ in
             if let state = await host?.state { await driver.record(state) }
             return try await driver.open()
@@ -170,17 +273,29 @@ import Testing
     }
 }
 
+private final class RetryClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var date = Date(timeIntervalSince1970: 1_800_000_000)
+    var now: Date { lock.lock(); defer { lock.unlock() }; return date }
+    func advance(_ seconds: TimeInterval) { lock.lock(); defer { lock.unlock() }; date.addTimeInterval(seconds) }
+}
+
 private actor RetryDriver {
+    nonisolated let clock: RetryClock
+
     private(set) var attempts = 0
     private(set) var states: [ConnectionState] = []
     private(set) var transports: [RetryTransport] = []
     private var available = false
     private var rejectBootstrap = false
-    private var waiters: [UUID: CheckedContinuation<Void, Error>] = [:]
+    private var waiters: [UUID: (TimeInterval, CheckedContinuation<Void, Error>)] = [:]
     private let delays: AsyncStream<TimeInterval>
     private let sink: AsyncStream<TimeInterval>.Continuation
 
-    init() { (delays, sink) = AsyncStream.makeStream(of: TimeInterval.self) }
+    init(clock: RetryClock = RetryClock()) {
+        self.clock = clock
+        (delays, sink) = AsyncStream.makeStream(of: TimeInterval.self)
+    }
     func record(_ state: ConnectionState) { states.append(state) }
     func setAvailable(rejectBootstrap: Bool = false) { available = true; self.rejectBootstrap = rejectBootstrap }
     func open() async throws -> DaemonConnection {
@@ -197,14 +312,15 @@ private actor RetryDriver {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 if Task.isCancelled { continuation.resume(throwing: CancellationError()) }
-                else { waiters[id] = continuation; sink.yield(seconds) }
+                else { waiters[id] = (seconds, continuation); sink.yield(seconds) }
             }
         } onCancel: { Task { await self.cancel(id) } }
     }
-    private func cancel(_ id: UUID) { waiters.removeValue(forKey: id)?.resume(throwing: CancellationError()) }
-    func releaseWait() {
+    private func cancel(_ id: UUID) { waiters.removeValue(forKey: id)?.1.resume(throwing: CancellationError()) }
+    func releaseWait(advanceBy seconds: TimeInterval? = nil) {
         let pending = waiters; waiters.removeAll()
-        for waiter in pending.values { waiter.resume() }
+        clock.advance(seconds ?? pending.values.map { $0.0 }.max() ?? 0)
+        for (_, waiter) in pending.values { waiter.resume() }
     }
     func nextDelay() async -> TimeInterval? {
         var iterator = delays.makeAsyncIterator()

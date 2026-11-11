@@ -232,6 +232,10 @@ struct HostDetailView: View {
                 LabeledContent("会话 / 工作区", value: "\(host.agents.count) / \(host.workspaces.count)")
                 if host.automaticConnectionPaused {
                     Button("恢复自动连接") { model.setAutomaticConnectionPaused(host: host, false) }
+                    if host.automaticConnectionExpired {
+                        Text("每 30 分钟重连已持续 24 小时，仍未连上，已自动暂停。")
+                            .font(.caption).foregroundStyle(Theme.muted)
+                    }
                     Text("仅暂停这台设备连接该机器；不会关闭远端服务，也不会删除配对信息。")
                         .font(.caption).foregroundStyle(Theme.muted)
                 } else {
@@ -240,7 +244,7 @@ struct HostDetailView: View {
                         Button("暂停自动连接") { model.setAutomaticConnectionPaused(host: host, true) }
                     }
                     if case .offline(let message, _) = host.state {
-                        Text("机器暂时无法连接，已改为每 2～5 分钟自动检查。开机后会自动恢复，也可立即重连。")
+                        Text("先按原有节奏重试，最长间隔 30 秒；离线满 15 分钟后改为每 30 分钟检查，再持续 24 小时仍无法连接就自动暂停。")
                             .font(.caption).foregroundStyle(Theme.muted).help(message)
                     }
                 }
