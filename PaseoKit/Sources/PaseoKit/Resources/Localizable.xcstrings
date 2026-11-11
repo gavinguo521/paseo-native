@@ -806,6 +806,54 @@
           }
         }
       }
+    },
+    "未收到已创建的计划任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The created schedule was not returned"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未收到已创建的计划任务"
+          }
+        }
+      }
+    },
+    "未收到通知设置的保存结果，请重新打开任务确认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The notification setting was not confirmed. Reopen the task to check it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未收到通知设置的保存结果，请重新打开任务确认"
+          }
+        }
+      }
+    },
+    "请更新任务所在主机的推送插件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update the push plugin on the execution host"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请更新任务所在主机的推送插件"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -215,6 +215,8 @@ struct MacComposerTextView: NSViewRepresentable {
     let onReturn: (Bool) -> Bool
     let onKey: (ComposerKey) -> Bool
     let onPaste: () -> Bool
+    var onAttachments: ((NSPasteboard) -> Bool)? = nil
+    var onDropTargetChanged: ((Bool) -> Void)? = nil
     var onLongText: ((String) -> Bool)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -242,6 +244,7 @@ struct MacComposerTextView: NSViewRepresentable {
         view.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         view.layoutManager?.allowsNonContiguousLayout = true
         view.delegate = context.coordinator
+        view.registerForDraggedTypes([.fileURL, .png, .tiff])
         scroll.documentView = view
         return scroll
     }
@@ -261,6 +264,8 @@ struct MacComposerTextView: NSViewRepresentable {
         view.onReturn = onReturn
         view.onKey = onKey
         view.onPaste = onPaste
+        view.onAttachments = onAttachments
+        view.onDropTargetChanged = onDropTargetChanged
         view.onLongText = onLongText
         view.focusChanged = { [weak coordinator = context.coordinator] active in
             guard let coordinator else { return }
@@ -341,6 +346,8 @@ final class MacComposerEditor: NSTextView {
     var onReturn: ((Bool) -> Bool)?
     var onKey: ((ComposerKey) -> Bool)?
     var onPaste: (() -> Bool)?
+    var onAttachments: ((NSPasteboard) -> Bool)?
+    var onDropTargetChanged: ((Bool) -> Void)?
     var onLongText: ((String) -> Bool)?
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
@@ -384,14 +391,46 @@ final class MacComposerEditor: NSTextView {
         return super.validateUserInterfaceItem(item)
     }
     override func readSelection(from pasteboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        if onAttachments?(pasteboard) == true { return true }
         if let text = pasteboard.string(forType: .string), onLongText?(text) == true { return true }
         return super.readSelection(from: pasteboard, type: type)
     }
     override func paste(_ sender: Any?) {
+        if onAttachments?(NSPasteboard.general) == true { return }
         if let text = NSPasteboard.general.string(forType: .string), onLongText?(text) == true { return }
         if onPaste?() == true { return }
         // 普通粘贴保持纯文本，避免网页富文本携带的字体和段落样式触发额外排版。
         pasteAsPlainText(sender)
+    }
+
+    private func acceptsAttachmentDrag(_ sender: NSDraggingInfo) -> Bool {
+        onAttachments != nil && ComposerAttachmentPasteboard.containsAttachments(sender.draggingPasteboard)
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if acceptsAttachmentDrag(sender) { onDropTargetChanged?(true); return .copy }
+        return super.draggingEntered(sender)
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if acceptsAttachmentDrag(sender) { onDropTargetChanged?(true); return .copy }
+        return super.draggingUpdated(sender)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onDropTargetChanged?(false)
+        super.draggingExited(sender)
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        acceptsAttachmentDrag(sender) || super.prepareForDragOperation(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        onDropTargetChanged?(false)
+        // NSTextView otherwise inserts Finder's file URL/path before SwiftUI's onDrop can run.
+        if onAttachments?(sender.draggingPasteboard) == true { return true }
+        return super.performDragOperation(sender)
     }
 }
 #endif

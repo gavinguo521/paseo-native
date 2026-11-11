@@ -160,8 +160,11 @@ public actor DaemonConnection {
 
     /// Sends `{"type":"session","message":{type, requestId, ...params}}` and waits for the response whose
     /// `payload.requestId` matches, or an `rpc_error`. Returns the response `message` (type + payload).
+    /// `afterSend` sends a streaming request body only after its JSON header has finished sending.
     public func request(_ type: String, _ params: [String: JSONValue] = [:], timeout: Duration = .seconds(60),
-                        onUpdate: (@Sendable (JSONValue) -> Void)? = nil, requestId: String? = nil) async throws -> JSONValue {
+                        onUpdate: (@Sendable (JSONValue) -> Void)? = nil, requestId: String? = nil,
+                        afterSend: (@Sendable () async throws -> Void)? = nil) async throws -> JSONValue {
+        try Task.checkCancellation()
         if let closedReason { throw DaemonConnectionError.closed(closedReason) }
         let requestId = requestId ?? UUID().uuidString.lowercased()
         if let onUpdate { updateHandlers[requestId] = onUpdate }
@@ -171,16 +174,25 @@ public actor DaemonConnection {
         let text = try JSONValue.object(["type": "session", "message": .object(message)]).serialized()
 
         let timeoutTask = Task {
-            try? await Task.sleep(for: timeout)
+            do { try await Task.sleep(for: timeout) } catch { return }
             self.resolve(requestId, .failure(DaemonConnectionError.timeout(type)))
         }
-        defer { timeoutTask.cancel() }
-        return try await withCheckedThrowingContinuation { cont in
-            pending[requestId] = cont
-            Task {
-                do { try await channel.send(.text(text)) }
-                catch { self.resolve(requestId, .failure(error)) }
+        var sendTask: Task<Void, Never>?
+        defer { timeoutTask.cancel(); sendTask?.cancel() }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { cont in
+                pending[requestId] = cont
+                sendTask = Task {
+                    do {
+                        try Task.checkCancellation()
+                        try await channel.send(.text(text))
+                        try Task.checkCancellation()
+                        if pending[requestId] != nil { try await afterSend?() }
+                    } catch { self.resolve(requestId, .failure(error)) }
+                }
             }
+        } onCancel: {
+            Task { await self.resolve(requestId, .failure(CancellationError())) }
         }
     }
 

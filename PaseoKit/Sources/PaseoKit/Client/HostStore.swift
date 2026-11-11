@@ -1127,14 +1127,39 @@ public final class HostStore: Identifiable {
         _ = try await conn().request("schedule/" + action, ["scheduleId": .string(id)], timeout: timeout)
     }
 
-    public func createSchedule(_ params: [String: JSONValue]) async throws {
-        _ = try await conn().request("schedule/create", params)
+    @discardableResult
+    public func createSchedule(_ params: [String: JSONValue]) async throws -> Schedule {
+        let r = try await conn().request("schedule/create", params)
+        try check(r)
+        guard let schedule = r["payload"]?["schedule"].flatMap(Schedule.init) else {
+            throw ActionError.rejected(String(localized: "未收到已创建的计划任务", bundle: .module))
+        }
+        return schedule
     }
 
     public func updateSchedule(_ id: String, _ params: [String: JSONValue]) async throws {
         var p = params
         p["scheduleId"] = .string(id)
-        _ = try await conn().request("schedule/update", p)
+        try check(try await conn().request("schedule/update", p))
+    }
+
+    public func scheduleNotificationPreference(_ id: String? = nil) async throws -> ScheduleNotificationPreference {
+        let input: JSONValue = id.map { ["scheduleId": .string($0)] } ?? [:]
+        let value = try await invokePlugin("live-activity", "schedule.notifications.read", input, timeout: .seconds(15))
+        guard let preference = ScheduleNotificationPreference(value) else {
+            throw ActionError.rejected(String(localized: "请更新任务所在主机的推送插件", bundle: .module))
+        }
+        return preference
+    }
+
+    public func setScheduleNotifications(_ id: String, enabled: Bool, expectedRevision: String) async throws -> ScheduleNotificationPreference {
+        let value = try await invokePlugin("live-activity", "schedule.notifications.write", [
+            "scheduleId": .string(id), "enabled": .bool(enabled), "expectedRevision": .string(expectedRevision)
+        ])
+        guard let preference = ScheduleNotificationPreference(value) else {
+            throw ActionError.rejected(String(localized: "未收到通知设置的保存结果，请重新打开任务确认", bundle: .module))
+        }
+        return preference
     }
 
     // MARK: Usage

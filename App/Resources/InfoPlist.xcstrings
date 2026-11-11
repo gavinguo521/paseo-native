@@ -80,13 +80,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose images to send to a session"
+            "value" : "Choose images or videos to send to a session"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "选择图片发给会话"
+            "value" : "选择图片或视频发给会话"
           }
         }
       }

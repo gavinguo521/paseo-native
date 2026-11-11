@@ -1,82 +1,410 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
-    "每 30 分钟重连已持续 24 小时，仍未连上，已自动暂停。": {
+    "Bark 通知": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Half-hourly retries continued for 24 hours without reconnecting. Automatic connection is now paused."
+            "value": "Bark notifications"
           }
         }
       }
     },
-    "已暂停自动连接": {
+    "Bark 推送地址": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Automatic connection paused"
+            "value": "Bark push URL"
           }
         }
       }
     },
-    "恢复自动连接": {
+    "Bark 服务器": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Resume automatic connection"
+            "value": "Bark server"
           }
         }
       }
     },
-    "暂停自动连接": {
+    "从 Bark 首页复制推送地址并粘贴到这里，例如 https://api.day.app/设备密钥。地址只保存在执行主机上，保存后不再显示设备密钥。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pause automatic connection"
+            "value": "Copy the HTTPS push URL from Bark and paste it here, for example https://api.day.app/device-key. It is stored only on the execution host. The device key is not shown after saving."
           }
         }
       }
     },
-    "仅暂停这台设备连接该机器；不会关闭远端服务，也不会删除配对信息。": {
+    "任务已保存，但通知设置未保存。请重试或重新打开任务确认。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This device has paused its connection to this machine. The remote service and pairing are preserved."
+            "value": "The task was saved, but its notification setting was not. Retry or reopen the task to confirm."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "任务已保存，但通知设置未保存。请重试或重新打开任务确认。"
           }
         }
       }
     },
-    "先按原有节奏重试，最长间隔 30 秒；离线满 15 分钟后改为每 30 分钟检查，再持续 24 小时仍无法连接就自动暂停。": {
+    "任务所在主机": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Retries initially back off to 30 seconds. After 15 minutes offline, checks run every 30 minutes for another 24 hours, then automatically pause if the machine is still unreachable."
+            "value": "Execution host"
           }
         }
       }
     },
-    "%@ 已离线，将在后台自动检查": {
+    "保存失败，请检查主机连接，并粘贴 Bark 首页完整的 HTTPS 推送地址。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ is offline. Automatic checks will continue in the background."
+            "value": "Could not save. Check the host connection and paste the full HTTPS push URL from Bark."
           }
         }
       }
     },
-    "已暂停连接 %@": {
+    "保存推送地址": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connection to %@ is paused"
+            "value": "Save push URL"
+          }
+        }
+      }
+    },
+    "发送 Bark 测试通知": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send Bark test notification"
+          }
+        }
+      }
+    },
+    "已保存，请发送测试通知并检查手机。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved. Send a test notification and check your phone."
+          }
+        }
+      }
+    },
+    "已移除 Bark 配置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bark configuration removed."
+          }
+        }
+      }
+    },
+    "手机安装 Bark 后可接收会话完成和计划任务结果通知，无需配置 APNs 密钥。请在各执行主机分别配置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install Bark on your phone to receive conversation completion and scheduled task results without APNs credentials. Configure each execution host separately."
+          }
+        }
+      }
+    },
+    "无法读取 Bark 设置，请确认主机已连接并安装最新推送插件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot read Bark settings. Check that the host is connected and has the latest push plugin."
+          }
+        }
+      }
+    },
+    "无法读取通知设置。请确认任务所在主机已安装并启用最新推送插件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to read notification settings. Install and enable the latest push plugin on the execution host."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取通知设置。请确认任务所在主机已安装并启用最新推送插件。"
+          }
+        }
+      }
+    },
+    "最近一次请求失败，请检查地址和主机网络": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The last request failed. Check the URL and host network."
+          }
+        }
+      }
+    },
+    "最近一次请求已被 Bark 接受": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The last request was accepted by Bark"
+          }
+        }
+      }
+    },
+    "正在等待主机连接…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for the host to connect…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在等待主机连接…"
+          }
+        }
+      }
+    },
+    "每次运行结束后，向手机通知结果或失败原因；自动归档不影响通知。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notify your phone of the result or failure after each run, even when it is automatically archived."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每次运行结束后，向手机通知结果或失败原因；自动归档不影响通知。"
+          }
+        }
+      }
+    },
+    "测试发送失败，请检查 Bark 地址和主机网络后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not send the test. Check the Bark URL and host network, then retry."
+          }
+        }
+      }
+    },
+    "测试请求已被 Bark 接受，请检查手机锁屏通知。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bark accepted the test request. Check your phone for a Lock Screen notification."
+          }
+        }
+      }
+    },
+    "移除 Bark 配置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove Bark configuration"
+          }
+        }
+      }
+    },
+    "移除失败，请检查主机连接后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not remove the configuration. Check the host connection and retry."
+          }
+        }
+      }
+    },
+    "计划任务已删除或不存在。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This scheduled task has been deleted or no longer exists."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "计划任务已删除或不存在。"
+          }
+        }
+      }
+    },
+    "请允许 Bark 的锁屏通知。测试收到后，在计划任务中开启“通知任务结果”并保存。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow Lock Screen notifications for Bark. After receiving the test, enable Notify task results in your scheduled task and save."
+          }
+        }
+      }
+    },
+    "请先在任务所在主机配置手机推送，并在手机上开启通知。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set up push notifications on the execution host and enable notifications on your phone first."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先在任务所在主机配置手机推送，并在手机上开启通知。"
+          }
+        }
+      }
+    },
+    "请先配置 Bark 推送，或配置 APNs 并在手机上开启通知。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configure Bark, or configure APNs and enable notifications on your phone first."
+          }
+        }
+      }
+    },
+    "请连接会话或任务所在主机，并在该主机安装和启用最新的推送插件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect to the host running the conversation or task and install and enable the latest push plugin there."
+          }
+        }
+      }
+    },
+    "通知任务结果": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notify task results"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知任务结果"
+          }
+        }
+      }
+    },
+    "配置 Bark 推送…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configure Bark…"
+          }
+        }
+      }
+    },
+    "已开启的通知会将会话标题与回复摘要，或任务名称与结果摘要发送到所填的 Bark 服务器。点击通知可打开 Paseo 的对应会话或任务记录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enabled notifications send conversation titles and reply previews, or task names and result summaries, to the specified Bark server. Tap a notification to open the corresponding conversation or task history in Paseo."
+          }
+        }
+      }
+    },
+    "重新检查通知设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check notification settings again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新检查通知设置"
+          }
+        }
+      }
+    },
+    "已配置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configured"
+          }
+        }
+      }
+    },
+    "通知所在主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notification host"
+          }
+        }
+      }
+    },
+    "会话完成通知": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversation completion notifications"
+          }
+        }
+      }
+    },
+    "普通会话每次回复完成后推送到手机，点击可打开对应会话。Mac 正在使用时也会推送，Mac 系统通知照常保留。计划任务仍使用各任务的“通知任务结果”开关。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push each completed conversation reply to your phone. Tap to open the conversation. Notifications also arrive while the Mac is active; Mac system notifications remain enabled. Scheduled tasks use their own Notify task results switch."
+          }
+        }
+      }
+    },
+    "会话通知设置保存失败，请检查主机连接后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not save conversation notification settings. Check the host connection and retry."
           }
         }
       }
@@ -14079,6 +14407,246 @@
           "stringUnit": {
             "state": "translated",
             "value": "Copy Image (⌘C)"
+          }
+        }
+      }
+    },
+    "无法读取视频画面，请选择可播放的 MP4 或 MOV 文件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to read video frames. Choose a playable MP4 or MOV file."
+          }
+        }
+      }
+    },
+    "视频超过 500 MB，请先裁剪需要分析的片段。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video exceeds 500 MB. Trim it to the part you want to analyze."
+          }
+        }
+      }
+    },
+    "视频超过 3 分钟，请先裁剪需要分析的片段。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video exceeds 3 minutes. Trim it to the part you want to analyze."
+          }
+        }
+      }
+    },
+    "无法生成视频画面，请换一个视频重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to prepare video frames. Try a different video."
+          }
+        }
+      }
+    },
+    "本次图片和视频画面过多，请减少附件或分开发送。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Too many images and video frames. Remove some attachments or send them separately."
+          }
+        }
+      }
+    },
+    "视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video"
+          }
+        }
+      }
+    },
+    "预览视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview video"
+          }
+        }
+      }
+    },
+    "%lld 秒 · %lld 帧": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld sec · %2$lld frames"
+          }
+        }
+      }
+    },
+    "正在准备视频画面…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing video frames…"
+          }
+        }
+      }
+    },
+    "发送采样画面供 AI 分析，不含音频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send sampled frames for AI analysis, without audio"
+          }
+        }
+      }
+    },
+    "AI 将分析下方的采样画面，未采样的瞬间可能遗漏；不包含音频。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI will analyze the sampled frames below. Events between samples may be missed; audio is not included."
+          }
+        }
+      }
+    },
+    "附件还在准备中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attachments are still being prepared"
+          }
+        }
+      }
+    },
+    "· %lld 个视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "· %lld videos"
+          }
+        }
+      }
+    },
+    "添加附件…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Attachments…"
+          }
+        }
+      }
+    },
+    "添加附件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Attachments"
+          }
+        }
+      }
+    },
+    "照片与视频…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photos & Videos…"
+          }
+        }
+      }
+    },
+    "已暂停自动连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic connection paused"
+          }
+        }
+      }
+    },
+    "恢复自动连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume automatic connection"
+          }
+        }
+      }
+    },
+    "暂停自动连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause automatic connection"
+          }
+        }
+      }
+    },
+    "仅暂停这台设备连接该机器；不会关闭远端服务，也不会删除配对信息。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This device has paused its connection to this machine. The remote service and pairing are preserved."
+          }
+        }
+      }
+    },
+    "%@ 已离线，将在后台自动检查": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is offline. Automatic checks will continue in the background."
+          }
+        }
+      }
+    },
+    "已暂停连接 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection to %@ is paused"
+          }
+        }
+      }
+    },
+    "每 30 分钟重连已持续 24 小时，仍未连上，已自动暂停。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Half-hourly retries continued for 24 hours without reconnecting. Automatic connection is now paused."
+          }
+        }
+      }
+    },
+    "先按原有节奏重试，最长间隔 30 秒；离线满 15 分钟后改为每 30 分钟检查，再持续 24 小时仍无法连接就自动暂停。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retries initially back off to 30 seconds. After 15 minutes offline, checks run every 30 minutes for another 24 hours, then automatically pause if the machine is still unreachable."
           }
         }
       }

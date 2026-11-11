@@ -139,6 +139,13 @@ final class AppModel {
     var labelFilter: Set<String> = []
     /// Bumped when a sidebar row is tapped; on iPhone it shows the content page even if the destination did not change.
     var revealDetail = 0
+    var pendingScheduleNotification: ScheduleNotificationRoute?
+
+    func openScheduleNotification(_ route: ScheduleNotificationRoute) {
+        pendingScheduleNotification = route
+        destination = .schedules
+        revealDetail += 1
+    }
     /// Projects merged by hand across machines when their names differ ("Acme web app" on one machine is
     /// "web-app" on another): "serverId|project name" → the sidebar group it joins. Local to this app.
     var projectAliases: [String: String] = (AppDefaults.store.dictionary(forKey: "projectAliases") as? [String: String]) ?? [:] {
@@ -917,6 +924,7 @@ final class AppModel {
         #endif
         NotificationManager.shared.setUp()
         NotificationManager.shared.onOpen = { [weak self] ref in self?.open(ref) }
+        NotificationManager.shared.onOpenSchedule = { [weak self] route in self?.openScheduleNotification(route) }
         NotificationManager.shared.onAction = { [weak self] ref, action in await self?.handleNotification(action, ref: ref) }
         NotificationManager.shared.isHostConnected = { [weak self] id in self?.host(id)?.state == .connected }
         hosts.forEach { $0.start() }
