@@ -344,6 +344,20 @@ struct AgentView: View {
                     Button("立即重连") { host.reconnectNow() }.buttonStyle(.borderless).controlSize(.small)
                 }
                 .help(message)
+            case .offline(let message, _):
+                notice {
+                    Image(systemName: "wifi.slash").foregroundStyle(Theme.dotWarning)
+                    Text("\(host.label) 已离线，将在后台自动检查")
+                    Button("立即重连") { host.reconnectNow() }.buttonStyle(.borderless).controlSize(.small)
+                }
+                .help(message)
+            case .paused:
+                notice {
+                    Image(systemName: "pause.circle").foregroundStyle(Theme.muted)
+                    Text("已暂停连接 \(host.label)")
+                    Button("恢复自动连接") { model.setAutomaticConnectionPaused(host: host, false) }
+                        .buttonStyle(.borderless).controlSize(.small)
+                }
             case .failed(let message, _):
                 notice {
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.dotWarning)

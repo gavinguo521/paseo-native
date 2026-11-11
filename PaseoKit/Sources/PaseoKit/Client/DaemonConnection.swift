@@ -353,18 +353,25 @@ func withTimeout<T: Sendable>(
     _ body: @escaping @Sendable () async throws -> T,
     onTimeout: @escaping @Sendable () async -> Void
 ) async throws -> T {
-    try await withThrowingTaskGroup(of: T?.self) { group in
-        group.addTask { try await body() }
-        group.addTask {
-            try await Task.sleep(for: timeout)
-            return nil
-        }
-        defer { group.cancelAll() }
-        while let result = try await group.next() {
-            if let value = result { return value }
-            await onTimeout()
+    try await withTaskCancellationHandler {
+        try Task.checkCancellation()
+        return try await withThrowingTaskGroup(of: T?.self) { group in
+            group.addTask { try await body() }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                return nil
+            }
+            defer { group.cancelAll() }
+            while let result = try await group.next() {
+                if let value = result { return value }
+                await onTimeout()
+                throw DaemonConnectionError.timeout(what)
+            }
             throw DaemonConnectionError.timeout(what)
         }
-        throw DaemonConnectionError.timeout(what)
+    } onCancel: {
+        // receive() may be waiting in a transport continuation that ignores task
+        // cancellation. Close it so pausing cannot leave a handshake running.
+        Task { await onTimeout() }
     }
 }

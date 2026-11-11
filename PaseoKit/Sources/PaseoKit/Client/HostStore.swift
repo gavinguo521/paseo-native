@@ -11,6 +11,9 @@ public enum ConnectionState: Equatable, Sendable {
     case connected
     /// Retrying after `delay`; `message` is the last error.
     case waiting(message: String, retryAt: Date)
+    /// A sustained outage. Background probes keep this state until recovery.
+    case offline(message: String, retryAt: Date)
+    case paused
     /// Won't retry on its own (wrong password, incompatible daemon).
     case failed(message: String, needsPassword: Bool)
 }
@@ -43,6 +46,10 @@ public final class HostStore: Identifiable {
     public nonisolated let id: String
     public private(set) var offer: PairingOffer
     public var label: String
+    public private(set) var automaticConnectionPaused: Bool
+    public private(set) var reconnectProgress: HostReconnectProgress?
+    /// Automatic expiry keeps the last outage for its explanation; a manual pause clears it.
+    public var automaticConnectionExpired: Bool { automaticConnectionPaused && reconnectProgress != nil }
     public private(set) var state: ConnectionState = .idle {
         didSet { if state != oldValue { AppLog.shared.record("连接", label + "：" + String(describing: state)) } }
     }
@@ -110,11 +117,20 @@ public final class HostStore: Identifiable {
     @ObservationIgnored public var onAttention: (@MainActor (AttentionEvent) -> Void)?
     /// 用户刚操作过（发消息、回到 App）：App 据此马上上报在用状态，不等下一次定时上报。
     @ObservationIgnored public var onUserActivity: (@MainActor () -> Void)?
+    @ObservationIgnored public var onReconnectStateChange: (@MainActor (Bool, HostReconnectProgress?) -> Void)?
 
     @ObservationIgnored private let clientId: String
     @ObservationIgnored private let appVersion: String
     @ObservationIgnored var connection: DaemonConnection?
     @ObservationIgnored private var runTask: Task<Void, Never>?
+    @ObservationIgnored private var connectionRun = UUID()
+    @ObservationIgnored var reconnectDate: () -> Date = Date.init
+    @ObservationIgnored var openConnection: @Sendable (PairingOffer, HelloOptions) async throws -> DaemonConnection = {
+        try await DaemonConnection.connect(offer: $0, hello: $1)
+    }
+    @ObservationIgnored var waitToReconnect: @Sendable (TimeInterval) async throws -> Void = {
+        try await Task.sleep(for: .seconds($0))
+    }
     @ObservationIgnored private var heartbeatTask: Task<Void, Never>?
     @ObservationIgnored private var companionConnectionTask: Task<Void, Error>?
     /// Round trip of a session `ping` RPC to this daemon (relay included), measured every heartbeat (15 s).
@@ -137,27 +153,37 @@ public final class HostStore: Identifiable {
     @ObservationIgnored private var visibilityChangedAt = Date()
     @ObservationIgnored private var lastActivityAt = Date()
 
-    public init(offer: PairingOffer, label: String, clientId: String, appVersion: String) {
+    public init(offer: PairingOffer, label: String, clientId: String, appVersion: String,
+                automaticConnectionPaused: Bool = false, reconnectProgress: HostReconnectProgress? = nil) {
         id = offer.serverId
         self.offer = offer
         self.label = label
         self.clientId = clientId
         self.appVersion = appVersion
+        self.automaticConnectionPaused = automaticConnectionPaused
+        self.reconnectProgress = reconnectProgress
+        if automaticConnectionPaused { state = .paused }
     }
 
     // MARK: Lifecycle
 
     public func start() {
-        guard runTask == nil else { return }
-        runTask = Task { await runLoop() }
+        guard runTask == nil, !automaticConnectionPaused else { return }
+        if case .failed = state { return }
+        guard !pauseExpiredReconnect() else { return }
+        let run = UUID()
+        connectionRun = run
+        runTask = Task { await runLoop(run: run) }
     }
 
     public func stop() {
+        connectionRun = UUID()
         timelineSyncTask?.cancel()
         timelineSyncTask = nil
         runTask?.cancel()
         runTask = nil
         heartbeatTask?.cancel()
+        binaryTask?.cancel()
         latencyMs = nil
         let c = connection
         connection = nil
@@ -165,25 +191,62 @@ public final class HostStore: Identifiable {
         timelineSubscriptionId = nil
         providerSubagentSubscriptionId = nil
         Task { await c?.close() }
-        state = .idle
+        state = automaticConnectionPaused ? .paused : .idle
+    }
+
+    /// Pausing also cancels a handshake or a scheduled retry. Foreground and watch
+    /// recovery must not silently resume a host the user deliberately paused.
+    public func setAutomaticConnectionPaused(_ paused: Bool) {
+        guard paused != automaticConnectionPaused else { return }
+        automaticConnectionPaused = paused
+        reconnectProgress = nil
+        stop()
+        onReconnectStateChange?(paused, nil)
+        if !paused { start() }
     }
 
     public func updatePassword(_ password: String?) {
         offer.password = password
         stop()
+        if !automaticConnectionPaused { updateReconnectProgress(nil) }
         start()
     }
 
-    /// Reconnect immediately (e.g. app returned to foreground).
+    /// Explicit user retry; automatic foreground recovery preserves the backoff.
     public func reconnectNow() {
+        guard !automaticConnectionPaused else { return }
         if case .connected = state { return }
         stop()
+        updateReconnectProgress(nil)
         start()
+    }
+
+    private func updateReconnectProgress(_ progress: HostReconnectProgress?) {
+        guard reconnectProgress != progress else { return }
+        reconnectProgress = progress
+        onReconnectStateChange?(automaticConnectionPaused, progress)
+    }
+
+    @discardableResult private func pauseExpiredReconnect() -> Bool {
+        guard !automaticConnectionPaused, let progress = reconnectProgress,
+              reconnectDate() >= progress.expiresAt else { return false }
+        automaticConnectionPaused = true
+        stop()
+        onReconnectStateChange?(true, progress)
+        return true
+    }
+
+    private func showReconnectWait(_ progress: HostReconnectProgress, message: String) {
+        state = progress.failures < 3 ? .waiting(message: message, retryAt: progress.retryAt)
+            : .offline(message: message, retryAt: progress.retryAt)
     }
 
     /// A suspended iPhone can retain `.connected` after its socket has died. Probe the socket
     /// before serving the watch, and share recovery between simultaneous companion reads.
     public func prepareForCompanionRequest() async throws {
+        guard !automaticConnectionPaused else {
+            throw ActionError.rejected(String(localized: "已暂停自动连接，请先在机器设置中恢复。", bundle: .module))
+        }
         if let task = companionConnectionTask { return try await task.value }
         let task = Task { try await recoverCompanionConnection() }
         companionConnectionTask = task
@@ -205,12 +268,9 @@ public final class HostStore: Identifiable {
             if connection === c { await c.close() }
         }
         start()
-        switch state {
-        case .idle, .waiting: reconnectNow()
-        default: break
-        }
         while ContinuousClock.now < deadline {
             try Task.checkCancellation()
+            if automaticConnectionPaused { throw ActionError.notConnected }
             if state == .connected, let c = connection, !(await c.isClosed) { return }
             if case .failed(let message, _) = state { throw ActionError.rejected(message) }
             try await Task.sleep(for: .milliseconds(100))
@@ -226,51 +286,78 @@ public final class HostStore: Identifiable {
         return value.domain == NSURLErrorDomain || value.domain == NSPOSIXErrorDomain
     }
 
-    private func runLoop() async {
-        var attempt = 0
-        while !Task.isCancelled {
-            state = .connecting(attempt: attempt)
+    private func runLoop(run: UUID) async {
+        defer { if connectionRun == run { runTask = nil } }
+        var lastFailure = String(localized: "连接断开，正在重连", bundle: .module)
+        while !Task.isCancelled, connectionRun == run {
+            guard !pauseExpiredReconnect() else { return }
+            if let progress = reconnectProgress {
+                showReconnectWait(progress, message: lastFailure)
+                let delay = min(progress.retryAt, progress.expiresAt).timeIntervalSince(reconnectDate())
+                if delay > 0 {
+                    do { try await waitToReconnect(delay) } catch { return }
+                }
+                guard !Task.isCancelled, connectionRun == run, !pauseExpiredReconnect() else { return }
+            }
+            let failures = reconnectProgress?.failures ?? 0
+            // Three consecutive failures establish a sustained outage. Do not
+            // flash a spinner/yellow status for each later background probe.
+            if failures < 3 { state = .connecting(attempt: failures) }
+            var opened: DaemonConnection?
+            var failureStartedAt: Date? = reconnectDate()
+            var failure: any Error = DaemonConnectionError.closed("stream ended")
             do {
-                let c = try await DaemonConnection.connect(offer: offer, hello: HelloOptions(
+                let c = try await openConnection(offer, HelloOptions(
                     clientId: clientId, password: offer.password, appVersion: appVersion, capabilities: Self.capabilities))
-                guard !Task.isCancelled else { await c.close(); return }
+                opened = c
+                guard !Task.isCancelled, connectionRun == run else { await c.close(); return }
                 connection = c
                 serverInfo = await c.serverInfo
-                attempt = 0
                 try await bootstrap(c)
-                guard !Task.isCancelled, connection === c else { await c.close(); return }
+                guard !Task.isCancelled, connectionRun == run, connection === c else { await c.close(); return }
+                updateReconnectProgress(nil)
+                failureStartedAt = nil
                 state = .connected
                 scheduleTimelineSync()
                 startHeartbeat()
-                for await message in c.events { handle(message) }
-                guard !Task.isCancelled, connection === c else { return }
-                // Stream ended: connection closed.
-                heartbeatTask?.cancel()
-                timelineSyncTask?.cancel()
-                timelineSyncTask = nil
-                latencyMs = nil
-                connection = nil
-                subscriptionIds.removeAll()
-                timelineSubscriptionId = nil
-                providerSubagentSubscriptionId = nil
-                if Task.isCancelled { return }
-            } catch let error as DaemonConnectionError where error.isAuthFailure {
+                for await message in c.events {
+                    guard !Task.isCancelled, connectionRun == run, connection === c else { break }
+                    handle(message)
+                }
+            } catch { failure = error }
+            // Bootstrap can fail after a socket has opened. Release that socket
+            // before retrying, and never let an obsolete run clear a newer one.
+            if let c = opened {
+                if connection === c {
+                    heartbeatTask?.cancel()
+                    timelineSyncTask?.cancel()
+                    timelineSyncTask = nil
+                    binaryTask?.cancel()
+                    latencyMs = nil
+                    connection = nil
+                    subscriptionIds.removeAll()
+                    timelineSubscriptionId = nil
+                    providerSubagentSubscriptionId = nil
+                }
+                await c.close()
+            }
+            guard !Task.isCancelled, connectionRun == run else { return }
+            if let error = failure as? DaemonConnectionError, error.isAuthFailure {
+                updateReconnectProgress(nil)
                 state = .failed(message: error.description, needsPassword: true)
                 return
-            } catch let error as SecureChannelError where error.closeCode == 4002 {
+            }
+            if let error = failure as? SecureChannelError, error.closeCode == 4002 {
+                updateReconnectProgress(nil)
                 state = .failed(message: String(localized: "daemon 太旧或握手被拒：\(error.description)", bundle: .module), needsPassword: false)
                 return
-            } catch {
-                if Task.isCancelled { return }
-                let delay = min(1.5 * pow(2, Double(attempt)), 30)
-                attempt += 1
-                state = .waiting(message: "\(error)", retryAt: Date().addingTimeInterval(delay))
-                try? await Task.sleep(for: .seconds(delay))
-                continue
             }
-            // Clean close: retry quickly.
-            state = .waiting(message: String(localized: "连接断开，正在重连", bundle: .module), retryAt: Date().addingTimeInterval(1.5))
-            try? await Task.sleep(for: .seconds(1.5))
+            let now = reconnectDate()
+            let progress = HostReconnectProgress.afterFailure(
+                startedAt: reconnectProgress?.startedAt ?? failureStartedAt ?? now,
+                failures: (reconnectProgress?.failures ?? 0) + 1, now: now)
+            lastFailure = "\(failure)"
+            updateReconnectProgress(progress)
         }
     }
 
@@ -1190,11 +1277,10 @@ public final class HostStore: Identifiable {
         if visible { lastActivityAt = Date(); onUserActivity?() }
         sendHeartbeat()
         if visible {
+            if pauseExpiredReconnect() { return }
             if state == .connected, let c = connection {
                 Task { await c.validateOnForeground() }
-            } else {
-                reconnectNow()
-            }
+            } else if state == .idle { start() }
             Task { await recheckUnavailableProviders() }
         }
     }

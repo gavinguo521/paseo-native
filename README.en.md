@@ -73,6 +73,13 @@ Pairing links go through the Paseo relay and are end-to-end encrypted; a link is
 only in the Keychain. Paseo Native and the official desktop, mobile and web apps can all be connected to the same
 machine at once and see the same sessions.
 
+After three consecutive connection failures, a machine stays visibly offline. Retry delays increase through
+1.5, 3, 6, 12, 24 and 30 seconds, then stay at 30 seconds for the first 15 minutes of the outage. Checks then
+run every 30 minutes for another 24 hours before automatic connection pauses (24 hours 15 minutes in total).
+Machine details offer an immediate retry and pause/resume controls. Successful recovery, an immediate retry,
+or a manual resume starts a fresh outage budget. Progress and pause state are saved on this device across
+app restarts. iOS does not check while suspended; the cutoff is checked when execution resumes.
+
 ## Companion plugins (optional)
 
 <img src="docs/images/en/mac-plugins.png" width="520" alt="Companion plugins">

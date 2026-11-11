@@ -14570,6 +14570,86 @@
           }
         }
       }
+    },
+    "已暂停自动连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic connection paused"
+          }
+        }
+      }
+    },
+    "恢复自动连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume automatic connection"
+          }
+        }
+      }
+    },
+    "暂停自动连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause automatic connection"
+          }
+        }
+      }
+    },
+    "仅暂停这台设备连接该机器；不会关闭远端服务，也不会删除配对信息。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This device has paused its connection to this machine. The remote service and pairing are preserved."
+          }
+        }
+      }
+    },
+    "%@ 已离线，将在后台自动检查": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is offline. Automatic checks will continue in the background."
+          }
+        }
+      }
+    },
+    "已暂停连接 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection to %@ is paused"
+          }
+        }
+      }
+    },
+    "每 30 分钟重连已持续 24 小时，仍未连上，已自动暂停。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Half-hourly retries continued for 24 hours without reconnecting. Automatic connection is now paused."
+          }
+        }
+      }
+    },
+    "先按原有节奏重试，最长间隔 30 秒；离线满 15 分钟后改为每 30 分钟检查，再持续 24 小时仍无法连接就自动暂停。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retries initially back off to 30 seconds. After 15 minutes offline, checks run every 30 minutes for another 24 hours, then automatically pause if the machine is still unreachable."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
