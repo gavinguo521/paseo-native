@@ -230,7 +230,20 @@ struct HostDetailView: View {
                 }
                 LabeledContent(host.offer.isDirect ? "直连" : "中继", value: host.offer.directEndpoint ?? host.offer.relayEndpoint)
                 LabeledContent("会话 / 工作区", value: "\(host.agents.count) / \(host.workspaces.count)")
-                Button("立即重连") { host.reconnectNow() }
+                if host.automaticConnectionPaused {
+                    Button("恢复自动连接") { model.setAutomaticConnectionPaused(host: host, false) }
+                    Text("仅暂停这台设备连接该机器；不会关闭远端服务，也不会删除配对信息。")
+                        .font(.caption).foregroundStyle(Theme.muted)
+                } else {
+                    HStack {
+                        Button("立即重连") { host.reconnectNow() }.disabled(host.state == .connected)
+                        Button("暂停自动连接") { model.setAutomaticConnectionPaused(host: host, true) }
+                    }
+                    if case .offline(let message, _) = host.state {
+                        Text("机器暂时无法连接，已改为每 2～5 分钟自动检查。开机后会自动恢复，也可立即重连。")
+                            .font(.caption).foregroundStyle(Theme.muted).help(message)
+                    }
+                }
             }
             Section("这台机器") {
                 NavigationLink("daemon 设置") { DaemonSettingsView(host: host) }

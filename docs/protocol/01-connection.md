@@ -502,6 +502,8 @@ Schema：`packages/protocol/src/messages.ts:3629-3842`（`ServerInfoStatusPayloa
 - 「connecting」期间发起的请求排队，最多等 60 s，connected 后按序发送（`daemon-client.ts:2093-2147`）；「disconnected」时直接失败。
 - relay 上每次重连 = 新 WS + 新 Noise 握手（新 ephemeral，counter 从 0）+ 新 `hello`。不存在会话密钥恢复。
 
+**原生客户端的离线策略**（`HostStore.runLoop`，与上面的官方 TS 实现区分）：前两次失败后分别等 1.5、3 秒；第三次起保持 `.offline`，检查间隔为 120、240、300 秒并封顶。成功完成握手和 bootstrap 后才重置失败计数；bootstrap 失败也会关闭旧连接。回到前台保留退避，手动重连可立即重新开始。每台机器可暂停自动连接，暂停会取消握手、连接及等待，偏好仅保存在当前客户端。旧连接退出时不会覆盖新连接的状态。`HostReconnectTests` 覆盖这些分支与取消竞争。
+
 ### 5.3 服务端会话恢复（resume）
 
 - Daemon 用 `(principalId, clientId)` 作为可重连会话键（`websocket-server.ts:1747-1752`）。最后一个 socket 断开后会话保留 **90 s**（`EXTERNAL_SESSION_DISCONNECT_GRACE_MS`，`:504,2245-2279`）；期间同 clientId 的 hello 走 `resumeSession`（`:1870-1913`），重新下发 `server_info`。

@@ -1,6 +1,76 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "已暂停自动连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic connection paused"
+          }
+        }
+      }
+    },
+    "恢复自动连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume automatic connection"
+          }
+        }
+      }
+    },
+    "暂停自动连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause automatic connection"
+          }
+        }
+      }
+    },
+    "仅暂停这台设备连接该机器；不会关闭远端服务，也不会删除配对信息。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This device has paused its connection to this machine. The remote service and pairing are preserved."
+          }
+        }
+      }
+    },
+    "机器暂时无法连接，已改为每 2～5 分钟自动检查。开机后会自动恢复，也可立即重连。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This machine is unreachable. Automatic checks now run every 2–5 minutes. It will reconnect when available, or you can retry now."
+          }
+        }
+      }
+    },
+    "%@ 已离线，将在后台自动检查": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is offline. Automatic checks will continue in the background."
+          }
+        }
+      }
+    },
+    "已暂停连接 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection to %@ is paused"
+          }
+        }
+      }
+    },
     "": {},
     " ": {},
     "#%lld": {},

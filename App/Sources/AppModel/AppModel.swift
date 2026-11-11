@@ -1115,6 +1115,7 @@ final class AppModel {
 
     func removeHost(_ serverId: String) {
         host(serverId)?.stop()
+        AppDefaults.store.removeObject(forKey: "hostAutoConnectPaused." + serverId)
         hosts.removeAll { $0.id == serverId }
         if case .agent(let r) = destination, r.serverId == serverId { destination = nil }
         if hostFilter == serverId { hostFilter = nil }
@@ -1129,6 +1130,11 @@ final class AppModel {
     func setPassword(host serverId: String, _ password: String?) {
         host(serverId)?.updatePassword(password)
         persist()
+    }
+
+    func setAutomaticConnectionPaused(host: HostStore, _ paused: Bool) {
+        AppDefaults.store.set(paused, forKey: "hostAutoConnectPaused." + host.id)
+        host.setAutomaticConnectionPaused(paused)
     }
 
     func setAppVisible(_ visible: Bool) {
@@ -1199,7 +1205,8 @@ final class AppModel {
     }
 
     private func makeStore(_ offer: PairingOffer, label: String) -> HostStore {
-        let store = HostStore(offer: offer, label: label, clientId: clientId, appVersion: appVersion)
+        let store = HostStore(offer: offer, label: label, clientId: clientId, appVersion: appVersion,
+                              automaticConnectionPaused: AppDefaults.store.bool(forKey: "hostAutoConnectPaused." + offer.serverId))
         store.onUserActivity = { PresenceReporter.shared.reportSoon() }
         #if os(macOS)
         store.setFrontmost(NSApp?.isActive ?? true)

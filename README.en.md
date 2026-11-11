@@ -73,6 +73,11 @@ Pairing links go through the Paseo relay and are end-to-end encrypted; a link is
 only in the Keychain. Paseo Native and the official desktop, mobile and web apps can all be connected to the same
 machine at once and see the same sessions.
 
+After three consecutive connection failures, a machine stays visibly offline while automatic checks slow to
+2, 4, then 5 minutes. Machine details offer an immediate retry and a pause/resume control. Pausing applies only
+to this device and survives app restarts. Returning to the foreground preserves the retry delay; iOS does not
+keep checking while the app is suspended.
+
 ## Companion plugins (optional)
 
 <img src="docs/images/en/mac-plugins.png" width="520" alt="Companion plugins">

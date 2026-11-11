@@ -239,7 +239,8 @@ struct HostStatusDot: View {
         switch state {
         case .connected: Theme.dotSuccess
         case .connecting, .idle: Theme.dotWarning
-        case .waiting, .failed: Theme.dotDanger
+        case .waiting, .offline, .failed: Theme.dotDanger
+        case .paused: Theme.muted
         }
     }
 }
@@ -251,6 +252,8 @@ extension ConnectionState {
         case .connecting(let n): n == 0 ? String(localized: "连接中…") : String(localized: "重连中（第 \(n + 1) 次）…")
         case .connected: String(localized: "在线")
         case .waiting(let m, _): String(localized: "离线：\(m)")
+        case .offline: String(localized: "离线")
+        case .paused: String(localized: "已暂停自动连接")
         case .failed(let m, let needsPassword): needsPassword ? String(localized: "需要密码") : String(localized: "连接失败：\(m)")
         }
     }

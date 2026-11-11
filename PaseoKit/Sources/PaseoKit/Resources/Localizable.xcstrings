@@ -1,6 +1,16 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "已暂停自动连接，请先在机器设置中恢复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic connection is paused. Resume it in machine settings first."
+          }
+        }
+      }
+    },
     "%@ 未登录，PR 功能不可用": {
       "localizations": {
         "en": {
