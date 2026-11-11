@@ -347,7 +347,8 @@ struct ComposerView: View {
         Task {
             do {
                 let payload = try ComposerMediaPayload(images: attached, files: files, uploads: restoreUploads)
-                try await host.send(message, to: agentId, steer: steer, images: payload.images, attachments: payload.files)
+                try await host.send(message, to: agentId, steer: steer, images: payload.images, attachments: payload.files,
+                                    timeout: payload.sendTimeout)
                 sentCount += 1
             } catch {
                 self.error = String(localized: "发送失败：\(error)")
@@ -1084,7 +1085,8 @@ struct DraftComposerView: View {
                 } else {
                     id = try await host.createAgent(workspace: workspace, provider: provider, model: effectiveModel,
                                                     modeId: effectiveMode.isEmpty ? nil : effectiveMode, thinkingOptionId: thinking.isEmpty ? nil : thinking,
-                                                    prompt: prompt, images: payload.images, attachments: payload.files)
+                                                    prompt: prompt, images: payload.images, attachments: payload.files,
+                                                    timeout: payload.sendTimeout)
                 }
                 uploads = []
                 app.forkDraft = nil

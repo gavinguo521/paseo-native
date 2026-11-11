@@ -588,7 +588,11 @@ struct MessageSenderDetails: View {
                         Text("发送方主机尚未添加。请先从侧栏添加对应主机。")
                     } else if host?.state != .connected {
                         Text("发送方主机未连接，连接后可以查看会话。")
-                        Button("连接主机") { host?.reconnectNow() }
+                        if host?.automaticConnectionPaused == true {
+                            Button("恢复自动连接") { host?.setAutomaticConnectionPaused(false) }
+                        } else {
+                            Button("连接主机") { host?.reconnectNow() }
+                        }
                     } else if let agent {
                         Text(agent.archivedAt == nil ? "会话可访问" : "这个会话已归档")
                         Button(agent.archivedAt == nil ? "打开会话" : "在历史中查找") {

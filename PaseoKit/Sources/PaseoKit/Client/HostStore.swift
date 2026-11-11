@@ -125,6 +125,7 @@ public final class HostStore: Identifiable {
     @ObservationIgnored private var runTask: Task<Void, Never>?
     @ObservationIgnored private var connectionRun = UUID()
     @ObservationIgnored var reconnectDate: () -> Date = Date.init
+    @ObservationIgnored private var skipNextReconnectWait = false
     @ObservationIgnored var openConnection: @Sendable (PairingOffer, HelloOptions) async throws -> DaemonConnection = {
         try await DaemonConnection.connect(offer: $0, hello: $1)
     }
@@ -170,7 +171,6 @@ public final class HostStore: Identifiable {
     public func start() {
         guard runTask == nil, !automaticConnectionPaused else { return }
         if case .failed = state { return }
-        guard !pauseExpiredReconnect() else { return }
         let run = UUID()
         connectionRun = run
         runTask = Task { await runLoop(run: run) }
@@ -178,6 +178,7 @@ public final class HostStore: Identifiable {
 
     public func stop() {
         connectionRun = UUID()
+        skipNextReconnectWait = false
         timelineSyncTask?.cancel()
         timelineSyncTask = nil
         runTask?.cancel()
@@ -227,13 +228,28 @@ public final class HostStore: Identifiable {
         onReconnectStateChange?(automaticConnectionPaused, progress)
     }
 
-    @discardableResult private func pauseExpiredReconnect() -> Bool {
-        guard !automaticConnectionPaused, let progress = reconnectProgress,
-              reconnectDate() >= progress.expiresAt else { return false }
+    /// Expiry is decided only after a real attempt fails, so time spent asleep, suspended or
+    /// quit never pauses a host that came back online in the meantime.
+    private func pauseExpiredReconnect(_ progress: HostReconnectProgress) {
         automaticConnectionPaused = true
+        reconnectProgress = progress
         stop()
         onReconnectStateChange?(true, progress)
-        return true
+    }
+
+    /// Foreground and watch requests try a waiting host now without resetting its outage
+    /// budget. `force == false` leaves the short frequent-phase waits alone.
+    private func retrySoonPreservingBackoff(force: Bool) {
+        guard !automaticConnectionPaused else { return }
+        switch state {
+        case .idle: start(); return
+        case .waiting(_, let retryAt), .offline(_, let retryAt):
+            guard force || retryAt.timeIntervalSince(reconnectDate()) > 30 else { return }
+        default: return
+        }
+        stop()
+        skipNextReconnectWait = true
+        start()
     }
 
     private func showReconnectWait(_ progress: HostReconnectProgress, message: String) {
@@ -267,7 +283,7 @@ public final class HostStore: Identifiable {
             // Do not tear down a replacement that another task has already established.
             if connection === c { await c.close() }
         }
-        start()
+        retrySoonPreservingBackoff(force: true)
         while ContinuousClock.now < deadline {
             try Task.checkCancellation()
             if automaticConnectionPaused { throw ActionError.notConnected }
@@ -290,14 +306,17 @@ public final class HostStore: Identifiable {
         defer { if connectionRun == run { runTask = nil } }
         var lastFailure = String(localized: "连接断开，正在重连", bundle: .module)
         while !Task.isCancelled, connectionRun == run {
-            guard !pauseExpiredReconnect() else { return }
             if let progress = reconnectProgress {
                 showReconnectWait(progress, message: lastFailure)
-                let delay = min(progress.retryAt, progress.expiresAt).timeIntervalSince(reconnectDate())
-                if delay > 0 {
+                // Cap a single wait so a clock moved backwards cannot stall retries for hours.
+                let delay = min(min(progress.retryAt, progress.expiresAt).timeIntervalSince(reconnectDate()),
+                                HostReconnectProgress.slowRetryInterval)
+                if skipNextReconnectWait {
+                    skipNextReconnectWait = false
+                } else if delay > 0 {
                     do { try await waitToReconnect(delay) } catch { return }
                 }
-                guard !Task.isCancelled, connectionRun == run, !pauseExpiredReconnect() else { return }
+                guard !Task.isCancelled, connectionRun == run else { return }
             }
             let failures = reconnectProgress?.failures ?? 0
             // Three consecutive failures establish a sustained outage. Do not
@@ -353,10 +372,18 @@ public final class HostStore: Identifiable {
                 return
             }
             let now = reconnectDate()
-            let progress = HostReconnectProgress.afterFailure(
-                startedAt: reconnectProgress?.startedAt ?? failureStartedAt ?? now,
-                failures: (reconnectProgress?.failures ?? 0) + 1, now: now)
+            var startedAt = reconnectProgress?.startedAt ?? failureStartedAt ?? now
+            var failureCount = (reconnectProgress?.failures ?? 0) + 1
+            // A retry far later than scheduled means this client was not running (sleep,
+            // suspension, quit). That gap is not an observed outage: restart the budget.
+            if let previous = reconnectProgress,
+               now.timeIntervalSince(previous.retryAt) > HostReconnectProgress.slowRetryInterval {
+                startedAt = failureStartedAt ?? now
+                failureCount = 1
+            }
+            let progress = HostReconnectProgress.afterFailure(startedAt: startedAt, failures: failureCount, now: now)
             lastFailure = "\(failure)"
+            if now >= progress.expiresAt { pauseExpiredReconnect(progress); return }
             updateReconnectProgress(progress)
         }
     }
@@ -1197,7 +1224,8 @@ public final class HostStore: Identifiable {
 
     /// Creates a session in a workspace and sends the first prompt. Returns the new agent id.
     public func createAgent(workspace: Workspace, provider: String, model: String?, modeId: String?, thinkingOptionId: String? = nil,
-                            prompt: String, images: [ImageAttachment] = [], attachments: [JSONValue] = []) async throws -> String {
+                            prompt: String, images: [ImageAttachment] = [], attachments: [JSONValue] = [],
+                            timeout: Duration = .seconds(60)) async throws -> String {
         var config: [String: JSONValue] = ["provider": .string(provider), "cwd": .string(workspace.directory)]
         if let model { config["model"] = .string(model) }
         if let modeId { config["modeId"] = .string(modeId) }
@@ -1215,7 +1243,7 @@ public final class HostStore: Identifiable {
         ]
         if !images.isEmpty { params["images"] = .array(images.map(\.json)) }
         if !attachments.isEmpty { params["attachments"] = .array(attachments) }
-        let r = try await conn().request("agent.create.request", params)
+        let r = try await conn().request("agent.create.request", params, timeout: timeout)
         if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? e["message"]?.stringValue ?? String(localized: "创建失败", bundle: .module)) }
         guard let a = r["payload"]?["agent"].flatMap(Agent.init) else { throw ActionError.rejected(String(localized: "创建失败", bundle: .module)) }
         agents[a.id] = a
@@ -1277,10 +1305,9 @@ public final class HostStore: Identifiable {
         if visible { lastActivityAt = Date(); onUserActivity?() }
         sendHeartbeat()
         if visible {
-            if pauseExpiredReconnect() { return }
             if state == .connected, let c = connection {
                 Task { await c.validateOnForeground() }
-            } else if state == .idle { start() }
+            } else { retrySoonPreservingBackoff(force: false) }
             Task { await recheckUnavailableProviders() }
         }
     }

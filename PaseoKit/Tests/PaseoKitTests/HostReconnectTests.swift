@@ -20,14 +20,13 @@ import Testing
         let attemptsAtSlowStart = await driver.attempts
         for interval in 0..<48 {
             #expect(host.reconnectProgress?.startedAt == began)
-            host.setAppVisible(false)
-            host.setAppVisible(true)
             await driver.releaseWait()
             if interval < 47 { #expect(await driver.nextDelay() == 30 * 60) }
         }
         try await eventually { host.state == .paused }
         #expect(driver.clock.now == began.addingTimeInterval(15 * 60 + 24 * 60 * 60))
-        #expect(await driver.attempts == attemptsAtSlowStart + 47)
+        // The cutoff itself is a real attempt; only its failure pauses the host.
+        #expect(await driver.attempts == attemptsAtSlowStart + 48)
         #expect(host.automaticConnectionExpired && savedPause)
         host.start()
         host.reconnectNow()
@@ -60,7 +59,7 @@ import Testing
         #expect(restored.reconnectProgress?.startedAt == saved.startedAt)
     }
 
-    @Test func wakeAfterDeadlinePausesWithoutAnotherConnectionAttempt() async throws {
+    @Test func wakeAfterLongSleepTriesBeforePausingAndRestartsTheBudget() async throws {
         let driver = RetryDriver()
         let began = driver.clock.now
         driver.clock.advance(15 * 60 + 24 * 60 * 60 - 10)
@@ -69,16 +68,39 @@ import Testing
         let host = makeHost(driver, progress: progress)
         defer { host.stop() }
         host.start()
-        // Even a persisted retry beyond the deadline must wake at the cutoff.
         #expect(await driver.nextDelay() == 10)
+        // Asleep for two days: the deadline passed without any attempt, so try first.
         await driver.releaseWait(advanceBy: 2 * 24 * 60 * 60)
-        try await eventually { host.automaticConnectionExpired }
-        #expect(await driver.attempts == 0)
+        #expect(await driver.nextDelay() == 1.5)
+        #expect(await driver.attempts == 1)
+        #expect(!host.automaticConnectionPaused)
+        #expect(host.reconnectProgress?.failures == 1)
 
+        // Relaunching long after the saved outage also attempts, and an online host connects.
+        await driver.setAvailable()
         let relaunched = makeHost(driver, progress: progress)
+        defer { relaunched.stop() }
         relaunched.start()
-        #expect(relaunched.state == .paused)
-        #expect(await driver.attempts == 0)
+        try await eventually { relaunched.state == .connected }
+        #expect(!relaunched.automaticConnectionPaused)
+        #expect(relaunched.reconnectProgress == nil)
+    }
+
+    @Test func foregroundTriesSlowPhaseHostNowWithoutResettingBudget() async throws {
+        let driver = RetryDriver()
+        let began = driver.clock.now
+        let host = makeHost(driver)
+        defer { host.stop() }
+        host.start()
+        _ = await driver.nextDelay()
+        await driver.releaseWait(advanceBy: 15 * 60)
+        #expect(await driver.nextDelay() == 30 * 60)
+        let attempts = await driver.attempts
+        host.setAppVisible(false)
+        host.setAppVisible(true)
+        #expect(await driver.nextDelay() == 30 * 60)
+        #expect(await driver.attempts == attempts + 1)
+        #expect(host.reconnectProgress?.startedAt == began)
     }
 
     @Test func successfulRecoveryResetsTheOutageBudget() async throws {

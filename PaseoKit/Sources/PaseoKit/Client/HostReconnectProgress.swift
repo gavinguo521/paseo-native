@@ -13,7 +13,7 @@ public struct HostReconnectProgress: Codable, Equatable, Sendable {
     }
 
     static let frequentRetryDuration: TimeInterval = 15 * 60
-    static let slowRetryInterval: TimeInterval = 30 * 60
+    public static let slowRetryInterval: TimeInterval = 30 * 60
     static let slowRetryDuration: TimeInterval = 24 * 60 * 60
 
     var frequentRetryEndsAt: Date { startedAt.addingTimeInterval(Self.frequentRetryDuration) }

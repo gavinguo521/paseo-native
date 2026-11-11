@@ -88,7 +88,10 @@ struct PreparedVideo: Sendable {
 
 enum VideoProcessor {
     static let maxFrames = 48
-    static let maxImageBytes = 20 * 1024 * 1024 // Base64 + JSON stay below the relay's 32 MiB limit.
+    // Relay 文本帧会把已含 base64 图片的 JSON 再 base64 一次（约 ×16/9），16 MiB 图片约 28.5 MiB，
+    // 留出 JSON 余量后仍低于 relay 的 32 MiB 帧上限。单帧 320 KiB × 48 帧 = 15 MiB，单个视频总能发出。
+    static let maxImageBytes = 16 * 1024 * 1024
+    static let maxFrameBytes = 320 * 1024
 
     static func isVideo(_ url: URL) -> Bool {
         UTType(filenameExtension: url.pathExtension)?.conforms(to: .movie) == true
@@ -163,9 +166,23 @@ enum VideoProcessor {
             guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { throw VideoPreparationError.encoding }
             CGImageDestinationAddImage(destination, stamped, [kCGImageDestinationLossyCompressionQuality: 0.75] as CFDictionary)
             guard CGImageDestinationFinalize(destination) else { throw VideoPreparationError.encoding }
-            if data.length <= 400 * 1024 { return data as Data }
+            if data.length <= maxFrameBytes { return data as Data }
         }
         throw VideoPreparationError.encoding
+    }
+}
+
+/// 一次选多个视频时逐个抽帧：每路 AVAssetImageGenerator 都按原分辨率解码，并发几路 4K HEVC
+/// 容易让 iPhone 因内存被系统结束，或因硬件解码会话不足而失败。
+actor VideoPreparationQueue {
+    static let shared = VideoPreparationQueue()
+    private var busy = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func run<T: Sendable>(_ body: @Sendable () async throws -> T) async throws -> T {
+        if busy { await withCheckedContinuation { waiters.append($0) } } else { busy = true }
+        defer { if waiters.isEmpty { busy = false } else { waiters.removeFirst().resume() } }
+        return try await body()
     }
 }
 
@@ -185,6 +202,12 @@ struct ComposerMediaPayload {
         }
         self.images = allImages; self.files = allFiles
     }
+
+    /// 大消息在慢上行下 60 秒发不完；超时后消息可能已送达，用户重试就会重复发送。按约 100 KB/s 放宽。
+    var sendTimeout: Duration {
+        let bytes = images.reduce(0) { $0 + $1.data.count }
+        return .seconds(60 + bytes / 100_000)
+    }
 }
 
 @MainActor
@@ -199,9 +222,12 @@ func prepareVideo(into items: Binding<[UploadItem]>, name: String = String(local
             guard let i = items.wrappedValue.firstIndex(where: { $0.id == item.id }) else { return }
             items.wrappedValue[i].videoSource = source
             items.wrappedValue[i].name = source.name
-            let video = try await VideoProcessor.prepare(source) { value in
-                await MainActor.run {
-                    if let i = items.wrappedValue.firstIndex(where: { $0.id == item.id }) { items.wrappedValue[i].progress = value }
+            let video = try await VideoPreparationQueue.shared.run {
+                try Task.checkCancellation()
+                return try await VideoProcessor.prepare(source) { value in
+                    await MainActor.run {
+                        if let i = items.wrappedValue.firstIndex(where: { $0.id == item.id }) { items.wrappedValue[i].progress = value }
+                    }
                 }
             }
             try Task.checkCancellation()
