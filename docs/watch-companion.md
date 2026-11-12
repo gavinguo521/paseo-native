@@ -7,8 +7,8 @@ PaseoWatch is a watchOS 11+ companion target in the existing XcodeGen project. I
 - Recent sessions, their current status and recent messages; host filtering. Schedule-created run sessions are excluded from this list, while their results remain available under schedules; existing chats targeted by heartbeats remain visible. Within a session, Reply sits directly below the status and messages appear newest-first.
 - Read-only schedule lists, details and recent execution results.
 - System dictation/text input, a transcript preview, saved drafts, and explicit Send.
-- Compact message previews with original message times; generated question replies show the user's answers.
-- Question forms with readable prompts, single/multiple choice, system input for custom answers, and explicit submission. Multiple questions are shown one at a time.
+- Compact message previews with original message times. Generated replies show a labelled question card and the answer below it, matching Mac and iPhone; the generated English heading is hidden. The original conversation text is unchanged.
+- Question forms with separate Question and Answer sections, single/multiple choice, system input for custom answers, and explicit submission. Multiple questions are shown one at a time.
 - Permission review with the daemon's actions. Unsupported forms or content exceeding the complete watch preview remain on the phone.
 - Existing iPhone notifications forwarded to the watch, with navigation to the corresponding session. Notification delivery follows the user's system settings and the existing iPhone push setup.
 - Cached content and the time of the last successful refresh. The visible page refreshes every 20 seconds while active; background context delivery is opportunistic.
