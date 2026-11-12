@@ -3,16 +3,7 @@ import Foundation
 /// A compact display projection. The original conversation and sent messages are never rewritten.
 public enum WatchMessageText {
     public static func compact(_ text: String, role: String) -> String {
-        var value = text.replacingOccurrences(of: "\r\n", with: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        let answerHeader = "Answers to your questions:"
-        if role == "user", value.hasPrefix(answerHeader) {
-            value = String(value.dropFirst(answerHeader.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-            // Generated answers contain one question/answer block per paragraph.
-            value = value.components(separatedBy: "\n\n").filter { !$0.isEmpty }.map { block in
-                let lines = block.components(separatedBy: "\n")
-                return lines.count > 1 ? lines.dropFirst().joined(separator: "\n") : block
-            }.joined(separator: "\n")
-        }
+        let value = text.replacingOccurrences(of: "\r\n", with: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         var result: [String] = []
         var fence: String?
         for line in value.components(separatedBy: "\n") {

@@ -88,7 +88,10 @@ targets:
         product: PaseoKit
       - package: PaseoKit
         product: PaseoWatchBridge
-        destinationFilters: [iOS]
+      # VideoPlayer's SwiftUI overlay does not load AVPlayerView on its own in a
+      # standalone macOS build. Keep the native playback framework linked too.
+      - sdk: AVKit.framework
+        destinationFilters: [macOS]
       - package: SwiftTerm
       - target: PaseoWidgets
         destinationFilters: [iOS]

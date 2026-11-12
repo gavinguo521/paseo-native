@@ -29,7 +29,7 @@ struct WatchSessionView: View {
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 if request.kind == "question" {
-                                    Label("回答问题", systemImage: "questionmark.bubble.fill").foregroundStyle(.orange)
+                                    Label("提问", systemImage: "questionmark.bubble.fill").foregroundStyle(.orange)
                                     Text(request.detail).lineLimit(2)
                                 } else {
                                     Label("请求批准", systemImage: "hand.raised.fill").foregroundStyle(.orange)
@@ -40,15 +40,7 @@ struct WatchSessionView: View {
                     }
                     // Keep the bridge's timeline order; show newest messages first on the watch.
                     ForEach(detail.messages.reversed()) { message in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(message.role == "user" ? "你" : message.role == "error" ? "出错" : "Paseo")
-                                Spacer(minLength: 4)
-                                if let date = message.timestamp { Text(date, format: .dateTime.hour().minute()).monospacedDigit() }
-                            }.font(.caption2).foregroundStyle(.secondary)
-                            Text(message.text).font(.caption).fixedSize(horizontal: false, vertical: true)
-                            if message.truncated { Text("仅显示部分内容").font(.caption2).foregroundStyle(.secondary) }
-                        }.watchCard()
+                        WatchMessageView(message: message)
                     }
                     if detail.messages.isEmpty { Text("暂无消息").font(.caption).foregroundStyle(.secondary) }
                     WatchFreshness(date: detail.refreshedAt)
@@ -119,9 +111,13 @@ private struct WatchPermissionView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(sessionTitle).font(.caption).lineLimit(3)
                     Text(hostName).font(.caption2).foregroundStyle(.secondary)
-                    Text(permission.title).font(.headline)
-                    Text(permission.detail).font(permission.kind == "question" ? .caption : .system(.caption, design: .monospaced))
-                        .fixedSize(horizontal: false, vertical: true).watchCard()
+                    if permission.kind == "question" {
+                        WatchQuestionPrompt(text: permission.detail)
+                    } else {
+                        Text(permission.title).font(.headline)
+                        Text(permission.detail).font(.system(.caption, design: .monospaced))
+                            .fixedSize(horizontal: false, vertical: true).watchCard()
+                    }
                     if permission.needsPhone {
                         WatchProblem(message: String(localized: "此请求无法在手表上完整处理，请在 iPhone 上查看"))
                     } else if result?.state != .confirmed {

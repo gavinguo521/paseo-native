@@ -25,6 +25,8 @@
 
 `VideoAttachmentTests` 覆盖采样边界、HEVC 解码和旋转、时间戳、消息附件组装、队列/重试/删除、字节预算、无效视频及取消。可通过测试进程环境变量 `PASEO_TEST_VIDEO` 指定额外本地录屏；`PASEO_TEST_VIDEO_OUTPUT` 可选导出取证画面和发送参数，均不写入仓库。真实设备上仍需覆盖相册下载、预览播放、删除和发送到另一客户端的完整交互。
 
+Mac 的 `VideoPlayer` 还依赖原生 `AVKit.framework`，在 `project.yml` 中显式链接；仅有 `_AVKit_SwiftUI` 可能在创建 `AVPlayerView` 时崩溃。验收发布构建时，用 `otool -L` 确认各架构都链接原生 AVKit，并在 Xcode 外启动实际 App，验证粘贴视频后打开预览、播放、拖动进度和关闭。抽帧测试通过不能代替播放器打开验证。
+
 `ComposerAttachmentImportTests` 覆盖原生输入框的混合文件拖拽、粘贴导入、草稿/光标保留和普通路径文本。文件上传等待 JSON 请求发送完成后才依次发送 FileBegin、FileChunk、FileEnd，不依赖固定延时；`FileUploadTests` 覆盖延迟请求、并发上传、取消、超时和发送失败。
 
 daemon 的规范用户消息不回传图片字段。发送端先用已有文件接口上传图片，并按消息 ID 发布主机侧索引，成功后才发送原有文字和图片参数。接收端按同一消息 ID 恢复图片。数据格式、缓存和能力要求见[消息协议](protocol/02-messages.md#user_message)。

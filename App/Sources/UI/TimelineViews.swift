@@ -1,6 +1,7 @@
 // Timeline rows. Official: components/message.tsx, tool-call-details.tsx, agent-stream/view.tsx.
 
 import PaseoKit
+import PaseoWatchBridge
 import SwiftUI
 
 /// Official chat display setting: everything expanded, tool calls folded, or finished turns folded too.
@@ -710,6 +711,14 @@ struct UserBubble: View {
     private var long: Bool { text.count > 900 || text.split(separator: "\n", omittingEmptySubsequences: false).count > Self.foldLines }
 
     var body: some View {
+        if sender == nil, senderMetadata == nil, let transcript = QuestionAnswerTranscript(text: text, role: "user") {
+            QuestionAnswerHistory(transcript: transcript, pending: pending)
+        } else {
+            ordinaryBubble
+        }
+    }
+
+    private var ordinaryBubble: some View {
         VStack(alignment: .trailing, spacing: 4) {
             if let senderMetadata {
                 MessageSenderButton(sender: senderMetadata)
