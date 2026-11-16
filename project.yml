@@ -49,6 +49,7 @@ targets:
       - AppTests/SidebarTestFixture.swift
       - AppTests/ScheduledSidebarTests.swift
       - AppTests/ScheduleNotificationNavigationTests.swift
+      - AppTests/LocalAttentionPolicyTests.swift
       - AppTests/VisualizationTests.swift
       - AppTests/ReplyTextTests.swift
       - AppTests/ToolPreviewLayoutTests.swift

@@ -1234,25 +1234,30 @@ final class AppModel {
         store.setFrontmost(NSApp?.isActive ?? true)
         #endif
         store.onAttention = { [weak self, weak store] e in
-            guard let self, let store else { return }
-            let viewing = self.isFrontmost && self.destination == .agent(AgentRef(serverId: e.serverId, agentId: e.agentId))
-            guard !viewing, e.shouldNotify else { return }
-            #if os(iOS)
-            // 新插件按官方规则推送（有设备在用就不推，交给 daemon 选中的设备），被选中时后台也要自己弹；
-            // 旧插件不看在用状态、照推，后台就不再弹本地的，免得重复。
-            let liveActivity = LiveActivityController.shared
-            if liveActivity.remoteAlertsReady, !LiveActivityController.isForeground,
-               !liveActivity.remoteAlertsFollowOfficialPolicy { return }
-            #endif
-            // 需要批准且只有一个请求时，把它的 id 带进通知，按钮只处理这一个。
-            let pending = store.agents[e.agentId]?.pendingPermissions ?? []
-            let requestId = e.reason == "permission" && pending.count == 1 ? pending.first?.id : nil
-            let agent = store.agents[e.agentId]
-            let agentTitle = agent?.displayTitle ?? String(localized: "会话")
-            let workspace = agent?.workspaceId.flatMap { store.workspaces[$0] }
-            let workspaceTitle = workspace?.title.flatMap { $0.isEmpty ? nil : $0 } ?? agentTitle
-            NotificationManager.shared.post(e, hostLabel: store.label, workspaceTitle: workspaceTitle, agentTitle: agentTitle,
-                                            requestId: requestId)
+            Task { [weak self, weak store] in
+                guard let self, let store else { return }
+                var barkEnabled: (@MainActor () async -> Bool)?
+                #if os(iOS)
+                // 新插件按官方规则推送（有设备在用就不推，交给 daemon 选中的设备），被选中时后台也要自己弹；
+                // 旧插件不看在用状态、照推，后台就不再弹本地的，免得重复。
+                let liveActivity = LiveActivityController.shared
+                if liveActivity.remoteAlertsReady, !LiveActivityController.isForeground,
+                   !liveActivity.remoteAlertsFollowOfficialPolicy { return }
+                barkEnabled = { await store.barkHandlesCompletions() }
+                #endif
+                guard await LocalAttentionPolicy.shouldPost(e, isViewing: {
+                    self.isFrontmost && self.destination == .agent(AgentRef(serverId: e.serverId, agentId: e.agentId))
+                }, barkEnabled: barkEnabled), self.hosts.contains(where: { $0 === store }) else { return }
+                // 需要批准且只有一个请求时，把它的 id 带进通知，按钮只处理这一个。
+                let pending = store.agents[e.agentId]?.pendingPermissions ?? []
+                let requestId = e.reason == "permission" && pending.count == 1 ? pending.first?.id : nil
+                let agent = store.agents[e.agentId]
+                let agentTitle = agent?.displayTitle ?? String(localized: "会话")
+                let workspace = agent?.workspaceId.flatMap { store.workspaces[$0] }
+                let workspaceTitle = workspace?.title.flatMap { $0.isEmpty ? nil : $0 } ?? agentTitle
+                NotificationManager.shared.post(e, hostLabel: store.label, workspaceTitle: workspaceTitle, agentTitle: agentTitle,
+                                                requestId: requestId)
+            }
         }
         return store
     }

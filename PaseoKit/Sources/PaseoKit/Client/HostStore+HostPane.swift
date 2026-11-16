@@ -827,12 +827,26 @@ extension HostStore {
         guard let r = try? await connection?.request("plugin.list.request") else { return }
         plugins = (r["payload"]?["plugins"]?.arrayValue ?? []).compactMap(PluginInfo.init)
         pluginsLoaded = true
+        if !isPluginRunning("live-activity") {
+            barkPreferenceRevision += 1
+            barkCompletionEnabled = false
+        }
     }
 
     /// Calls a plugin's server RPC; failures arrive as rpc_error (thrown).
     public func invokePlugin(_ pluginId: String, _ method: String, _ input: JSONValue = [:], timeout: Duration = .seconds(45)) async throws -> JSONValue {
-        let r = try await conn().request("plugin.rpc.invoke.request", ["pluginId": .string(pluginId), "method": .string(method), "input": input], timeout: timeout)
-        return r["payload"]?["output"] ?? .null
+        let c = try conn()
+        let barkMutation = pluginId == "live-activity" && ["bark.configure", "bark.preferences", "bark.clear"].contains(method)
+        if barkMutation { barkPreferenceRevision += 1 }
+        let revision = barkPreferenceRevision
+        let r = try await c.request("plugin.rpc.invoke.request", ["pluginId": .string(pluginId), "method": .string(method), "input": input], timeout: timeout)
+        let output = r["payload"]?["output"] ?? .null
+        // A settings change wins over an earlier status read that finishes late.
+        if pluginId == "live-activity", barkMutation || method == "bark.status",
+           connection === c, revision == barkPreferenceRevision {
+            recordBarkCompletionPreference(output)
+        }
+        return output
     }
 
     public func readPluginSettings(_ pluginId: String, _ settingsId: String) async throws -> PluginSettings {
