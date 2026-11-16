@@ -27,7 +27,8 @@ struct WatchQuestionView: View {
                             Text("第 \(step + 1) / \(form.questions.count) 题")
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
-                        Text(question.text).font(.body).fixedSize(horizontal: false, vertical: true)
+                        WatchQuestionPrompt(text: question.text)
+                        WatchQuestionSectionLabel(title: "回答")
                         if question.multiSelect { Text("可多选").font(.caption2).foregroundStyle(.secondary) }
                         ForEach(question.options) { option in optionButton(option, question: question) }
                         if question.allowsOther {

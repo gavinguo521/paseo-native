@@ -5,6 +5,30 @@ import Testing
 @testable import Paseo
 
 @Suite(.serialized) @MainActor struct InterfaceEvidenceTests {
+    @Test func questionAndAnswerLayout() async throws {
+        let question = "请在模拟器来回切换几个底部 Tab，再打开「我的 → 联系客服」弹窗并停留。完成后回复我，我会直接截图核对顶部是否被遮罩覆盖。"
+        let host = HostStore(offer: .direct(serverId: "question-layout-test", endpoint: "localhost:1", useTls: false, password: nil),
+                             label: "测试机器", clientId: "test", appVersion: "test")
+        let request = try #require(PermissionRequest(["id": "question-layout", "kind": "question", "input": [
+            "questions": [["header": "操作完成", "question": .string(question),
+                "options": [["label": "已切换并打开弹窗"]]]]
+        ]]))
+        for width in [390, 800] {
+            for dark in [false, true] {
+                let style = dark ? "dark" : "light"
+                try await capture(VStack(alignment: .leading, spacing: 20) {
+                    TimelineItemView(item: .turnSummary(id: "question-layout-reference", label: "1 个其他操作", hidden: []))
+                    UserBubble(text: "Answers to your questions:\n\n\(question)\n已切换并打开弹窗")
+                }
+                    .padding(20).frame(maxHeight: .infinity, alignment: .top),
+                    width: width, height: 420, name: "question-complete-\(style)", dark: dark)
+                try await capture(PermissionCard(host: host, agentId: "test", request: request)
+                    .padding(6).frame(maxHeight: .infinity, alignment: .top),
+                    width: width, height: 500, name: "question-pending-\(style)", dark: dark)
+            }
+        }
+    }
+
     @Test func pastedTextCardPreview() async throws {
         for width in [390, 800] {
             try await capture(PastedTextCardFixture(), width: width, name: "pasted-text-card")

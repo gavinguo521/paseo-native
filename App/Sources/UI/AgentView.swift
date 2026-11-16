@@ -800,8 +800,6 @@ struct PermissionCard: View {
             questionActions
         }
         .padding(14)
-        .background(Theme.surface1, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.dotWarning.opacity(0.5)))
         .phoneFeedback(.success, trigger: answered)
     }
 
@@ -839,9 +837,8 @@ struct PermissionCard: View {
         let key = header(q)
         let multi = q["multiSelect"]?.boolValue == true
         VStack(alignment: .leading, spacing: 8) {
-            Text(q["question"]?.stringValue ?? key)
-                .font(.system(size: Theme.base, weight: .medium))
-                .fixedSize(horizontal: false, vertical: true)
+            QuestionPrompt(text: q["question"]?.stringValue ?? key)
+            QuestionSectionLabel(title: "回答")
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array((q["options"]?.arrayValue ?? []).enumerated()), id: \.offset) { _, o in
                     optionRow(o, key: key, multi: multi)

@@ -2,19 +2,19 @@ import Foundation
 import Testing
 @testable import PaseoWatchBridge
 
-@Test func generatedAnswerShowsSelectionWithoutRepeatedQuestion() {
+@Test func compactionPreservesQuestionForStructuredDisplay() {
     let input = "Answers to your questions:\n\n请把手表放在 Mac 附近，完成后告诉我。\n已靠近并解锁"
-    #expect(WatchMessageText.compact(input, role: "user") == "已靠近并解锁")
+    #expect(WatchMessageText.compact(input, role: "user") == input)
 }
 
 @Test func multipleGeneratedAnswersKeepEachChoice() {
     let input = "Answers to your questions:\n\n设备已解锁吗？\n已解锁\n\n现在可以刷新吗？\n刷新和打开会话都正常"
-    #expect(WatchMessageText.compact(input, role: "user") == "已解锁\n刷新和打开会话都正常")
+    #expect(WatchMessageText.compact(input, role: "user") == input)
 }
 
 @Test func multilineAnswerAndOrdinaryMessagesKeepTheirContent() {
     let answer = "Answers to your questions:\n\n什么情况？\n手机锁屏后连接失败\n解锁后恢复"
-    #expect(WatchMessageText.compact(answer, role: "user") == "手机锁屏后连接失败\n解锁后恢复")
+    #expect(WatchMessageText.compact(answer, role: "user") == answer)
     let ordinary = "这是我的问题\n这是补充内容"
     #expect(WatchMessageText.compact(ordinary, role: "user") == ordinary)
     let quoted = "Answers to your questions:\n\nExample question\nExample answer"

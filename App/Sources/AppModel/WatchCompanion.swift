@@ -148,9 +148,12 @@ final class WatchCompanion: NSObject, WCSessionDelegate {
                 case .error(let value): role = "error"; text = value
                 default: return nil
                 }
-                let compact = WatchMessageText.compact(text, role: role)
+                let transcript = QuestionAnswerTranscript(text: text, role: role)
+                let preview = transcript?.messagePreview(limit: 800)
+                let compact = WatchMessageText.compact(preview?.text ?? text, role: role)
                 guard !compact.isEmpty else { return nil }
-                return WatchMessage(id: row.id, role: role, text: String(compact.prefix(800)), truncated: compact.count > 800, timestamp: row.timestamp)
+                return WatchMessage(id: row.id, role: role, text: String(compact.prefix(800)),
+                                    truncated: compact.count > 800 || preview?.truncated == true, timestamp: row.timestamp)
             }
             return .session(WatchSessionDetail(session: Self.summary(agent, host: host), messages: Array(messages.suffix(8)),
                                                permissions: Array(agent.pendingPermissions.prefix(4)).map(permission)))
