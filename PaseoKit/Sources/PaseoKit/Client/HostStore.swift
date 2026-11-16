@@ -91,6 +91,9 @@ public final class HostStore: Identifiable {
     public internal(set) var pluginSettingsRevision: [String: Int] = [:]
     /// True once the plugin list has been read from this daemon (so an empty list really means none installed).
     public internal(set) var pluginsLoaded = false
+    /// Last confirmed preference for this execution host, without Bark credentials.
+    @ObservationIgnored var barkCompletionEnabled: Bool?
+    @ObservationIgnored var barkPreferenceRevision = 0
 
     @ObservationIgnored var fileTransfers: [String: FileTransfer] = [:]
     @ObservationIgnored var terminalSlots: [Int: String] = [:]
