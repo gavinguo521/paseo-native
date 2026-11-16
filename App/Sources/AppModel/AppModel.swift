@@ -760,6 +760,12 @@ final class AppModel {
             return
         }
         guard let host = host(ws.serverId) else { return }
+        // 新 daemon 一个请求搞定：取消进行中的归档或恢复工作区，再取消归档当时一起归档的会话。
+        if host.supportsWorkspaceArchiveUndo {
+            do { try await host.undoWorkspaceArchive(ws.workspaceId); return } catch {
+                AppLog.shared.record("归档", "撤销工作区归档失败：\(error.localizedDescription)，改用逐个恢复")
+            }
+        }
         for ref in u.refs { try? await host.unarchive(ref.agentId) }
         // 工作区里没有会话时也要恢复工作区本身；有会话时等它们回来再看工作区是否还缺。
         for _ in 0..<20 where host.workspaces[ws.workspaceId] == nil && u.refs.contains(where: { host.agents[$0.agentId].map { $0.archivedAt != nil } ?? true }) {

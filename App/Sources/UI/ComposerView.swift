@@ -126,6 +126,7 @@ struct ComposerView: View {
         .onChange(of: text) { _, t in model.saveDraft(t, for: agentId) }
         .onDisappear { model.saveDraft(text, for: agentId); model.flushDrafts() }
         .task(id: host.state == .connected) { await host.watchProviderSubagents(agentId) }
+        .task(id: host.state == .connected) { await host.watchBackgroundWork(agentId) }
         .onChange(of: text) { _, t in autocomplete.update(text: t, host: host, agentId: agentId, cwd: agent?.cwd) }
         .onChange(of: agent?.status) { _, status in
             if status != .running { flushQueue() }
@@ -539,7 +540,8 @@ private struct ComposerTaskChips: View {
             }
             .help(todos.map { ($0.completed ? "✓ " : "○ ") + $0.text }.joined(separator: "\n"))
         }
-        backgroundTaskPill
+        // daemon 提供后台任务列表（0.16.0 起）时用官方列表，能单独停止；旧 daemon 仍用时间线推出来的列表。
+        if host.supportsBackgroundWork { BackgroundWorkPill(host: host, agentId: agentId) } else { backgroundTaskPill }
         }
     }
     /// The current turn's task list (official composer task pill).

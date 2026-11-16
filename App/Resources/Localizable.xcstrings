@@ -14670,6 +14670,226 @@
           }
         }
       }
+    },
+    "基准分支": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Base branch"
+          }
+        }
+      }
+    },
+    "搜索分支": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search branches"
+          }
+        }
+      }
+    },
+    "没有匹配的分支": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching branches"
+          }
+        }
+      }
+    },
+    "基准分支：%@，点击切换": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Base branch: %@. Click to change"
+          }
+        }
+      }
+    },
+    "基准分支已切换为 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Base branch changed to %@"
+          }
+        }
+      }
+    },
+    "后台任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background tasks"
+          }
+        }
+      }
+    },
+    "无法加载后台任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load background tasks"
+          }
+        }
+      }
+    },
+    "正在等待后台任务详情": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for background task details"
+          }
+        }
+      }
+    },
+    "%@ · 已运行 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ · running for %2$@"
+          }
+        }
+      }
+    },
+    "无法确认已停止：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't confirm it stopped: %@"
+          }
+        }
+      }
+    },
+    "正在停止…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopping…"
+          }
+        }
+      }
+    },
+    "停止 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop %@"
+          }
+        }
+      }
+    },
+    "Shell": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shell"
+          }
+        }
+      }
+    },
+    "监控": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monitor"
+          }
+        }
+      }
+    },
+    "其他任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other task"
+          }
+        }
+      }
+    },
+    "里面的会话也会一起归档，正在运行的会被停止。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sessions inside will be archived too, and any running ones will be stopped."
+          }
+        }
+      }
+    },
+    "未提交的改动（含新文件）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "uncommitted changes (including new files)"
+          }
+        }
+      }
+    },
+    "%lld 个未推送的提交": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld unpushed commits"
+          }
+        }
+      }
+    },
+    "归档会删除这个 worktree 目录（没有未提交的改动和未推送的提交）。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archiving deletes this worktree directory (no uncommitted changes or unpushed commits)."
+          }
+        }
+      }
+    },
+    "这个 worktree 还有%@，归档会删除它，这些都会丢失。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This worktree has %@. Archiving deletes it and these will be lost."
+          }
+        }
+      }
+    },
+    "无法归档「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't archive “%@”"
+          }
+        }
+      }
+    },
+    "读不到这个 worktree 的 git 状态，为避免删掉未保存的改动，暂不归档。\n%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't read this worktree's git status, so it wasn't archived to avoid deleting unsaved changes.\n%@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

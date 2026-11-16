@@ -36,7 +36,12 @@ public struct CheckoutStatus: Sendable {
     public let isGit: Bool
     public let currentBranch: String?
     public let isDirty: Bool
+    /// 显示用的基准分支名（如 main）。
     public let baseRef: String?
+    /// 精确基准 ref（如 refs/remotes/origin/main），0.11.2 之后的 daemon 才带；切换基准分支时用它标出当前项。
+    public let baseRefExact: String?
+    /// diff 实际对比的 ref（可能是 merge-base 解析后的 ref），daemon 未提供时为 nil。
+    public let comparisonBaseRef: String?
     public let ahead: Int
     public let behind: Int
     public let aheadOfOrigin: Int
@@ -49,12 +54,47 @@ public struct CheckoutStatus: Sendable {
         currentBranch = v["currentBranch"]?.stringValue
         isDirty = v["isDirty"]?.boolValue ?? false
         baseRef = v["baseRef"]?.stringValue
+        baseRefExact = v["baseRefExact"]?.stringValue
+        comparisonBaseRef = v["comparisonBaseRef"]?.stringValue
         ahead = Int(v["aheadBehind"]?["ahead"]?.doubleValue ?? 0)
         behind = Int(v["aheadBehind"]?["behind"]?.doubleValue ?? 0)
         aheadOfOrigin = Int(v["aheadOfOrigin"]?.doubleValue ?? 0)
         behindOfOrigin = Int(v["behindOfOrigin"]?.doubleValue ?? 0)
         hasRemote = v["hasRemote"]?.boolValue ?? false
         isPaseoOwnedWorktree = v["isPaseoOwnedWorktree"]?.boolValue ?? false
+    }
+
+    /// 基准分支选择器里的“当前值”：优先精确 ref，旧 daemon 退回显示名。
+    public var selectedBaseRef: String? { baseRefExact ?? baseRef }
+}
+
+/// worktree「切换基准分支」（官方 workspace-base-branch-picker.tsx，features.workspaceBaseBranch）。
+public enum WorkspaceBaseBranch {
+    /// 去掉 refs/heads/、refs/remotes/ 前缀，用于列表展示（如 origin/main）。
+    public static func refLabel(_ ref: String) -> String {
+        for prefix in ["refs/heads/", "refs/remotes/"] where ref.hasPrefix(prefix) { return String(ref.dropFirst(prefix.count)) }
+        return ref
+    }
+
+    /// 入口按钮上的短名：再去掉 origin/（与官方一致）。
+    public static func shortLabel(_ ref: String) -> String {
+        let l = refLabel(ref)
+        return l.hasPrefix("origin/") ? String(l.dropFirst("origin/".count)) : l
+    }
+
+    /// branch_suggestions_response（refMode=exact）→ 精确 ref 列表；daemon 返回 error 时抛出。
+    static func candidates(from payload: JSONValue?) throws -> [String] {
+        if let e = payload?["error"]?.stringValue, !e.isEmpty { throw HostStore.ActionError.rejected(e) }
+        return (payload?["branches"]?.arrayValue ?? []).compactMap(\.stringValue)
+    }
+
+    /// workspace.base_branch.set.response → 生效后的 baseRef；accepted=false 时抛出 daemon 给的 error。
+    static func appliedBaseRef(from payload: JSONValue?) throws -> String? {
+        guard payload?["accepted"]?.boolValue == true else {
+            let e = payload?["error"]?.stringValue
+            throw HostStore.ActionError.rejected(e?.isEmpty == false ? e! : String(localized: "切换基准分支失败", bundle: .module))
+        }
+        return payload?["baseRef"]?.stringValue
     }
 }
 

@@ -290,3 +290,27 @@
 - 0.15.4：新增 Claude Fable 5.2 / Mythos 5.2（#9233），模型目录由 daemon 下发，客户端无需改动。
 
 结论：目前没有需要同步的项，下一次在官方发 0.16 正式版后对照。
+
+## 官方 0.16.0 核对（2026-11-16）
+
+范围 v0.15.4..v0.16.0（正式版，2026-11-16 发布）。
+
+**兼容性：不会坏。** `messages.ts` 只有新增，删除的只是终端订阅里 3 处 `cwd` 由必填改可选（我们订阅时总带 `cwd` 和 `workspaceId`）；`hello` 没有新增必须声明的能力；分块传输帧格式、`e2ee_hello`、配对都没变。实测：隔离的 0.16.0 daemon（临时 home、独立端口、关中继）加载我们的 6 个插件全部 running；PaseoKit `HostStore` 直连同步会话、工作区、插件正常，时间线（含 turn-speed / next-input 插件行）解析正常。本机 daemon 已升到 0.16.0。
+
+限期兼容（到期前要改）：
+- `COMPAT(featureValues)`：2027-05-01 以后删除 `features` / `set_agent_feature` / profile 的 `featureValues`，改用 `controls` + `options`（`features.providerOptionControls`）。
+- `COMPAT(backgroundAgents)`：2027-05-03 以后可能去掉「不声明 `background_agents` 就看不到后台 Agent」的兼容，到时要按 `agent.background` 过滤。
+
+daemon 升级后自动生效、客户端不用改：完成通知取错回复（#9793，我们直接用 daemon 下发的正文）、权限卡片显示原因（#3950，写在 `description`）、Claude Bypass、空闲清理、重试等 daemon 侧修复。已经一致：问题卡片等「下一步/提交」（#8525）、`/exit` 不默认选中（#8905）。
+
+建议跟进（按优先级，已登记看板）：
+1. **已做（1.0.37，看板 #1753）** 归档 worktree 前现查 `checkout_status_request` 的 `isDirty` / `aheadOfOrigin`（#9625）。我们只看缓存的增删行数，只有新文件或有未推送提交时会漏判。小。
+2. **已做（1.0.37）** 后台任务列表和单独停止（看板 #1572）：`features.agentBackgroundWork`，`agent.background_work.list/stop`，事件 `agent.background_work.update`，快照 `backgroundWork.count`>0 算运行中。中。
+3. **已做（1.0.37）** worktree 切换基准分支（看板 #1573）：`features.workspaceBaseBranch`，`workspace.base_branch.set`。中。
+4. **已做（1.0.37，看板 #1754）** 归档撤销改走 daemon 的 `workspace.archive.undo`（`features.workspaceArchiveUndo`），处理归档响应的 `canceled`；worktree 也能撤销。小到中。
+5. 迁移到 `controls` / `options`（见上，期限 2027-05；看板 #1755，暂缓：当前不影响使用）。中。
+6. 可选：重连时检查时间线是否最新（`features.timelineFreshnessCheck`）、插件市场（`features.pluginRegistry`）、Usage 卡片排序。
+
+不跟进：流式 diff（`diff.subscribe` 二进制帧，收益只在超大 diff）、插件侧栏视图 / 输入框控件 / 侧栏插件徽章（RN 插件界面扩展）、重做的移动端聊天、平板触控尺寸、iPhone Duo、Android 与终端按键、桌面端快捷键与启动、What's new、fx provider（目录由 daemon 下发）。
+
+实测（隔离 0.16.0 daemon + PaseoKit HostStore）：只有新文件的 worktree 现查为 dirty；归档完成后撤销会重建 worktree 目录；归档进行中撤销返回 `canceled`、新文件保留；后台 `sleep` 任务能列出并停止（进程结束、列表清空、`backgroundWork.count` 归零）；基准分支切换后 `baseRefExact` / `comparisonBaseRef` 跟着变，不存在的分支 daemon 拒绝。界面未在设备上点过。已知未跟：切换基准后提交历史不自动刷新；「从基准合并 / 合并到基准」仍用 `baseRef` 而不是 `baseRefExact`。

@@ -547,6 +547,11 @@ struct WorkspaceDialogs: ViewModifier {
     var labeling: Binding<Workspace?>? = nil
     @State private var title = ""
     @State private var labelName = ""
+    /// 确认框里要归档的工作区。worktree 要等主机现查完 git 状态才弹（官方 #9625），没查完不能点「归档」。
+    @State private var confirming: Workspace?
+    @State private var worktreeRisk: WorktreeArchiveRisk?
+    /// 现查失败：同官方，不归档，告诉用户原因。
+    @State private var blocked: (name: String, message: String)?
 
     func body(content: Content) -> some View {
         content
@@ -574,15 +579,38 @@ struct WorkspaceDialogs: ViewModifier {
             .onChange(of: renaming?.id) { title = renaming?.title ?? renaming?.name ?? "" }
             // 用工作区标题（如「项目开源的风险评估」）：同一个项目里的本地工作区 name 都是分支名「main」，只显示 name 分不清归档的是哪个
             // 用 alert 而不是 confirmationDialog：iPhone 上后者锚定在整个侧栏，弹出来宽度不对。
-            .alert("归档「\(archiving.map(Self.displayName) ?? "")」？", isPresented: Binding(get: { archiving != nil }, set: { if !$0 { archiving = nil } })) {
+            .alert("归档「\(confirming.map(Self.displayName) ?? "")」？", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil; archiving = nil } })) {
                 Button("取消", role: .cancel) {}
                 Button("归档", role: .destructive) {
-                    guard let w = archiving, let h = host(of: w) else { return }
+                    guard let w = confirming, let h = host(of: w) else { return }
                     Task { await model.archiveWorkspace(w, on: h) }
                 }
             } message: {
                 Text(archiveWarning)
             }
+            .alert("无法归档「\(blocked?.name ?? "")」", isPresented: Binding(get: { blocked != nil }, set: { if !$0 { blocked = nil } })) {
+                Button("好") {}
+            } message: {
+                Text(blocked.map { String(localized: "读不到这个 worktree 的 git 状态，为避免删掉未保存的改动，暂不归档。\n\($0.message)") } ?? "")
+            }
+            .task(id: archiving?.id) { await prepareArchive() }
+    }
+
+    /// worktree 归档会删目录：侧栏缓存的增删行数看不到只有新文件、只有未推送提交的情况，先向主机现查，查完再弹确认框。
+    private func prepareArchive() async {
+        worktreeRisk = nil
+        guard let w = archiving else { confirming = nil; return }
+        guard w.kind == "worktree", let h = host(of: w) else { confirming = w; return }
+        do {
+            let risk = try await h.worktreeArchiveRisk(directory: w.directory)
+            guard archiving?.id == w.id else { return }
+            worktreeRisk = risk
+            confirming = w
+        } catch {
+            guard archiving?.id == w.id, !Task.isCancelled else { return }
+            archiving = nil
+            blocked = (Self.displayName(w), error.localizedDescription)
+        }
     }
 
     static func displayName(_ w: Workspace) -> String {
@@ -591,11 +619,8 @@ struct WorkspaceDialogs: ViewModifier {
     }
 
     private var archiveWarning: String {
-        guard let w = archiving else { return "" }
-        let dirty = (w.additions ?? 0) + (w.deletions ?? 0) > 0
-        let base = w.kind == "worktree" && dirty
-            ? String(localized: "这个 worktree 还有未提交的改动，归档会删除它。里面的会话也会一起归档。")
-            : String(localized: "里面的会话会一起归档，正在运行的会被停止。")
+        guard let w = confirming else { return "" }
+        let base = w.kind == "worktree" ? worktreeWarning(w) : String(localized: "里面的会话会一起归档，正在运行的会被停止。")
         // 列出会被归档的会话，正在运行的标出来，防止点错行
         guard let h = host(of: w) else { return base }
         let agents = AppModel.liveAgents(in: w, host: h)
@@ -607,6 +632,19 @@ struct WorkspaceDialogs: ViewModifier {
     }
 
     private func host(of w: Workspace) -> HostStore? { model.hosts.first { $0.workspaces[w.id] != nil } }
+
+    /// worktree 归档会删除目录：按现查结果列出会丢的东西。
+    private func worktreeWarning(_ w: Workspace) -> String {
+        let sessions = String(localized: "里面的会话也会一起归档，正在运行的会被停止。")
+        // 确认框只在现查成功后才弹，这里一定有结果；万一没有就按有改动提示。
+        let risk = worktreeRisk ?? WorktreeArchiveRisk(isDirty: true, unpushedCommits: 0)
+        var lost: [String] = []
+        if risk.isDirty { lost.append(String(localized: "未提交的改动（含新文件）")) }
+        if risk.unpushedCommits > 0 { lost.append(String(localized: "\(risk.unpushedCommits) 个未推送的提交")) }
+        guard !lost.isEmpty else { return String(localized: "归档会删除这个 worktree 目录（没有未提交的改动和未推送的提交）。") + "\n" + sessions }
+        let list = lost.joined(separator: String(localized: "、", comment: "列举时的分隔符（顿号）"))
+        return String(localized: "这个 worktree 还有\(list)，归档会删除它，这些都会丢失。") + "\n" + sessions
+    }
 }
 
 extension AppModel {
@@ -621,12 +659,22 @@ extension AppModel {
             && !host.agents.values.contains { $0.workspaceId == w.id && $0.archivedAt == nil && $0.status == .running }
     }
 
-    /// 归档工作区；不是 worktree 时底部给几秒「撤销」。
+    /// 归档工作区，底部给几秒「撤销」。daemon 支持撤销（0.15.3+）时同官方：一开始归档就给撤销，worktree 也能撤销
+    /// （还在归档就取消，已删目录就重建）；旧 daemon 等归档完成再给，worktree 不给。
     func archiveWorkspace(_ w: Workspace, on host: HostStore) async {
-        // 撤销时连子会话一起恢复。
+        // 旧 daemon 撤销时要自己逐个恢复，连子会话一起。
         let agents = host.agents.values.filter { $0.workspaceId == w.id && $0.archivedAt == nil }.map { AgentRef(serverId: host.id, agentId: $0.id) }
-        guard (try? await host.archiveWorkspace(w.id)) != nil, w.kind != "worktree" else { return }
-        offerUndoArchiveWorkspace(WorkspaceRef(serverId: host.id, workspaceId: w.id), agents: agents, title: WorkspaceDialogs.displayName(w))
+        let ref = WorkspaceRef(serverId: host.id, workspaceId: w.id)
+        let title = WorkspaceDialogs.displayName(w)
+        if host.supportsWorkspaceArchiveUndo {
+            offerUndoArchiveWorkspace(ref, agents: agents, title: title)
+            let archived = (try? await host.archiveWorkspace(w.id)) ?? false
+            // 失败或被撤销：撤销提示没意义了（被撤销时提示已经收起）。
+            if !archived, undoArchive?.workspace == ref { undoArchive = nil }
+            return
+        }
+        guard (try? await host.archiveWorkspace(w.id)) == true, w.kind != "worktree" else { return }
+        offerUndoArchiveWorkspace(ref, agents: agents, title: title)
     }
 }
 

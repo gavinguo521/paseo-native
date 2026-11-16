@@ -854,6 +854,46 @@
           }
         }
       }
+    },
+    "切换基准分支失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to change base branch"
+          }
+        }
+      }
+    },
+    "无法加载后台任务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load background tasks"
+          }
+        }
+      }
+    },
+    "撤销归档失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't undo the archive"
+          }
+        }
+      }
+    },
+    "读取 git 状态失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't read git status"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

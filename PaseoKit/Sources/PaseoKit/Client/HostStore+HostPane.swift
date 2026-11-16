@@ -237,6 +237,34 @@ extension HostStore {
         diffs[cwd] = CheckoutDiff(p)
     }
 
+    /// 基准分支候选：精确 ref（refs/heads/…、refs/remotes/…），按最近提交排序。官方 refMode=exact、limit=200。
+    public func baseBranchCandidates(cwd: String, query: String) async throws -> [String] {
+        let r = try await conn().request("branch_suggestions_request", [
+            "cwd": .string(cwd), "query": .string(query), "limit": 200, "refMode": "exact",
+        ])
+        return try WorkspaceBaseBranch.candidates(from: r["payload"])
+    }
+
+    /// 切换 worktree 工作区的基准分支；成功后刷新 checkout 状态、对比基准的 diff 订阅和 PR 状态。
+    @discardableResult
+    public func setWorkspaceBaseBranch(workspaceId: String, cwd: String, baseRef: String) async throws -> String? {
+        let r = try await conn().request("workspace.base_branch.set.request", [
+            "workspaceId": .string(workspaceId), "baseRef": .string(baseRef),
+        ], timeout: .seconds(60))
+        let applied = try WorkspaceBaseBranch.appliedBaseRef(from: r["payload"])
+        await refreshCheckoutStatus(cwd: cwd)
+        // 未提交 diff 与基准无关；本分支 / 全部 视图强制重订阅，拿到按新基准算的 diff。
+        if let old = diffSubs[cwd], !old.mode.hasPrefix("uncommitted") {
+            let ws = old.mode.hasSuffix("+ws")
+            let mode = ws ? String(old.mode.dropLast(3)) : old.mode
+            diffSubs[cwd] = nil
+            _ = try? await connection?.request("subscription.release.request", ["subscriptionId": .string(old.id)])
+            await subscribeDiff(cwd: cwd, mode: mode, ignoreWhitespace: ws)
+        }
+        await loadPrStatus(cwd: cwd)
+        return applied
+    }
+
     public func unsubscribeDiff(cwd: String) async {
         guard let old = diffSubs.removeValue(forKey: cwd) else { return }
         _ = try? await connection?.request("subscription.release.request", ["subscriptionId": .string(old.id)])

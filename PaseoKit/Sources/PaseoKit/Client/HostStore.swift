@@ -79,6 +79,8 @@ public final class HostStore: Identifiable {
     public internal(set) var daemonConfig: JSONValue?
     /// Provider-internal subagents by parent agent id.
     public internal(set) var providerSubagents: [String: [ProviderSubagent]] = [:]
+    /// 正在看的会话的后台任务（官方 background work），按 agent id；见 HostStore+BackgroundWork.swift。
+    public internal(set) var backgroundWork: [String: BackgroundWorkState] = [:]
     /// Finished provider subagents the user cleared from the composer pill (this client only, like the official app).
     public internal(set) var hiddenProviderSubagents: Set<String> = []
     /// Timelines of provider subagents open in a tab, keyed "parentAgentId/subagentId".
@@ -422,13 +424,13 @@ public final class HostStore: Identifiable {
         // host (~0.9 KB/s with a few running). A separate subscription carries it only while a watched session
         // has live subagents; see HostStore+HostPane.swift "Provider subagent pushes".
         let events = try await c.request("session.events.set_subscription.request", [
-            "events": ["agent_permission_request", "agent_permission_resolved", "agent_attention_required", "project.update",
+            "events": .array(["agent_permission_request", "agent_permission_resolved", "agent_attention_required", "project.update",
                        "checkout_status_update", "script_status_update", "terminal_attention_required", "workspace_setup_progress",
                        "status.daemon_config_changed",
                        "status.plugin_catalog_changed", "status.plugin_settings_changed",
                        // Model lists arrive after the daemon finishes probing providers; without this the composer
                        // kept showing raw model ids ("claude-opus-5-5") from an early, model-less snapshot.
-                       "providers_snapshot_update"],
+                       "providers_snapshot_update"] + backgroundWorkEvents),
             "notifications": true,
         ])
         track(events)
@@ -529,6 +531,8 @@ public final class HostStore: Identifiable {
         case "agent_permission_request", "agent_permission_resolved":
             // The agent snapshot's pendingPermissions is authoritative; refresh it.
             if let agentId = p["agentId"]?.stringValue { refreshAgent(agentId) }
+        case "agent.background_work.update":
+            applyBackgroundWorkUpdate(p)
         case "agent_attention_required":
             let n = p["notification"]
             onAttention?(AttentionEvent(
@@ -1108,10 +1112,14 @@ public final class HostStore: Identifiable {
         try check(try await conn().request("workspace.pin.set.request", ["workspaceId": .string(id), "pinned": .bool(pinned)]))
     }
 
-    public func archiveWorkspace(_ id: String) async throws {
+    /// 归档工作区。返回 false 表示归档还没做完就被撤销（0.16 起响应带 `canceled`，`error` 里是原因），不算失败。
+    @discardableResult
+    public func archiveWorkspace(_ id: String) async throws -> Bool {
         let r = try await conn().request("archive_workspace_request", ["workspaceId": .string(id)], timeout: .seconds(120))
+        if r["payload"]?["canceled"]?.boolValue == true { return false }
         if let e = r["payload"]?["error"], e != .null { throw ActionError.rejected(e.stringValue ?? String(localized: "归档失败", bundle: .module)) }
         workspaces[id] = nil
+        return true
     }
 
     /// 已归档的工作区能不能恢复（官方 workspace.recovery.inspect）：返回 state.kind，如 "recoverable"。

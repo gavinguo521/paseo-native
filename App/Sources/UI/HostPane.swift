@@ -605,6 +605,12 @@ struct ChangesView: View {
                 Text("↑\(s.aheadOfOrigin) ↓\(s.behindOfOrigin)").font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.muted)
                     .help("相对远程分支：待推送 \(s.aheadOfOrigin) 个提交，待拉取 \(s.behindOfOrigin) 个")
             }
+            if workspace.kind == "worktree", let s = status, let base = s.baseRef {
+                Image(systemName: "arrow.right").font(.system(size: 10)).foregroundStyle(Theme.extraMuted)
+                BaseBranchPicker(host: host, workspace: workspace, displayRef: base, currentRef: s.selectedBaseRef ?? base) { applied in
+                    flash(String(localized: "基准分支已切换为 \(WorkspaceBaseBranch.shortLabel(applied ?? base))"))
+                }
+            }
             Spacer()
             if let busy { ProgressView().controlSize(.small); Text(busy).font(.caption).foregroundStyle(Theme.muted).lineLimit(1) }
             Button { run("pull") } label: { Image(systemName: "arrow.down").mobileTouchTarget() }.buttonStyle(.plain)
@@ -767,6 +773,141 @@ struct ChangesView: View {
                 }
             } catch { self.error = "\(error)" }
             busy = nil
+        }
+    }
+
+    private func flash(_ text: String) {
+        error = nil
+        notice = text
+        Task { try? await Task.sleep(for: .seconds(4)); if notice == text { notice = nil } }
+    }
+}
+
+/// worktree 的基准分支入口（官方 workspace-base-branch-picker.tsx）：daemon 支持 workspaceBaseBranch 时可点开搜索切换，否则只读显示。
+private struct BaseBranchPicker: View {
+    let host: HostStore
+    let workspace: Workspace
+    /// checkout_status 的显示名（baseRef）。
+    let displayRef: String
+    /// 当前精确 ref（baseRefExact，旧 daemon 退回 baseRef），用于打勾。
+    let currentRef: String
+    let onChanged: (String?) -> Void
+
+    @State private var open = false
+    @State private var query = ""
+    @State private var refs: [String]?
+    @State private var loadError: String?
+    @State private var setError: String?
+    @State private var pending: String?
+    @State private var reloadToken = 0
+
+    private var supported: Bool { host.serverInfo?.hasFeature("workspaceBaseBranch") == true }
+    private var label: String { WorkspaceBaseBranch.shortLabel(displayRef) }
+
+    var body: some View {
+        if supported {
+            Button { query = ""; refs = nil; loadError = nil; setError = nil; open = true } label: {
+                HStack(spacing: 3) {
+                    Text(label).lineLimit(1).truncationMode(.middle)
+                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
+                }
+                .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                .mobileTouchTarget()
+            }
+            .buttonStyle(.plain).fixedSize(horizontal: false, vertical: true)
+            .disabled(pending != nil)
+            .help("基准分支：\(label)，点击切换")
+            .accessibilityLabel(Text("基准分支"))
+            .popover(isPresented: $open, arrowEdge: .bottom) {
+                content.presentationCompactAdaptation(.popover)
+            }
+        } else {
+            Text(label).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
+                .help("基准分支")
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("基准分支").font(.system(size: 12, weight: .semibold))
+            TextField("搜索分支", text: $query)
+                .textFieldStyle(.roundedBorder)
+                #if os(iOS)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                #endif
+            Group {
+                if let refs {
+                    if refs.isEmpty {
+                        Text("没有匹配的分支").foregroundStyle(Theme.muted).frame(maxWidth: .infinity, minHeight: 60)
+                    } else {
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(refs, id: \.self) { ref in row(ref) }
+                            }
+                        }
+                    }
+                } else if loadError == nil {
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 60)
+                }
+            }
+            .frame(maxHeight: 320)
+            if let e = setError ?? loadError {
+                Text(e).font(.system(size: 11)).foregroundStyle(Theme.destructive).fixedSize(horizontal: false, vertical: true)
+            }
+            if loadError != nil {
+                Button("重试") { reloadToken += 1 }.controlSize(.small)
+            }
+        }
+        .padding(12)
+        .frame(width: 300)
+        .task(id: "\(query)#\(reloadToken)") {
+            // 输入防抖 200ms，与官方一致。
+            if !query.isEmpty { try? await Task.sleep(for: .milliseconds(200)) }
+            if Task.isCancelled { return }
+            do {
+                let r = try await host.baseBranchCandidates(cwd: workspace.directory, query: query)
+                if Task.isCancelled { return }
+                refs = r
+                loadError = nil
+            } catch {
+                if Task.isCancelled { return }
+                loadError = "\(error)"
+            }
+        }
+    }
+
+    private func row(_ ref: String) -> some View {
+        Button { select(ref) } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.branch").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                Text(WorkspaceBaseBranch.refLabel(ref)).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 4)
+                if pending == ref { ProgressView().controlSize(.mini) }
+                else if ref == currentRef { Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.accent) }
+            }
+            .font(.system(size: 12))
+            .padding(.vertical, 5).padding(.horizontal, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(pending != nil)
+    }
+
+    private func select(_ ref: String) {
+        guard pending == nil else { return }
+        if ref == currentRef { open = false; return }
+        pending = ref
+        setError = nil
+        Task {
+            do {
+                let applied = try await host.setWorkspaceBaseBranch(workspaceId: workspace.id, cwd: workspace.directory, baseRef: ref)
+                pending = nil
+                open = false
+                onChanged(applied ?? ref)
+            } catch {
+                pending = nil
+                setError = "\(error)"
+            }
         }
     }
 }

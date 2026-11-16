@@ -114,6 +114,34 @@ if let bytesPath = env["PASEO_BYTES"], !bytesPath.isEmpty {
     exit(0)
 }
 
+// PASEO_BGWORK=<秒>：只读检查官方「后台任务」：能力位、快照里的 backgroundWork.count、各会话的列表，并观察推送这么多秒。不停止任何任务。
+if let secs = env["PASEO_BGWORK"].flatMap(Double.init) {
+    let store = HostStore(offer: offer, label: "probe", clientId: hello.clientId, appVersion: "paseo-native-probe/0.1")
+    store.start()
+    while store.state != .connected {
+        if case .failed(let m, _) = store.state { fail(m) }
+        try? await Task.sleep(for: .milliseconds(100))
+    }
+    print("agentBackgroundWork=\(store.supportsBackgroundWork) agentBackgroundWorkStop=\(store.supportsBackgroundWorkStop)")
+    let agents = store.agents.values.filter { $0.archivedAt == nil }
+    for a in agents where a.backgroundWorkCount > 0 { print("  \(a.id.prefix(8)) status=\(a.status) count=\(a.backgroundWorkCount) bucket=\(a.bucket)") }
+    let busy = agents.filter { $0.backgroundWorkCount > 0 || $0.status == .running }
+    let watched = (busy.isEmpty ? Array(agents.filter { $0.status == .idle }.prefix(2)) : busy).prefix(10).map(\.id)
+    let watchers = watched.map { id in Task { await store.watchBackgroundWork(id) } }
+    try? await Task.sleep(for: .seconds(max(2, secs)))
+    for id in watched {
+        let s = store.backgroundWork[id]
+        print("list \(id.prefix(8)) error=\(s?.error ?? "-") items=\(s?.items?.count ?? -1)")
+        for i in s?.items ?? [] {
+            print("    \(i.kind) \(i.title ?? "-") cmd=\(i.commandDetail ?? "-") started=\(i.startedAt.map { "\($0)" } ?? "?") canStop=\(store.canStopBackgroundWork(i))")
+        }
+    }
+    print("pushes agent.background_work.update=\(store.pushCounts["agent.background_work.update"] ?? 0)")
+    watchers.forEach { $0.cancel() }
+    store.stop()
+    exit(0)
+}
+
 // PASEO_PUSH=<seconds>: run the full HostStore idle (or watching PASEO_PUSH_WATCH=<agent prefix>, as an open session
 // does) and count server pushes by type.
 // PASEO_RESTORE_WS=<工作区 id>：检查并恢复已归档的工作区（会话还活着而工作区被归档时，官方客户端看不到它）

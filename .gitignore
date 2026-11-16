@@ -9,3 +9,4 @@ xcuserdata/
 build/
 build.noindex/
 Config/Local.xcconfig
+.codegraph/
